@@ -3,9 +3,13 @@
 
 #include <ace/managers/state.h>
 #include <ace/managers/system.h>
-#include "utils/screen.h"
+#include "core/screen.h"
 
 extern tStateManager *g_game_state_manager;
+extern tState
+    g_state_splash,
+    g_state_lang_select;
+
 extern screen_t *g_main_screen;
 
 #if !defined(SYSTEM_GUARDS)

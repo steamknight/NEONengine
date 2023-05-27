@@ -1,15 +1,12 @@
-#include "splash.h"
+#include "neonengine.h"
 
-#include <ace/managers/game.h> // Used for gameExit()
 #include <ace/managers/system.h>
 #include <ace/managers/blit.h>
 #include <ace/managers/viewport/simplebuffer.h>
-#include <ace/managers/ptplayer.h>
 #include <ace/utils/palette.h>
 
-#include "neonengine.h"
-#include "utils/music.h"
-#include "utils/screen.h"
+#include "core/music.h"
+#include "core/screen.h"
 
 enum SPLASH_STATE
 {
@@ -19,7 +16,7 @@ enum SPLASH_STATE
 };
 
 static enum SPLASH_STATE current_state_;
-static UBYTE delay_;
+static UWORD delay_;
 
 #define STATE_NAME "State: Splash Screen"
 #define FADE_DURATION 25
@@ -114,17 +111,16 @@ void on_fade_in_complete(void)
 
 void on_fade_out_complete(void)
 {
-    gameExit();
+    stateChange(g_game_state_manager, &g_state_lang_select);
 }
 
 void splash_destroy(void)
 {
-    systemUse();
     logBlockEnd(STATE_NAME);
 }
 
 tState g_state_splash = {
     .cbCreate = splash_create,
     .cbLoop = splash_process,
-    .cbDestroy = splash_destroy
+    .cbDestroy = splash_destroy,
 };

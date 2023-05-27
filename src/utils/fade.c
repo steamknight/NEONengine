@@ -115,6 +115,7 @@ tFadeState fadeProcess(tFade *pFade)
             eState = pFade->eState;
             if (pFade->cbOnDone)
             {
+                pFade->eState = FADE_STATE_IDLE;
                 pFade->cbOnDone();
             }
         }

@@ -63,7 +63,7 @@ void screen_process(screen_t *screen)
 
 void screen_clear(screen_t *screen, UBYTE color_index)
 {
-    blitRect(screen->buffer->pBack, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, color_index);
+    blitRect(screen->buffer->pBack, 0, screen->offset, SCREEN_WIDTH, SCREEN_HEIGHT, color_index);
 }
 
 void screen_fade_to_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn)

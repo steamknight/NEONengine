@@ -60,6 +60,14 @@ convertBitmaps(
     DESTINATIONS ${DATA_DIR}/mpg.bm
 )
 
+# Convert palette and flags
+convertPalette(${GAME_LINKED} ${RES_DIR}/core/base.act ${DATA_DIR}/core/base.plt)
+convertBitmaps(
+    TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/base.act
+    SOURCES ${RES_DIR}/core/flags.png
+    DESTINATIONS ${DATA_DIR}/core/flags.bm
+)
+
 configure_file(
     ${RES_DIR}/music/theme.mod ${DATA_DIR}/music/theme.mod COPYONLY
 )
