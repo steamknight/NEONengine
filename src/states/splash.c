@@ -36,10 +36,10 @@ void splash_create(void)
 
     paletteLoad("data/mpg.plt", g_main_screen->fade->pPaletteRef, 255);
     tBitMap *logo = bitmapCreateFromFile("data/mpg.bm", 0);
-    blitCopy(
+    blitCopyAligned(
         logo, 0, 0,
         g_main_screen->buffer->pBack, 0, g_main_screen->offset,
-        320, 200, MINTERM_COOKIE
+        320, 200
     );
     bitmapDestroy(logo);
 
@@ -54,6 +54,10 @@ void splash_create(void)
 
 void splash_process(void)
 {
+    /*
+     * The state_process function could easily just be the splash_process function,
+     * however, I'm leaving it like this as a minimal template for future states.
+     */
     state_process();
 }
 

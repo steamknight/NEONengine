@@ -1,6 +1,9 @@
 #include "screen.h"
 
-#include <ace/managers/system.h>
+#include <ace/managers/blit.h>
+#include <ace/managers/viewport/simplebuffer.h>
+
+#include "neonengine.h"
 
 screen_t *screen_create(void)
 {
@@ -43,16 +46,9 @@ void screen_destroy(screen_t *screen)
 
 void screen_load(screen_t *screen)
 {
-    if (systemIsUsed())
-    {
-        systemUnuse();
-        viewLoad(screen->view);
-        systemUse();
-    }
-    else
-    {
-        viewLoad(screen->view);
-    }
+    BEGIN_UNUSE_SYSTEM
+    viewLoad(screen->view);
+    END_UNUSE_SYSTEM
 }
 
 void screen_process(screen_t *screen)
@@ -63,6 +59,11 @@ void screen_process(screen_t *screen)
     }
 
     vPortWaitForEnd(screen->viewport);
+}
+
+void screen_clear(screen_t *screen, UBYTE color_index)
+{
+    blitRect(screen->buffer->pBack, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, color_index);
 }
 
 void screen_fade_to_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn)

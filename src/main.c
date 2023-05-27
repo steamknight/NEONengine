@@ -2,7 +2,6 @@
 #include <ace/managers/key.h>
 #include <ace/managers/state.h>
 #include <ace/managers/ptplayer.h>
-#include <ace/managers/system.h>
 
 #include "neonengine.h"
 #include "states/splash.h"

@@ -1,8 +1,7 @@
 #include "music.h"
 
-#include "neonengine.h"
-#include <ace/managers/system.h>
 #include <ace/managers/ptplayer.h>
+#include "neonengine.h"
 
 static tPtplayerMod *current_mod_;
 

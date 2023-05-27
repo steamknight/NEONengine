@@ -2,6 +2,7 @@
 #define __NEONENGINE_H__INCLUDED__
 
 #include <ace/managers/state.h>
+#include <ace/managers/system.h>
 #include "utils/screen.h"
 
 extern tStateManager *g_game_state_manager;
