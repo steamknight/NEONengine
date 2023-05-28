@@ -68,6 +68,14 @@ convertBitmaps(
     DESTINATIONS ${DATA_DIR}/core/flags.bm
 )
 
+convertPalette(${GAME_LINKED} ${RES_DIR}/core/base.act ${DATA_DIR}/core/base.plt)
+convertBitmaps(
+    TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/pointers.act
+    SOURCES ${RES_DIR}/core/pointers.png
+    DESTINATIONS ${DATA_DIR}/core/pointers.bm
+    INTERLEAVED
+)
+
 configure_file(
     ${RES_DIR}/music/theme.mod ${DATA_DIR}/music/theme.mod COPYONLY
 )

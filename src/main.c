@@ -14,6 +14,7 @@ void genericCreate(void)
 {
     keyCreate();
     mouseCreate(MOUSE_PORT_1);
+    mouseSetBounds(MOUSE_PORT_1, 0, 0, 320, 200);
     ptplayerCreate(systemIsPal());
 
     g_game_state_manager = stateManagerCreate();

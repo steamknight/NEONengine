@@ -6,6 +6,7 @@
 #include <ace/utils/palette.h>
 
 #include "core/screen.h"
+#include "core/mouse_pointer.h"
 
 #define STATE_NAME "State: Language Selection"
 #define FADE_DURATION 25
@@ -24,16 +25,19 @@ void lang_select_create(void)
         80, 128
     );
     bitmapDestroy(logo);
+
+    mouse_pointer_create("data/core/pointers.bm");
 }
 
 void lang_select_process(void)
 {
-
+    mouse_pointer_update();
 }
 
 void lang_select_destroy(void)
 {
     logBlockEnd(STATE_NAME);
+    mouse_pointer_destroy();
 }
 
 tState g_state_lang_select = {

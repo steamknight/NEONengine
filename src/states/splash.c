@@ -8,21 +8,21 @@
 #include "core/music.h"
 #include "core/screen.h"
 
-enum SPLASH_STATE
+enum splash_state
 {
     SPLASH_STATE_FADE_IN,
     SPLASH_STATE_WAIT,
     SPLASH_STATE_FADE_OUT,
 };
 
-static enum SPLASH_STATE current_state_;
+static enum splash_state current_state_;
 static UWORD delay_;
 
 #define STATE_NAME "State: Splash Screen"
 #define FADE_DURATION 25
 #define DELAY_DURATION 100
 
-void change_state(enum SPLASH_STATE new_state);
+void change_state(enum splash_state new_state);
 void state_process(void);
 void on_fade_in_complete(void);
 void on_fade_out_complete(void);
@@ -61,7 +61,7 @@ void splash_process(void)
 /*
  * Changes to the new state, and runs state initialization code.
  */
-void change_state(enum SPLASH_STATE new_state)
+void change_state(enum splash_state new_state)
 {
     switch (new_state)
     {
