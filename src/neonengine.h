@@ -16,24 +16,24 @@ extern screen_t *g_main_screen;
     #define SYSTEM_GUARDS
 
     #define BEGIN_USE_SYSTEM \
-        UBYTE using_system_ = systemIsUsed(); \
-        if (!using_system_) { \
+        UBYTE was_using_system_ = systemIsUsed(); \
+        if (!was_using_system_) { \
             systemUse(); \
         }
 
     #define END_USE_SYSTEM \
-        if (using_system_) { \
+        if (!was_using_system_) { \
             systemUnuse(); \
         }
 
     #define BEGIN_UNUSE_SYSTEM \
-        UBYTE using_system_ = systemIsUsed(); \
-        if (using_system_) { \
+        UBYTE was_using_system_ = systemIsUsed(); \
+        if (was_using_system_) { \
             systemUnuse(); \
         }
 
     #define END_UNUSE_SYSTEM \
-        if (!using_system_) { \
+        if (was_using_system_) { \
             systemUse(); \
         }
 
