@@ -31,6 +31,7 @@ void genericProcess(void)
     ptplayerProcess();
     stateProcess(g_game_state_manager);
     screen_process(g_main_screen);
+    copProcessBlocks();
 }
 
 void genericDestroy(void)
