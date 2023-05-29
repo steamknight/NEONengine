@@ -36,8 +36,10 @@ screen_t *screen_create(void)
 
 void screen_destroy(screen_t *screen)
 {
+    // you don't need to destroy the viewport, it's destroyed by the view.
     if (screen)
     {
+        simpleBufferDestroy(screen->buffer);
         viewDestroy(screen->view);
         fadeDestroy(screen->fade);
         memFree(screen, sizeof(screen_t));

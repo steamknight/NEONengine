@@ -10,7 +10,8 @@
 
 static tBitMap *pointers_[MOUSE_MAX_COUNT];
 static tSprite *current_pointer0_;
-
+static tSprite *current_pointer1_; // attached sprite.
+ 
 #define POINTER_WIDTH 16
 
 
@@ -44,6 +45,9 @@ void mouse_pointer_create(char const *filepath)
     current_pointer0_ = spriteAdd(0, pointers_[MOUSE_POINTER]);
     spriteSetEnabled(current_pointer0_, 1);
 
+    current_pointer1_ = spriteAdd(1, pointers_[MOUSE_POINTER]);
+    spriteSetEnabled(current_pointer1_, 1);
+    spriteSetAttached(current_pointer1_, 1);
     END_UNUSE_SYSTEM
     systemUnuse();
 }
@@ -56,10 +60,15 @@ void mouse_pointer_update(void)
 {
     current_pointer0_->wX = mouseGetX(MOUSE_PORT_1);
     current_pointer0_->wY = mouseGetY(MOUSE_PORT_1);
+    current_pointer1_->wX = mouseGetX(MOUSE_PORT_1);
+    current_pointer1_->wY = mouseGetY(MOUSE_PORT_1);
     spriteRequestMetadataUpdate(current_pointer0_);
+    spriteRequestMetadataUpdate(current_pointer1_);
 
     spriteProcessChannel(0);
+    spriteProcessChannel(1);
     spriteProcess(current_pointer0_);
+    spriteProcess(current_pointer1_);
 }
 
 void mouse_pointer_destroy(void)
