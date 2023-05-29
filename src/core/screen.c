@@ -86,9 +86,9 @@ void screen_vwait(screen_t *screen)
 
 void screen_bind_mouse(screen_t *screen)
 {
-    // set the bounds just slightly smaller so that the pointer is always visible
+    // Set the bounds just slightly smaller so that the pointer is always visible
     mouseSetBounds(MOUSE_PORT_1,
         0, screen->offset,
-        SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1
+        SCREEN_WIDTH - 1, SCREEN_HEIGHT + screen->offset - 1
     );
 }

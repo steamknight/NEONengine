@@ -27,5 +27,6 @@ void screen_fade_to_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tC
 void screen_fade_from_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn);
 
 void screen_vwait(screen_t *screen);
+void screen_bind_mouse(screen_t *screen);
 
 #endif //__SCREEN_H__INCLUDED__

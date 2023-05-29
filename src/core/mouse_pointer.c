@@ -75,7 +75,6 @@ void mouse_pointer_create(char const *filepath)
     END_UNUSE_SYSTEM
 
     systemUnuse();
-    mouse_pointer_fullscreen(g_main_screen);
 }
 
 void mouse_pointer_switch(mouse_pointer_t new_pointer)
