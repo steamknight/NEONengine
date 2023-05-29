@@ -3,6 +3,7 @@
 
 typedef enum mouse_pointer
 {
+    MOUSE_TEST,
     MOUSE_POINTER,
     MOUSE_EXAMINE,
     MOUSE_USE,

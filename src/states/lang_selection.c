@@ -4,7 +4,7 @@
 #include <ace/managers/blit.h>
 #include <ace/managers/viewport/simplebuffer.h>
 #include <ace/utils/palette.h>
-
+#include <ace/managers/mouse.h>
 #include "core/screen.h"
 #include "core/mouse_pointer.h"
 
@@ -31,7 +31,21 @@ void lang_select_create(void)
 
 void lang_select_process(void)
 {
+    static mouse_pointer_t current_pointer_gfx = MOUSE_POINTER;
     mouse_pointer_update();
+
+    // Added to Test the mouse pointer code.
+    // And sprite bitmap switching for AGA - VAIRN.
+    if(mouseUse(MOUSE_PORT_1, MOUSE_LMB))
+    {
+        current_pointer_gfx +=1;
+        if(current_pointer_gfx == MOUSE_MAX_COUNT)
+        {
+            current_pointer_gfx = MOUSE_POINTER;
+        }
+
+        mouse_pointer_switch(current_pointer_gfx);
+    }
 }
 
 void lang_select_destroy(void)
