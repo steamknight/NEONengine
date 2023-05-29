@@ -9,19 +9,20 @@
 #include "core/screen.h"
 #include "neonengine.h"
 
-static tBitMap *pointers_low_[MOUSE_MAX_COUNT];
-static tBitMap *pointers_high_[MOUSE_MAX_COUNT];
+static tBitMap *pointers_lo_[MOUSE_MAX_COUNT];
+static tBitMap *pointers_hi_[MOUSE_MAX_COUNT];
 static tSprite *current_pointer0_;
 static tSprite *current_pointer1_; // attached sprite.
 
 #define POINTER_WIDTH 16
-
 #define POINTER_HEIGHT 16
 #define POINTER_BPP 4
 #define SPRITE_BPP 2
 
 void mouse_pointer_create(char const *filepath)
 {
+    UWORD source_width;
+
     BEGIN_USE_SYSTEM
     tBitMap *atlas = bitmapCreateFromFile(filepath, 0);
 
@@ -32,11 +33,11 @@ void mouse_pointer_create(char const *filepath)
             POINTER_WIDTH, POINTER_HEIGHT + 2,
             POINTER_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
-        pointers_high_[idx] = bitmapCreate(
+        pointers_hi_[idx] = bitmapCreate(
             POINTER_WIDTH, POINTER_HEIGHT + 2,
             SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
-        pointers_low_[idx] = bitmapCreate(
+        pointers_lo_[idx] = bitmapCreate(
             POINTER_WIDTH, POINTER_HEIGHT + 2,
             SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
@@ -46,14 +47,15 @@ void mouse_pointer_create(char const *filepath)
             POINTER_WIDTH, POINTER_HEIGHT);
         
         // Convert the 4bpp bitmap to 2bpp.
+        source_width = bitmapGetByteWidth(temp);
         for (UWORD r = 0; r < temp->Rows; r++)
         {
-            UWORD offetSrc = r * temp->BytesPerRow;
-            UWORD offetDst = r * pointers_low_[idx]->BytesPerRow;
-            memcpy(pointers_low_[idx]->Planes[0] + offetDst, temp->Planes[0] + offetSrc, bitmapGetByteWidth(temp));
-            memcpy(pointers_low_[idx]->Planes[1] + offetDst, temp->Planes[1] + offetSrc, bitmapGetByteWidth(temp));
-            memcpy(pointers_high_[idx]->Planes[0] + offetDst, temp->Planes[2] + offetSrc, bitmapGetByteWidth(temp));
-            memcpy(pointers_high_[idx]->Planes[1] + offetDst, temp->Planes[3] + offetSrc, bitmapGetByteWidth(temp));
+            UWORD offset_src = r * temp->BytesPerRow;
+            UWORD offset_dst = r * pointers_lo_[idx]->BytesPerRow;
+            memcpy(pointers_lo_[idx]->Planes[0] + offset_dst, temp->Planes[0] + offset_src, source_width);
+            memcpy(pointers_lo_[idx]->Planes[1] + offset_dst, temp->Planes[1] + offset_src, source_width);
+            memcpy(pointers_hi_[idx]->Planes[0] + offset_dst, temp->Planes[2] + offset_src, source_width);
+            memcpy(pointers_hi_[idx]->Planes[1] + offset_dst, temp->Planes[3] + offset_src, source_width);
         }
 
         bitmapDestroy(temp);
@@ -64,28 +66,30 @@ void mouse_pointer_create(char const *filepath)
     spriteManagerCreate(g_main_screen->view, 0);
     systemSetDmaBit(DMAB_SPRITE, 1);
 
-    current_pointer0_ = spriteAdd(0, pointers_low_[MOUSE_POINTER]);
+    current_pointer0_ = spriteAdd(0, pointers_lo_[MOUSE_POINTER]);
     spriteSetEnabled(current_pointer0_, 1);
 
-    current_pointer1_ = spriteAdd(1, pointers_high_[MOUSE_POINTER]);
+    current_pointer1_ = spriteAdd(1, pointers_hi_[MOUSE_POINTER]);
     spriteSetEnabled(current_pointer1_, 1);
     spriteSetAttached(current_pointer1_, 1);
     END_UNUSE_SYSTEM
+
     systemUnuse();
+    mouse_pointer_fullscreen(g_main_screen);
 }
 
 void mouse_pointer_switch(mouse_pointer_t new_pointer)
 {
-    spriteSetBitmap(current_pointer0_, pointers_low_[new_pointer]);
-    spriteSetBitmap(current_pointer1_, pointers_high_[new_pointer]);
+    spriteSetBitmap(current_pointer0_, pointers_lo_[new_pointer]);
+    spriteSetBitmap(current_pointer1_, pointers_hi_[new_pointer]);
 }
 
 void mouse_pointer_update(void)
 {
     current_pointer0_->wX = mouseGetX(MOUSE_PORT_1);
     current_pointer0_->wY = mouseGetY(MOUSE_PORT_1);
-    current_pointer1_->wX = mouseGetX(MOUSE_PORT_1);
-    current_pointer1_->wY = mouseGetY(MOUSE_PORT_1);
+    current_pointer1_->wX = current_pointer0_->wX;
+    current_pointer1_->wY = current_pointer0_->wY;
     spriteRequestMetadataUpdate(current_pointer0_);
     spriteRequestMetadataUpdate(current_pointer1_);
 
@@ -99,8 +103,8 @@ void mouse_pointer_destroy(void)
 {
     for (BYTE idx = 0; idx < MOUSE_MAX_COUNT; idx++)
     {
-        bitmapDestroy(pointers_low_[idx]);
-        bitmapDestroy(pointers_high_[idx]);
+        bitmapDestroy(pointers_lo_[idx]);
+        bitmapDestroy(pointers_hi_[idx]);
     }
 
     spriteRemove(current_pointer0_);

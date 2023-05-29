@@ -14,12 +14,12 @@ void genericCreate(void)
 {
     keyCreate();
     mouseCreate(MOUSE_PORT_1);
-    mouseSetBounds(MOUSE_PORT_1, 0, 0, 320, 200);
     ptplayerCreate(systemIsPal());
 
     g_game_state_manager = stateManagerCreate();
     g_main_screen = screen_create();
     screen_load(g_main_screen);
+    screen_bind_mouse(g_main_screen);
 
     statePush(g_game_state_manager, &g_state_splash);
 }

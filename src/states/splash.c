@@ -36,7 +36,7 @@ void splash_create(void)
     blitCopyAligned(
         logo, 0, 0,
         g_main_screen->buffer->pBack, 0, g_main_screen->offset,
-        320, 200
+        SCREEN_WIDTH, SCREEN_HEIGHT
     );
     bitmapDestroy(logo);
 

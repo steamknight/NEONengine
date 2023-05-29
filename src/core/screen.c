@@ -1,6 +1,7 @@
 #include "screen.h"
 
 #include <ace/managers/blit.h>
+#include <ace/managers/mouse.h>
 #include <ace/managers/viewport/simplebuffer.h>
 
 #include "neonengine.h"
@@ -81,4 +82,13 @@ void screen_fade_from_black(screen_t *screen, UBYTE duration, UBYTE fade_music, 
 void screen_vwait(screen_t *screen)
 {
     vPortWaitForEnd(screen->viewport);
+}
+
+void screen_bind_mouse(screen_t *screen)
+{
+    // set the bounds just slightly smaller so that the pointer is always visible
+    mouseSetBounds(MOUSE_PORT_1,
+        0, screen->offset,
+        SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1
+    );
 }

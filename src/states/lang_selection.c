@@ -26,6 +26,8 @@ void lang_select_create(void)
     );
     bitmapDestroy(logo);
 
+    screen_clear(g_main_screen, 2);
+
     mouse_pointer_create("data/core/pointers.bm");
 }
 
