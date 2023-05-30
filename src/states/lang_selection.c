@@ -11,53 +11,55 @@
 #define STATE_NAME "State: Language Selection"
 #define FADE_DURATION 25
 
-void lang_select_create(void)
+//static Layer *flags_layer_;
+
+void langSelectCreate(void)
 {
     logBlockBegin(STATE_NAME);
-    screen_fade_from_black(g_main_screen, FADE_DURATION, 0, NULL);
-    screen_clear(g_main_screen, 0);
-    
-    paletteLoad("data/core/base.plt", g_main_screen->fade->pPaletteRef, 255);
-    tBitMap *logo = bitmapCreateFromFile("data/core/flags.bm", 0);
+    screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
+    screenClear(g_mainScreen, 0);
+
+    paletteLoad("data/core/base.plt", g_mainScreen->pFade->pPaletteRef, 255);
+    tBitMap *pFlags = bitmapCreateFromFile("data/core/flags.bm", 0);
     blitCopyAligned(
-        logo, 0, 0,
-        g_main_screen->buffer->pBack, 0, g_main_screen->offset,
+        pFlags, 0, 0,
+        g_mainScreen->pBuffer->pBack, 0, g_mainScreen->uwOffset,
         80, 128
     );
-    bitmapDestroy(logo);
+    bitmapDestroy(pFlags);
 
-    screen_clear(g_main_screen, 2);
-
-    mouse_pointer_create("data/core/pointers.bm");
+    mousePointerCreate("data/core/pointers.bm");
+//    flags_layer_ = layerCreate();
 }
 
-void lang_select_process(void)
+void langSelectProcess(void)
 {
-    static mouse_pointer_t current_pointer_gfx = MOUSE_POINTER;
-    mouse_pointer_update();
+    static eMousePointer currentPointerGfx = MOUSE_POINTER;
+    mousePointerUpdate();
 
     // Added to Test the mouse pointer code.
     // And sprite bitmap switching for AGA - VAIRN.
     if(mouseUse(MOUSE_PORT_1, MOUSE_LMB))
     {
-        current_pointer_gfx +=1;
-        if(current_pointer_gfx == MOUSE_MAX_COUNT)
+        currentPointerGfx +=1;
+        if(currentPointerGfx == MOUSE_MAX_COUNT)
         {
-            current_pointer_gfx = MOUSE_POINTER;
+            currentPointerGfx = MOUSE_POINTER;
         }
 
-        mouse_pointer_switch(current_pointer_gfx);
+        mousePointerSwitch(currentPointerGfx);
     }
 }
 
-void lang_select_destroy(void)
+void langSelectDestroy(void)
 {
     logBlockEnd(STATE_NAME);
-    mouse_pointer_destroy();
+    mousePointerDestroy();
+//    layerDestroy(flags_layer_);
 }
 
-tState g_state_lang_select = {
-    .cbCreate = lang_select_create,
-    .cbLoop = lang_select_process,
-    .cbDestroy = lang_select_destroy,
+tState g_stateLangSelect = {
+    .cbCreate = langSelectCreate,
+    .cbLoop = langSelectProcess,
+    .cbDestroy = langSelectDestroy,
 };

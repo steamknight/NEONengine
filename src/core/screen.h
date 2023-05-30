@@ -8,25 +8,94 @@
 
 typedef struct _tSimpleBufferManager tSimpleBufferManager;
 
-typedef struct screen
+typedef struct _Screen
 {
-    tView *view;
-    tVPort *viewport;
-    tSimpleBufferManager *buffer;
-    tFade *fade;
-    UWORD offset;
-} screen_t;
+    tView *pView;
+    tVPort *pViewport;
+    tSimpleBufferManager *pBuffer;
+    tFade *pFade;
+    UWORD uwOffset;
+} Screen;
 
-screen_t *screen_create(void);
-void screen_destroy(screen_t *screen);
-void screen_load(screen_t *screen);
-void screen_process(screen_t *screen);
+/**
+ * @brief Create the a full screen view.
+ * The screen will only be 200px tall and in PAL mode, it will be centered
+ * vertically.
+ *
+ * @return Screen* The new screen.
+ *
+ * @see screenDestroy()
+ */
+Screen *screenCreate(void);
 
-void screen_clear(screen_t* screen, UBYTE color_index);
-void screen_fade_to_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn);
-void screen_fade_from_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn);
+/**
+ * @brief Destroyes the screen and associated resources.
+ *
+ * @param pScreen A valid screen
+ *
+ * @see screenCreate()
+ */
+void screenDestroy(Screen *pScreen);
 
-void screen_vwait(screen_t *screen);
-void screen_bind_mouse(screen_t *screen);
+/**
+ * @brief Make the given screen the active one.
+ *
+ * @param pScreen The screen to activate
+ */
+void screenLoad(Screen *pScreen);
+
+/**
+ * @brief The screen's update loop. Must be called once per frame.
+ *
+ * @param pScreen The screen to update
+ */
+void screenProcess(Screen *pScreen);
+
+/**
+ * @brief Clears the given screen with a color from the current color palette
+ *
+ * @param pScreen The screen to clear
+ * @param ubColorIndex Index in the color palette
+ */
+void screenClear(Screen* pScreen, UBYTE ubColorIndex);
+
+/**
+ * @brief Fades the screen to black
+ *
+ * @param pScreen The screen to fade
+ * @param ubDuration The duration time, in frames
+ * @param ubFadeMusic If set to 1, it will fade the music
+ * @param cbOnDone Callback called when done
+ *
+ * @see screenFadeFromBlack()
+ */
+void screenFadeToBlack(Screen *pScreen, UBYTE ubDuration, UBYTE ubFadeMusic, tCbFadeOnDone cbOnDone);
+
+/**
+ * @brief
+ *
+ * @param pScreen The screen to fade
+ * @param ubDuration The duration time, in frames
+ * @param ubFadeMusic If set to 1, it will fade the music
+ * @param cbOnDone Callback called when done
+ *
+ * @see screenFadeToBlack()
+ */
+void screenFadeFromBlack(Screen *pScreen, UBYTE ubDuration, UBYTE ubFadeMusic, tCbFadeOnDone cbOnDone);
+
+/**
+ * @brief Waits until the next vertical blank
+ *
+ * @param pScreen The screen to wait for
+ */
+void screenVwait(Screen *pScreen);
+
+/**
+ * @brief Sets the bounding box for the mouse to the whole screen.
+ * It take into consideration the vertical offset of the screen in PAL mode.
+ *
+ * @param pScreen The screen to use
+ */
+void screenBindMouse(Screen *pScreen);
 
 #endif //__SCREEN_H__INCLUDED__

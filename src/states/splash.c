@@ -8,95 +8,95 @@
 #include "core/music.h"
 #include "core/screen.h"
 
-enum splash_state
+enum SplashState
 {
     SPLASH_STATE_FADE_IN,
     SPLASH_STATE_WAIT,
     SPLASH_STATE_FADE_OUT,
 };
 
-static enum splash_state current_state_;
-static UWORD delay_;
+static enum SplashState s_currentState;
+static UWORD s_uwDelay;
 
 #define STATE_NAME "State: Splash Screen"
 #define FADE_DURATION 25
 #define DELAY_DURATION 100
 
-void change_state(enum splash_state new_state);
-void state_process(void);
-void on_fade_in_complete(void);
-void on_fade_out_complete(void);
+void changeState(enum SplashState newState);
+void processState(void);
+void onFadeInComplete(void);
+void onFadeOutComplete(void);
 
-void splash_create(void)
+void splashCreate(void)
 {
     logBlockBegin(STATE_NAME);
 
-    paletteLoad("data/mpg.plt", g_main_screen->fade->pPaletteRef, 255);
-    tBitMap *logo = bitmapCreateFromFile("data/mpg.bm", 0);
+    paletteLoad("data/mpg.plt", g_mainScreen->pFade->pPaletteRef, 255);
+    tBitMap *pLogo = bitmapCreateFromFile("data/mpg.bm", 0);
     blitCopyAligned(
-        logo, 0, 0,
-        g_main_screen->buffer->pBack, 0, g_main_screen->offset,
+        pLogo, 0, 0,
+        g_mainScreen->pBuffer->pBack, 0, g_mainScreen->uwOffset,
         SCREEN_WIDTH, SCREEN_HEIGHT
     );
-    bitmapDestroy(logo);
+    bitmapDestroy(pLogo);
 
-    music_load("data/music/theme.mod");
+    musicLoad("data/music/theme.mod");
 
     systemUnuse();
-    music_play_current(1);
+    musicPlayCurrent(1);
 
-    delay_ = 0;
-    change_state(SPLASH_STATE_FADE_IN);
+    s_uwDelay = 0;
+    changeState(SPLASH_STATE_FADE_IN);
 }
 
-void splash_process(void)
+void splashProcess(void)
 {
     /*
-     * The state_process function could easily just be the splash_process function,
+     * The processState function could easily just be the splashProcess function,
      * however, I'm leaving it like this as a minimal template for future states.
      */
-    state_process();
+    processState();
 }
 
 /*
  * Changes to the new state, and runs state initialization code.
  */
-void change_state(enum splash_state new_state)
+void changeState(enum SplashState newState)
 {
-    switch (new_state)
+    switch (newState)
     {
         case SPLASH_STATE_FADE_IN:
-            screen_fade_from_black(g_main_screen, FADE_DURATION, 1, on_fade_in_complete);
+            screenFadeFromBlack(g_mainScreen, FADE_DURATION, 1, onFadeInComplete);
             break;
 
         case SPLASH_STATE_WAIT:
             break;
 
         case SPLASH_STATE_FADE_OUT:
-            screen_fade_to_black(g_main_screen, FADE_DURATION, 0, on_fade_out_complete);
+            screenFadeToBlack(g_mainScreen, FADE_DURATION, 0, onFadeOutComplete);
             break;
     }
 
-    current_state_ = new_state;
+    s_currentState = newState;
 }
 
 /*
  * Processes the current state
  */
-void state_process(void)
+void processState(void)
 {
-    switch (current_state_)
+    switch (s_currentState)
     {
         case SPLASH_STATE_FADE_IN:
             break;
 
         case SPLASH_STATE_WAIT:
-            if (delay_ >= DELAY_DURATION)
+            if (s_uwDelay >= DELAY_DURATION)
             {
-                change_state(SPLASH_STATE_FADE_OUT);
+                changeState(SPLASH_STATE_FADE_OUT);
             }
 
-            delay_++;
+            s_uwDelay++;
             break;
 
         case SPLASH_STATE_FADE_OUT:
@@ -104,23 +104,23 @@ void state_process(void)
     }
 }
 
-void on_fade_in_complete(void)
+void onFadeInComplete(void)
 {
-    change_state(SPLASH_STATE_WAIT);
+    changeState(SPLASH_STATE_WAIT);
 }
 
-void on_fade_out_complete(void)
+void onFadeOutComplete(void)
 {
-    stateChange(g_game_state_manager, &g_state_lang_select);
+    stateChange(g_gameStateManager, &g_stateLangSelect);
 }
 
-void splash_destroy(void)
+void splashDestroy(void)
 {
     logBlockEnd(STATE_NAME);
 }
 
-tState g_state_splash = {
-    .cbCreate = splash_create,
-    .cbLoop = splash_process,
-    .cbDestroy = splash_destroy,
+tState g_stateSplash = {
+    .cbCreate = splashCreate,
+    .cbLoop = splashProcess,
+    .cbDestroy = splashDestroy,
 };

@@ -3,8 +3,8 @@
 
 #include <exec/types.h>
 
-void music_load(char const *filename);
-void music_play_current(UBYTE loop);
-void music_free(void);
+void musicLoad(char const *szFilePath);
+void musicPlayCurrent(UBYTE ubLoop);
+void musicFree(void);
 
 #endif //__MUSIC_H__INCLUDED__

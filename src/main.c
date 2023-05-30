@@ -7,8 +7,8 @@
 #include "neonengine.h"
 #include "core/music.h"
 
-tStateManager *g_game_state_manager;
-screen_t *g_main_screen;
+tStateManager *g_gameStateManager;
+Screen *g_mainScreen;
 
 void genericCreate(void)
 {
@@ -16,12 +16,12 @@ void genericCreate(void)
     mouseCreate(MOUSE_PORT_1);
     ptplayerCreate(systemIsPal());
 
-    g_game_state_manager = stateManagerCreate();
-    g_main_screen = screen_create();
-    screen_load(g_main_screen);
-    screen_bind_mouse(g_main_screen);
+    g_gameStateManager = stateManagerCreate();
+    g_mainScreen = screenCreate();
+    screenLoad(g_mainScreen);
+    screenBindMouse(g_mainScreen);
 
-    statePush(g_game_state_manager, &g_state_splash);
+    statePush(g_gameStateManager, &g_stateSplash);
 }
 
 void genericProcess(void)
@@ -29,15 +29,16 @@ void genericProcess(void)
     keyProcess();
     mouseProcess();
     ptplayerProcess();
-    stateProcess(g_game_state_manager);
-    screen_process(g_main_screen);
+    stateProcess(g_gameStateManager);
+    screenProcess(g_mainScreen);
     copProcessBlocks();
 }
 
 void genericDestroy(void)
 {
-    music_free();
-    stateManagerDestroy(g_game_state_manager);
+    screenDestroy(g_mainScreen);
+    musicFree();
+    stateManagerDestroy(g_gameStateManager);
     ptplayerDestroy();
     mouseDestroy();
     keyDestroy();

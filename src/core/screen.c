@@ -6,89 +6,89 @@
 
 #include "neonengine.h"
 
-screen_t *screen_create(void)
+Screen *screenCreate(void)
 {
-    screen_t *screen = memAllocFastClear(sizeof(screen_t));
-    if (screen)
+    Screen *pScreen = memAllocFastClear(sizeof(Screen));
+    if (pScreen)
     {
-        screen->offset = systemIsPal() ? 28 : 0;
+        pScreen->uwOffset = systemIsPal() ? 28 : 0;
 
-        screen->view = viewCreate(0,
+        pScreen->pView = viewCreate(0,
             TAG_VIEW_GLOBAL_PALETTE, 1,
             TAG_VIEW_USES_AGA, 1,
         TAG_END);
 
-        screen->viewport = vPortCreate(0,
+        pScreen->pViewport = vPortCreate(0,
             TAG_VPORT_BPP, 8,
-            TAG_VPORT_VIEW, screen->view,
+            TAG_VPORT_VIEW, pScreen->pView,
         TAG_END);
 
-        screen->buffer = simpleBufferCreate(0,
+        pScreen->pBuffer = simpleBufferCreate(0,
             TAG_SIMPLEBUFFER_BITMAP_FLAGS, BMF_CLEAR,
-            TAG_SIMPLEBUFFER_VPORT, screen->viewport,
+            TAG_SIMPLEBUFFER_VPORT, pScreen->pViewport,
             TAG_SIMPLEBUFFER_IS_DBLBUF, 1,
         TAG_END);
 
-        screen->fade = fadeCreate(screen->view, screen->view->pFirstVPort->pPalette, 255);
+        pScreen->pFade = fadeCreate(pScreen->pView, pScreen->pView->pFirstVPort->pPalette, 255);
     }
 
-    return screen;
+    return pScreen;
 }
 
-void screen_destroy(screen_t *screen)
+void screenDestroy(Screen *pScreen)
 {
     // you don't need to destroy the viewport, it's destroyed by the view.
-    if (screen)
+    if (pScreen)
     {
-        simpleBufferDestroy(screen->buffer);
-        viewDestroy(screen->view);
-        fadeDestroy(screen->fade);
-        memFree(screen, sizeof(screen_t));
+        simpleBufferDestroy(pScreen->pBuffer);
+        viewDestroy(pScreen->pView);
+        fadeDestroy(pScreen->pFade);
+        memFree(pScreen, sizeof(Screen));
     }
 }
 
-void screen_load(screen_t *screen)
+void screenLoad(Screen *pScreen)
 {
     BEGIN_UNUSE_SYSTEM
-    viewLoad(screen->view);
+    viewLoad(pScreen->pView);
     END_UNUSE_SYSTEM
 }
 
-void screen_process(screen_t *screen)
+void screenProcess(Screen *pScreen)
 {
-    if (screen->fade->eState != FADE_STATE_IDLE)
+    if (pScreen->pFade->eState != FADE_STATE_IDLE)
     {
-        fadeProcess(screen->fade);
+        fadeProcess(pScreen->pFade);
     }
 
-    vPortWaitForEnd(screen->viewport);
+    vPortWaitForEnd(pScreen->pViewport);
 }
 
-void screen_clear(screen_t *screen, UBYTE color_index)
+void screenClear(Screen *pScreen, UBYTE ubColorIndex)
 {
-    blitRect(screen->buffer->pBack, 0, screen->offset, SCREEN_WIDTH, SCREEN_HEIGHT, color_index);
+    blitRect(pScreen->pBuffer->pBack, 0, pScreen->uwOffset, SCREEN_WIDTH, SCREEN_HEIGHT, ubColorIndex);
 }
 
-void screen_fade_to_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn)
+void screenFadeToBlack(Screen *pScreen, UBYTE ubDuration, UBYTE ubFadeMusic, tCbFadeOnDone cbOnDone)
 {
-    fadeSet(screen->fade, FADE_STATE_OUT, duration, fade_music, on_done_fn);
+    fadeSet(pScreen->pFade, FADE_STATE_OUT, ubDuration, ubFadeMusic, cbOnDone);
 }
 
-void screen_fade_from_black(screen_t *screen, UBYTE duration, UBYTE fade_music, tCbFadeOnDone on_done_fn)
+void screenFadeFromBlack(Screen *pScreen, UBYTE ubDuration, UBYTE ubFadeMusic, tCbFadeOnDone cbOnDone)
 {
-    fadeSet(screen->fade, FADE_STATE_IN, duration, fade_music, on_done_fn);
+    fadeSet(pScreen->pFade, FADE_STATE_IN, ubDuration, ubFadeMusic, cbOnDone);
 }
 
-void screen_vwait(screen_t *screen)
+void screenVwait(Screen *pScreen)
 {
-    vPortWaitForEnd(screen->viewport);
+    vPortWaitForEnd(pScreen->pViewport);
 }
 
-void screen_bind_mouse(screen_t *screen)
+void screenBindMouse(Screen *pScreen)
 {
     // Set the bounds just slightly smaller so that the pointer is always visible
     mouseSetBounds(MOUSE_PORT_1,
-        0, screen->offset,
-        SCREEN_WIDTH - 1, SCREEN_HEIGHT + screen->offset - 1
+        0, pScreen->uwOffset,
+        SCREEN_WIDTH - 1, SCREEN_HEIGHT + pScreen->uwOffset - 1
     );
 }
