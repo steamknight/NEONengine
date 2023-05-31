@@ -39,4 +39,8 @@ extern Screen *g_mainScreen;
 
 #endif //!defined(SYSTEM_GUARDS)
 
+#if !defined (SAFE_CB_CALL)
+    #define SAFE_CB_CALL(fn, ...) if (fn) fn(__VA_ARGS__);
+#endif // !defined (SAFE_CB_CALL)
+
 #endif //__NEONENGINE_H__INCLUDED__
