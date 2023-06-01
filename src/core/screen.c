@@ -24,7 +24,7 @@ Screen *screenCreate(void)
         TAG_END);
 
         pScreen->pBuffer = simpleBufferCreate(0,
-            TAG_SIMPLEBUFFER_BITMAP_FLAGS, BMF_CLEAR,
+            TAG_SIMPLEBUFFER_BITMAP_FLAGS, BMF_INTERLEAVED |  BMF_CLEAR,
             TAG_SIMPLEBUFFER_VPORT, pScreen->pViewport,
             TAG_SIMPLEBUFFER_IS_DBLBUF, 1,
         TAG_END);
