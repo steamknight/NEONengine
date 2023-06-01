@@ -4,6 +4,7 @@
 #include <ace/managers/memory.h>
 #include <ace/managers/mouse.h>
 
+#include "core/mouse_pointer.h"
 #include "core/screen.h"
 #include "neonengine.h"
 
@@ -61,9 +62,15 @@ void layerUpdate(Layer* pLayer)
 
     RegionInternal *pCurrent = pLayer->pFirstRegion;
     UBYTE ubMousePressed = mouseCheck(MOUSE_PORT_1, MOUSE_LMB);
+    eMousePointer mousePointerId = 0;
     while (pCurrent)
     {
         UBYTE ubOverRegion = mouseInRect(MOUSE_PORT_1, pCurrent->region.bounds);
+        if (ubOverRegion)
+        {
+            mousePointerId = pCurrent->region.pointer;
+        }
+
         switch (pCurrent->state)
         {
             case REGION_IDLE:
@@ -157,8 +164,13 @@ void layerUpdate(Layer* pLayer)
                 break;
         };
 
+        // Lastly, if the region is either hovered or pressed, changed the mouse
+        // pointer.
+
         pCurrent = pCurrent->pNext;
     }
+
+    mousePointerSwitch(mousePointerId);
 }
 
 void layerDestroy(Layer* pLayer)

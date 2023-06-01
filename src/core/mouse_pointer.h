@@ -3,7 +3,6 @@
 
 typedef enum _MousePointer
 {
-    MOUSE_TEST,
     MOUSE_POINTER,
     MOUSE_EXAMINE,
     MOUSE_USE,

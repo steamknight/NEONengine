@@ -81,15 +81,17 @@ void langSelectCreate(void)
     UWORD uwY = (SCREEN_HEIGHT - (FLAG_HEIGHT << 1)) >> 1;
 
     Region englishFlag = {
+        .pointer = MOUSE_USE,
         .bounds = (tUwRect) { .uwX = uwX, .uwY = uwY, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT},
         .cbOnHovered = cbOnHovered,
         .cbOnUnhovered = cbOnUnhovered,
         .cbOnPressed = cbOnPressed,
         .cbOnReleased = cbOnReleased,
-        .context = (void*)EN
+        .context = (void*)EN,
     };
 
     Region italianFlag = {
+        .pointer = MOUSE_USE,
         .bounds = (tUwRect) { .uwX = uwX, .uwY = uwY + FLAG_HEIGHT, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT},
         .cbOnHovered = cbOnHovered,
         .cbOnUnhovered = cbOnUnhovered,
