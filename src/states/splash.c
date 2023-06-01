@@ -33,10 +33,10 @@ void splashCreate(void)
 
     paletteLoad("data/mpg.plt", g_mainScreen->pFade->pPaletteRef, 255);
     tBitMap *pLogo = bitmapCreateFromFile("data/mpg.bm", 0);
-    blitCopyAligned(
+    blitCopy(
         pLogo, 0, 0,
         g_mainScreen->pBuffer->pBack, 0, g_mainScreen->uwOffset,
-        SCREEN_WIDTH, SCREEN_HEIGHT
+        SCREEN_WIDTH, SCREEN_HEIGHT, MINTERM_COPY
     );
     bitmapDestroy(pLogo);
 
