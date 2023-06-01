@@ -2,109 +2,112 @@
 
 #include <ace/managers/sprite.h>
 #include <ace/managers/blit.h>
-#include <ace/managers/viewport/simplebuffer.h> 
+#include <ace/managers/viewport/simplebuffer.h>
 #include <ace/managers/system.h>
 #include <ace/managers/mouse.h>
 
 #include "core/screen.h"
 #include "neonengine.h"
 
-static tBitMap *pointers_low_[MOUSE_MAX_COUNT];
-static tBitMap *pointers_high_[MOUSE_MAX_COUNT];
-static tSprite *current_pointer0_;
-static tSprite *current_pointer1_; // attached sprite.
+static tBitMap *s_pPointersLo[MOUSE_MAX_COUNT];
+static tBitMap *s_pPointersHi[MOUSE_MAX_COUNT];
+static tSprite *s_pCurrentPointer0;
+static tSprite *s_pCurrentPointer1; // attached sprite.
 
 #define POINTER_WIDTH 16
-
 #define POINTER_HEIGHT 16
 #define POINTER_BPP 4
 #define SPRITE_BPP 2
 
-void mouse_pointer_create(char const *filepath)
+void mousePointerCreate(char const *szFilePath)
 {
+    UWORD uwSourceWidth;
+
     BEGIN_USE_SYSTEM
-    tBitMap *atlas = bitmapCreateFromFile(filepath, 0);
+    tBitMap *pAtlas = bitmapCreateFromFile(szFilePath, 0);
 
     for (BYTE idx = 0; idx < MOUSE_MAX_COUNT; idx++)
     {
         // Sprites need to have one extra line above and below the image.
-        tBitMap *temp = bitmapCreate(
+        tBitMap *pPointer = bitmapCreate(
             POINTER_WIDTH, POINTER_HEIGHT + 2,
             POINTER_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
-        pointers_high_[idx] = bitmapCreate(
+        s_pPointersHi[idx] = bitmapCreate(
             POINTER_WIDTH, POINTER_HEIGHT + 2,
             SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
-        pointers_low_[idx] = bitmapCreate(
+        s_pPointersLo[idx] = bitmapCreate(
             POINTER_WIDTH, POINTER_HEIGHT + 2,
             SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
         blitCopyAligned(
-            atlas, idx * POINTER_WIDTH, 0,
-            temp, 0, 1,
+            pAtlas, idx * POINTER_WIDTH, 0,
+            pPointer, 0, 1,
             POINTER_WIDTH, POINTER_HEIGHT);
-        
+
         // Convert the 4bpp bitmap to 2bpp.
-        for (UWORD r = 0; r < temp->Rows; r++)
+        uwSourceWidth = bitmapGetByteWidth(pPointer);
+        for (UWORD r = 0; r < pPointer->Rows; r++)
         {
-            UWORD offetSrc = r * temp->BytesPerRow;
-            UWORD offetDst = r * pointers_low_[idx]->BytesPerRow;
-            memcpy(pointers_low_[idx]->Planes[0] + offetDst, temp->Planes[0] + offetSrc, bitmapGetByteWidth(temp));
-            memcpy(pointers_low_[idx]->Planes[1] + offetDst, temp->Planes[1] + offetSrc, bitmapGetByteWidth(temp));
-            memcpy(pointers_high_[idx]->Planes[0] + offetDst, temp->Planes[2] + offetSrc, bitmapGetByteWidth(temp));
-            memcpy(pointers_high_[idx]->Planes[1] + offetDst, temp->Planes[3] + offetSrc, bitmapGetByteWidth(temp));
+            UWORD uwOffsetSrc = r * pPointer->BytesPerRow;
+            UWORD uwOffsetDst = r * s_pPointersLo[idx]->BytesPerRow;
+            memcpy(s_pPointersLo[idx]->Planes[0] + uwOffsetDst, pPointer->Planes[0] + uwOffsetSrc, uwSourceWidth);
+            memcpy(s_pPointersLo[idx]->Planes[1] + uwOffsetDst, pPointer->Planes[1] + uwOffsetSrc, uwSourceWidth);
+            memcpy(s_pPointersHi[idx]->Planes[0] + uwOffsetDst, pPointer->Planes[2] + uwOffsetSrc, uwSourceWidth);
+            memcpy(s_pPointersHi[idx]->Planes[1] + uwOffsetDst, pPointer->Planes[3] + uwOffsetSrc, uwSourceWidth);
         }
 
-        bitmapDestroy(temp);
+        bitmapDestroy(pPointer);
     }
 
-    bitmapDestroy(atlas);
+    bitmapDestroy(pAtlas);
 
-    spriteManagerCreate(g_main_screen->view, 0);
+    spriteManagerCreate(g_mainScreen->pView, 0);
     systemSetDmaBit(DMAB_SPRITE, 1);
 
-    current_pointer0_ = spriteAdd(0, pointers_low_[MOUSE_POINTER]);
-    spriteSetEnabled(current_pointer0_, 1);
+    s_pCurrentPointer0 = spriteAdd(0, s_pPointersLo[MOUSE_POINTER]);
+    spriteSetEnabled(s_pCurrentPointer0, 1);
 
-    current_pointer1_ = spriteAdd(1, pointers_high_[MOUSE_POINTER]);
-    spriteSetEnabled(current_pointer1_, 1);
-    spriteSetAttached(current_pointer1_, 1);
+    s_pCurrentPointer1 = spriteAdd(1, s_pPointersHi[MOUSE_POINTER]);
+    spriteSetEnabled(s_pCurrentPointer1, 1);
+    spriteSetAttached(s_pCurrentPointer1, 1);
     END_UNUSE_SYSTEM
+
     systemUnuse();
 }
 
-void mouse_pointer_switch(mouse_pointer_t new_pointer)
+void mousePointerSwitch(eMousePointer newPointer)
 {
-    spriteSetBitmap(current_pointer0_, pointers_low_[new_pointer]);
-    spriteSetBitmap(current_pointer1_, pointers_high_[new_pointer]);
+    spriteSetBitmap(s_pCurrentPointer0, s_pPointersLo[newPointer]);
+    spriteSetBitmap(s_pCurrentPointer1, s_pPointersHi[newPointer]);
 }
 
-void mouse_pointer_update(void)
+void mousePointerUpdate(void)
 {
-    current_pointer0_->wX = mouseGetX(MOUSE_PORT_1);
-    current_pointer0_->wY = mouseGetY(MOUSE_PORT_1);
-    current_pointer1_->wX = mouseGetX(MOUSE_PORT_1);
-    current_pointer1_->wY = mouseGetY(MOUSE_PORT_1);
-    spriteRequestMetadataUpdate(current_pointer0_);
-    spriteRequestMetadataUpdate(current_pointer1_);
+    s_pCurrentPointer0->wX = mouseGetX(MOUSE_PORT_1);
+    s_pCurrentPointer0->wY = mouseGetY(MOUSE_PORT_1);
+    s_pCurrentPointer1->wX = s_pCurrentPointer0->wX;
+    s_pCurrentPointer1->wY = s_pCurrentPointer0->wY;
+    spriteRequestMetadataUpdate(s_pCurrentPointer0);
+    spriteRequestMetadataUpdate(s_pCurrentPointer1);
 
     spriteProcessChannel(0);
     spriteProcessChannel(1);
-    spriteProcess(current_pointer0_);
-    spriteProcess(current_pointer1_);
+    spriteProcess(s_pCurrentPointer0);
+    spriteProcess(s_pCurrentPointer1);
 }
 
-void mouse_pointer_destroy(void)
+void mousePointerDestroy(void)
 {
     for (BYTE idx = 0; idx < MOUSE_MAX_COUNT; idx++)
     {
-        bitmapDestroy(pointers_low_[idx]);
-        bitmapDestroy(pointers_high_[idx]);
+        bitmapDestroy(s_pPointersLo[idx]);
+        bitmapDestroy(s_pPointersHi[idx]);
     }
 
-    spriteRemove(current_pointer0_);
-    spriteRemove(current_pointer1_);
+    spriteRemove(s_pCurrentPointer0);
+    spriteRemove(s_pCurrentPointer1);
 
     systemSetDmaBit(DMAB_SPRITE, 0);
     spriteManagerDestroy();

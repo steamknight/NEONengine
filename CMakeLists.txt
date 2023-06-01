@@ -51,6 +51,8 @@ set(DATA_DIR ${CMAKE_CURRENT_BINARY_DIR}/data)
 
 # Create directory for converted files next to built executable
 file(MAKE_DIRECTORY ${DATA_DIR})
+file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/core)
+file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/music)
 
 # Convert palette and background image
 convertPalette(${GAME_LINKED} ${RES_DIR}/mpg.act ${DATA_DIR}/mpg.plt)

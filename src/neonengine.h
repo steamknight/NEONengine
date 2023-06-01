@@ -5,12 +5,12 @@
 #include <ace/managers/system.h>
 #include "core/screen.h"
 
-extern tStateManager *g_game_state_manager;
+extern tStateManager *g_gameStateManager;
 extern tState
-    g_state_splash,
-    g_state_lang_select;
+    g_stateSplash,
+    g_stateLangSelect;
 
-extern screen_t *g_main_screen;
+extern Screen *g_mainScreen;
 
 #if !defined(SYSTEM_GUARDS)
     #define SYSTEM_GUARDS
@@ -38,5 +38,9 @@ extern screen_t *g_main_screen;
         }
 
 #endif //!defined(SYSTEM_GUARDS)
+
+#if !defined (SAFE_CB_CALL)
+    #define SAFE_CB_CALL(fn, ...) if (fn) fn(__VA_ARGS__);
+#endif // !defined (SAFE_CB_CALL)
 
 #endif //__NEONENGINE_H__INCLUDED__

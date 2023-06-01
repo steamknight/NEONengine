@@ -3,36 +3,36 @@
 #include <ace/managers/ptplayer.h>
 #include "neonengine.h"
 
-static tPtplayerMod *current_mod_;
+static tPtplayerMod *s_currentMod;
 
-void music_load(char const *filename)
+void musicLoad(char const *szFilePath)
 {
     BEGIN_USE_SYSTEM
-    if (current_mod_)
+    if (s_currentMod)
     {
         ptplayerStop();
-        ptplayerModDestroy(current_mod_);
-        current_mod_ = 0;
+        ptplayerModDestroy(s_currentMod);
+        s_currentMod = 0;
     }
 
-    current_mod_ = ptplayerModCreate(filename);
+    s_currentMod = ptplayerModCreate(szFilePath);
 
     END_USE_SYSTEM
 }
 
-void music_play_current(UBYTE loop)
+void musicPlayCurrent(UBYTE ubLoop)
 {
-    ptplayerLoadMod(current_mod_, NULL, 0);
-    ptplayerConfigureSongRepeat(loop, 0);
+    ptplayerLoadMod(s_currentMod, NULL, 0);
+    ptplayerConfigureSongRepeat(ubLoop, 0);
     ptplayerEnableMusic(1);
 }
 
-void music_free(void)
+void musicFree(void)
 {
     BEGIN_USE_SYSTEM
-    if (current_mod_)
+    if (s_currentMod)
     {
-        ptplayerModDestroy(current_mod_);
+        ptplayerModDestroy(s_currentMod);
     }
     END_USE_SYSTEM
 }
