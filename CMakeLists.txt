@@ -49,10 +49,11 @@ target_link_libraries(${GAME_LINKED} ace)
 set(RES_DIR ${CMAKE_CURRENT_LIST_DIR}/assets)
 set(DATA_DIR ${CMAKE_CURRENT_BINARY_DIR}/data)
 
-# Create directory for converted files next to built executable
+# Create a directory for converted files next to the built executable
 file(MAKE_DIRECTORY ${DATA_DIR})
 file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/core)
 file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/music)
+file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/lang)
 
 # Convert palette and background image
 convertPalette(${GAME_LINKED} ${RES_DIR}/mpg.act ${DATA_DIR}/mpg.plt)
@@ -80,4 +81,8 @@ convertBitmaps(
 
 configure_file(
     ${RES_DIR}/music/theme.mod ${DATA_DIR}/music/theme.mod COPYONLY
+)
+
+configure_file(
+    ${RES_DIR}/lang/en.noir ${DATA_DIR}/lang/en.noir COPYONLY
 )
