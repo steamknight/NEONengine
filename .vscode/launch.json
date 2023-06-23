@@ -1,0 +1,17 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "amiga",
+            "request": "launch",
+            "name": "Amiga 1200",
+            "config": "A1200-FAST",
+            "program": "${workspaceFolder}/build/neonengine",
+            "kickstart": "C:\\Users\\Public\\Documents\\Amiga Files\\Shared\\rom\\amiga-os-310-a1200.rom",
+            "internalConsoleOptions": "openOnSessionStart"
+        }
+    ]
+}

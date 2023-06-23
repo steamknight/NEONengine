@@ -52,5 +52,5 @@ dkms.conf
 
 # Misc
 build/
-.vscode/
 amiga-system/
+.vscode/c_cpp_properties.json
