@@ -111,7 +111,8 @@
         "locpack.h": "c",
         "file.h": "c",
         "stdio.h": "c",
-        "corecrt_wstdio.h": "c"
+        "corecrt_wstdio.h": "c",
+        "build_number.h": "c"
     },
     "cSpell.words": [
         "blit",

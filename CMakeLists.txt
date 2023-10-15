@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(NEONengine LANGUAGES C)
+project(NEONengine VERSION 1.2 LANGUAGES C)
 
 # Lowercase project name for binaries and packaging
 string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
@@ -43,6 +43,20 @@ else()
     add_executable(${GAME_LINKED} ${SOURCES} ${HEADERS})
 endif()
 
+add_custom_command(
+    TARGET ${GAME_LINKED}
+    PRE_BUILD
+    COMMAND ${CMAKE_COMMAND}
+    -DLANGUAGE:STRING="C"
+    -DHEADER_DIR:PATH="${CMAKE_SOURCE_DIR}/src"
+    -DCACHE_DIR:PATH="${CMAKE_SOURCE_DIR}"
+    -DCACHE_FILENAME:="BUILD_NUM"
+    -DHEADER_GUARD:STRING="__BUILD_NUMBER_H__INCLUDED__"
+    -DVERSION_MAJOR="${PROJECT_VERSION_MAJOR}"
+    -DVERSION_MINOR="${PROJECT_VERSION_MINOR}"
+    -P "${CMAKE_SOURCE_DIR}/build_number.cmake"
+)
+
 target_link_libraries(${GAME_LINKED} ace)
 
 # Convenience variables for source/destination paths
@@ -85,4 +99,10 @@ configure_file(
 
 configure_file(
     ${RES_DIR}/lang/en.noir ${DATA_DIR}/lang/en.noir COPYONLY
+)
+
+# Fonts
+convertFont(
+    TARGET ${GAME_LINKED} FIRST_CHAR 32
+    SOURCE ${RES_DIR}/font2.png DESTINATION ${DATA_DIR}/font.fnt
 )
