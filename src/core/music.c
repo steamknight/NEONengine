@@ -7,7 +7,7 @@ static tPtplayerMod *s_currentMod;
 
 void musicLoad(char const *szFilePath)
 {
-    BEGIN_USE_SYSTEM
+    systemUse();
     if (s_currentMod)
     {
         ptplayerStop();
@@ -17,7 +17,7 @@ void musicLoad(char const *szFilePath)
 
     s_currentMod = ptplayerModCreate(szFilePath);
 
-    END_USE_SYSTEM
+    systemUnuse();
 }
 
 void musicPlayCurrent(UBYTE ubLoop)
@@ -29,10 +29,10 @@ void musicPlayCurrent(UBYTE ubLoop)
 
 void musicFree(void)
 {
-    BEGIN_USE_SYSTEM
+    systemUse();
     if (s_currentMod)
     {
         ptplayerModDestroy(s_currentMod);
     }
-    END_USE_SYSTEM
+    systemUnuse();
 }

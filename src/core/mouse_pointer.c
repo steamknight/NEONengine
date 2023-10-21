@@ -23,7 +23,7 @@ void mousePointerCreate(char const *szFilePath)
 {
     UWORD uwSourceWidth;
 
-    BEGIN_USE_SYSTEM
+    systemUse();
     tBitMap *pAtlas = bitmapCreateFromFile(szFilePath, 0);
 
     for (BYTE idx = 0; idx < MOUSE_MAX_COUNT; idx++)
@@ -72,7 +72,6 @@ void mousePointerCreate(char const *szFilePath)
     s_pCurrentPointer1 = spriteAdd(1, s_pPointersHi[MOUSE_POINTER]);
     spriteSetEnabled(s_pCurrentPointer1, 1);
     spriteSetAttached(s_pCurrentPointer1, 1);
-    END_UNUSE_SYSTEM
 
     systemUnuse();
 }

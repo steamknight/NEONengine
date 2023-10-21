@@ -167,7 +167,7 @@ int createStringTable(tFile *pFile)
     s_pStringData = memAllocFastClear(s_pStringTable->ulStringDataSize);
     fileRead(pFile, s_pStringData, ulDataSize);
 
-    void *pCurrentString = (void*)s_pStringData;
+    ULONG pCurrentString = (ULONG)(void*)s_pStringData;
 
     for (ULONG ulId = 0; ulId < ulStringCount; ulId++)
     {
@@ -206,7 +206,7 @@ int createWordsTable(tFile *pFile)
     s_pWordData = memAllocFastClear(ulDataSize);
     fileRead(pFile, s_pWordData, ulDataSize);
 
-    void *pCurrentList = (void*)s_pWordData;
+    ULONG pCurrentList = (ULONG)(void*)s_pWordData;
 
     for (ULONG ulId = 0; ulId < ulWordListCount; ulId++)
     {

@@ -49,9 +49,18 @@ void screenDestroy(Screen *pScreen)
 
 void screenLoad(Screen *pScreen)
 {
-    BEGIN_UNUSE_SYSTEM
+    UBYTE was_using_system = systemIsUsed();
+    if (was_using_system)
+    {
+        systemUnuse();
+    }
+
     viewLoad(pScreen->pView);
-    END_UNUSE_SYSTEM
+
+    if (was_using_system)
+    {
+        systemUse();
+    }
 }
 
 void screenProcess(Screen *pScreen)
