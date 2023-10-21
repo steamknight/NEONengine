@@ -98,6 +98,10 @@ configure_file(
 )
 
 configure_file(
+    ${RES_DIR}/gutter.neon ${DATA_DIR}/gutter.neon COPYONLY
+)
+
+configure_file(
     ${RES_DIR}/lang/en.noir ${DATA_DIR}/lang/en.noir COPYONLY
 )
 
