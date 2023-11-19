@@ -5,7 +5,9 @@
 #include <ace/managers/ptplayer.h>
 
 #include "neonengine.h"
+#include "build_number.h"
 #include "core/music.h"
+#include "core/game_data.h"
 
 tStateManager *g_gameStateManager;
 Screen *g_mainScreen;
@@ -21,7 +23,7 @@ void genericCreate(void)
     screenLoad(g_mainScreen);
     screenBindMouse(g_mainScreen);
 
-    statePush(g_gameStateManager, &g_stateSplash);
+    statePush(g_gameStateManager, &g_stateFontTest);
 }
 
 void genericProcess(void)
@@ -31,7 +33,6 @@ void genericProcess(void)
     ptplayerProcess();
     stateProcess(g_gameStateManager);
     screenProcess(g_mainScreen);
-    copProcessBlocks();
 }
 
 void genericDestroy(void)
