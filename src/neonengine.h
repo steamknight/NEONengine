@@ -9,10 +9,11 @@
 extern tStateManager *g_gameStateManager;
 extern tState
     g_stateFontTest,
+    g_stateDebugView,
     g_stateSplash,
     g_stateLangSelect;
 
-extern Screen *g_mainScreen;
+extern Screen g_mainScreen;
 
 extern GameData *g_gameData;
 

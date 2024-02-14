@@ -31,16 +31,14 @@ void splashCreate(void)
 {
     logBlockBegin(STATE_NAME);
 
-    paletteLoad("data/mpg.plt", g_mainScreen->pFade->pPaletteRef, 255);
+    paletteLoad("data/mpg.plt", screenGetPalette(g_mainScreen), 255);
     tBitMap *pLogo = bitmapCreateFromFile("data/mpg.bm", 0);
-    blitCopy(
-        pLogo, 0, 0,
-        g_mainScreen->pBuffer->pBack, 0, g_mainScreen->uwOffset,
-        SCREEN_WIDTH, SCREEN_HEIGHT, MINTERM_COPY
-    );
+
+    screenBlitCopy(g_mainScreen, pLogo, 0, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, MINTERM_COPY);
+
     bitmapDestroy(pLogo);
 
-    musicLoad("data/music/theme.mod");
+    //musicLoad("data/music/theme.mod");
 
     systemUnuse();
     musicPlayCurrent(1);

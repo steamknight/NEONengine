@@ -93,7 +93,7 @@ void textDrawString(const char *pString, UwPoint uwXY, TextJustify justification
     tTextBitMap *pTextBitmap = fontCreateTextBitMapFromStr(s_pDefaultFont, pString);
     UWORD uwFlags = (UWORD)justification | FONT_COOKIE;
 
-    fontDrawStr(s_pDefaultFont, g_mainScreen->pBuffer->pBack, uwXY.uwX, uwXY.uwY,
+    fontDrawStr(s_pDefaultFont, screenGetBackBuffer(g_mainScreen), uwXY.uwX, uwXY.uwY,
         pString, ubColorIdx, uwFlags, pTextBitmap);
 
     fontDestroyTextBitMap(pTextBitmap);

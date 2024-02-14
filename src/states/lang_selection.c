@@ -5,6 +5,9 @@
 #include <ace/managers/viewport/simplebuffer.h>
 #include <ace/utils/palette.h>
 #include <ace/managers/mouse.h>
+
+#include <stdint.h>
+
 #include "core/screen.h"
 #include "core/mouse_pointer.h"
 #include "core/layer.h"
@@ -31,28 +34,27 @@ static tUwCoordYX s_flags[6] =
     {  .uwX = 0, .uwY = 64 }, { .uwX = FLAG_WIDTH, .uwY = 64 }, // German
 };
 
+const Region *pEnglish = NULL;
+const Region *pItalian = NULL;
+
+#define MAKE_CONTEXT(id, state) (intptr_t)(id) << 8 | (intptr_t)(state)
+#define CONTEXT_GET_ID(ctx) ((intptr_t)(ctx) & 0x0000FF00) >> 8
+#define CONTEXT_GET_STATE(ctx) ((intptr_t)(ctx)) & 0x000000FF
+
 void cbOnHovered(Region *pRegion)
 {
-    UBYTE id = ((UBYTE)(ULONG)pRegion->context) + FLAG_HOVERED;
-
-    blitCopy(
-        s_pFlagsAtlas, s_flags[id].uwX, s_flags[id].uwY,
-        g_mainScreen->pBuffer->pBack, pRegion->bounds.uwX, pRegion->bounds.uwY,
-        pRegion->bounds.uwWidth, pRegion->bounds.uwHeight,
-        MINTERM_COOKIE
-    );
+    intptr_t ctx = (intptr_t)pRegion->context;
+    intptr_t id = CONTEXT_GET_ID(ctx);
+    ctx = MAKE_CONTEXT(id, id + FLAG_HOVERED);
+    pRegion->context = (void*)ctx;
 }
 
 void cbOnUnhovered(Region *pRegion)
 {
-    UBYTE id = ((UBYTE)(ULONG)pRegion->context) + FLAG_IDLE;
-
-    blitCopy(
-        s_pFlagsAtlas, s_flags[id].uwX, s_flags[id].uwY,
-        g_mainScreen->pBuffer->pBack, pRegion->bounds.uwX, pRegion->bounds.uwY,
-        pRegion->bounds.uwWidth, pRegion->bounds.uwHeight,
-        MINTERM_COOKIE
-    );
+    intptr_t ctx = (intptr_t)pRegion->context;
+    intptr_t id = CONTEXT_GET_ID(ctx);
+    ctx = MAKE_CONTEXT(id, id + FLAG_IDLE);
+    pRegion->context = (void*)ctx;
 }
 
 void cbOnPressed(Region *pRegion)
@@ -71,7 +73,7 @@ void langSelectCreate(void)
     screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
     screenClear(g_mainScreen, 0);
 
-    paletteLoad("data/core/base.plt", g_mainScreen->pFade->pPaletteRef, 255);
+    paletteLoad("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
     s_pFlagsAtlas = bitmapCreateFromFile("data/core/flags.bm", 0);
 
     mousePointerCreate("data/core/pointers.bm");
@@ -80,6 +82,7 @@ void langSelectCreate(void)
     UWORD uwX = (SCREEN_WIDTH - FLAG_WIDTH) >> 1;
     UWORD uwY = (SCREEN_HEIGHT - (FLAG_HEIGHT << 1)) >> 1;
 
+    ULONG enCtx = MAKE_CONTEXT(EN, 1);
     Region englishFlag = {
         .pointer = MOUSE_USE,
         .bounds = (tUwRect) { .uwX = uwX, .uwY = uwY, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT},
@@ -87,9 +90,10 @@ void langSelectCreate(void)
         .cbOnUnhovered = cbOnUnhovered,
         .cbOnPressed = cbOnPressed,
         .cbOnReleased = cbOnReleased,
-        .context = (void*)EN,
+        .context = (void*)enCtx,
     };
 
+    ULONG itCtx = MAKE_CONTEXT(IT, 1);
     Region italianFlag = {
         .pointer = MOUSE_USE,
         .bounds = (tUwRect) { .uwX = uwX, .uwY = uwY + FLAG_HEIGHT, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT},
@@ -97,28 +101,14 @@ void langSelectCreate(void)
         .cbOnUnhovered = cbOnUnhovered,
         .cbOnPressed = cbOnPressed,
         .cbOnReleased = cbOnReleased,
-        .context = (void*)IT
+        .context = (void*)itCtx
     };
 
     RegionId en = layerAddRegion(s_flagsLayer, &englishFlag);
     RegionId it = layerAddRegion(s_flagsLayer, &italianFlag);
 
-    const Region *pEnglish = layerGetRegion(s_flagsLayer, en);
-    const Region *pItalian = layerGetRegion(s_flagsLayer, it);
-    
-    blitCopy(
-        s_pFlagsAtlas, s_flags[EN + 1].uwX, s_flags[EN + 1].uwY,
-        g_mainScreen->pBuffer->pBack, pEnglish->bounds.uwX, pEnglish->bounds.uwY,
-        FLAG_WIDTH, FLAG_HEIGHT,
-        MINTERM_COOKIE
-    );
-
-    blitCopy(
-        s_pFlagsAtlas, s_flags[IT + 1].uwX, s_flags[IT + 1].uwY,
-        g_mainScreen->pBuffer->pBack, pItalian->bounds.uwX, pItalian->bounds.uwY,
-        FLAG_WIDTH, FLAG_HEIGHT,
-        MINTERM_COOKIE
-    );
+    pEnglish = layerGetRegion(s_flagsLayer, en);
+    pItalian = layerGetRegion(s_flagsLayer, it);
 
     layerSetEnable(s_flagsLayer, 1);
     layerSetUpdateOutsideBounds(s_flagsLayer, 1);
@@ -128,6 +118,24 @@ void langSelectProcess(void)
 {
     mousePointerUpdate();
     layerUpdate(s_flagsLayer);
+
+    ULONG enState = CONTEXT_GET_STATE((UWORD)(ULONG)pEnglish->context);
+    blitCopy(
+        s_pFlagsAtlas, s_flags[enState].uwX, s_flags[enState].uwY,
+        screenGetBackBuffer(g_mainScreen),
+        pEnglish->bounds.uwX, pEnglish->bounds.uwY,
+        FLAG_WIDTH, FLAG_HEIGHT,
+        MINTERM_COOKIE
+    );
+
+    ULONG itState = CONTEXT_GET_STATE((UWORD)(ULONG)pItalian->context);
+    blitCopy(
+        s_pFlagsAtlas, s_flags[itState].uwX, s_flags[itState].uwY,
+        screenGetBackBuffer(g_mainScreen),
+        pItalian->bounds.uwX, pItalian->bounds.uwY,
+        FLAG_WIDTH, FLAG_HEIGHT,
+        MINTERM_COOKIE
+    );
 }
 
 void langSelectDestroy(void)

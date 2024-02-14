@@ -10,8 +10,8 @@ endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DAMIGA -Wall -Wextra -fomit-frame-pointer")
-file(GLOB_RECURSE SOURCES src/*.c src/states/*.c src/utils/*.c)
-file(GLOB_RECURSE HEADERS src/*.h src/states/*.h src/utils/*.h)
+file(GLOB_RECURSE SOURCES src/*.c src/core/*.c src/states/*.c src/utils/*.c)
+file(GLOB_RECURSE HEADERS src/*.h src/core/*.h src/states/*.h src/utils/*.h)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 

@@ -31,6 +31,7 @@ typedef struct _Layer
     RegionInternal *pFirstRegion;
     UBYTE ubIsEnabled;
     UBYTE ubUpdateOutsideBounds;
+    UWORD uwOffsetY;
 } Layer;
 
 tUwRect calculateLayerBounds(Layer * pLayer);
@@ -39,6 +40,7 @@ Layer* layerCreate(void)
 {
     logBlockBegin("layerCreate");
     Layer *pLayer = memAllocFastClear(sizeof(Layer));
+    pLayer->uwOffsetY = systemIsPal() ? 28 : 0;
     logBlockEnd("layerCreate");
 
     return pLayer;
@@ -137,7 +139,7 @@ void layerUpdate(Layer* pLayer)
                     }
                     else
                     {
-                        /* 
+                        /*
                         * If the mouse is not pressed and we're over the region,
                         * we must have released.
                         */
@@ -241,8 +243,8 @@ RegionId layerAddRegion(Layer *pLayer, Region *pRegion)
     pLayer->nextRegionId++;
 
     memcpy(&pNewRegion->region, pRegion, sizeof(Region));
-    pNewRegion->region.bounds.uwY += g_mainScreen->uwOffset;
     pNewRegion->pNext = 0;
+    pNewRegion->region.bounds.uwY += pLayer->uwOffsetY;
 
     if (!pLayer->pFirstRegion)
     {

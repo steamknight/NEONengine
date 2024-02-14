@@ -28,7 +28,7 @@ typedef struct _TextRegion
 } TextRegion;
 
 /**
- * @brief Generic range into an array using indices.
+ * @brief Generic range into an array using indices. Inclusive.
  */
 typedef struct _Range
 {

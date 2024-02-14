@@ -63,7 +63,7 @@ void mousePointerCreate(char const *szFilePath)
 
     bitmapDestroy(pAtlas);
 
-    spriteManagerCreate(g_mainScreen->pView, 0);
+    spriteManagerCreate(screenGetView(g_mainScreen), 0);
     systemSetDmaBit(DMAB_SPRITE, 1);
 
     s_pCurrentPointer0 = spriteAdd(0, s_pPointersLo[MOUSE_POINTER]);

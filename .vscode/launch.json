@@ -11,7 +11,8 @@
             "config": "A1200-FAST",
             "program": "${workspaceFolder}/build/neonengine",
             "kickstart": "C:\\Users\\Public\\Documents\\Amiga Files\\Shared\\rom\\amiga-os-310-a1200.rom",
-            "internalConsoleOptions": "openOnSessionStart"
+            "internalConsoleOptions": "openOnSessionStart",
+            "fastmem": "8M"
         }
     ]
 }

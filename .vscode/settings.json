@@ -113,7 +113,11 @@
         "stdio.h": "c",
         "corecrt_wstdio.h": "c",
         "build_number.h": "c",
-        "game_data.h": "c"
+        "game_data.h": "c",
+        "chunky.h": "c",
+        "exec.h": "c",
+        "exec_protos.h": "c",
+        "string.h": "c"
     },
     "cSpell.words": [
         "blit",

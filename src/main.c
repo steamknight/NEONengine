@@ -10,7 +10,9 @@
 #include "core/game_data.h"
 
 tStateManager *g_gameStateManager;
-Screen *g_mainScreen;
+Screen g_mainScreen;
+
+UBYTE ubDebugToggle = 1;
 
 void genericCreate(void)
 {
@@ -23,7 +25,7 @@ void genericCreate(void)
     screenLoad(g_mainScreen);
     screenBindMouse(g_mainScreen);
 
-    statePush(g_gameStateManager, &g_stateFontTest);
+    statePush(g_gameStateManager, &g_stateSplash);
 }
 
 void genericProcess(void)
@@ -33,6 +35,20 @@ void genericProcess(void)
     ptplayerProcess();
     stateProcess(g_gameStateManager);
     screenProcess(g_mainScreen);
+
+    if (keyUse(KEY_F1))
+    {
+        if (ubDebugToggle)
+        {
+            statePush(g_gameStateManager, &g_stateDebugView);
+        }
+        else
+        {
+            statePop(g_gameStateManager);
+        }
+
+        ubDebugToggle = 1 - ubDebugToggle;
+    }
 }
 
 void genericDestroy(void)
@@ -43,4 +59,5 @@ void genericDestroy(void)
     ptplayerDestroy();
     mouseDestroy();
     keyDestroy();
+    systemDestroy();
 }
