@@ -2,16 +2,14 @@
 
 #include <printf.h>
 
+#include <proto/exec.h> // Bartman's compiler needs this
+
 #include <ace/managers/system.h>
 #include <ace/managers/timer.h>
 #include <ace/utils/font.h>
 #include <ace/utils/palette.h>
 
 #include "core/screen.h"
-
-#ifdef AMIGA
-#include <clib/exec_protos.h> // AvailMem, AllocMem, FreeMem, etc.
-#endif
 
 static tFont* s_pFont;
 static tTextBitMap* s_pTextBmp;
@@ -21,7 +19,7 @@ static char s_elapsedTime[32];
 static ULONG s_ulDelta = 0;
 static ULONG s_ulFps;
 
-const ULONG DELAY = 50;
+#define DELAY 50
 
 void debugViewCreate(void)
 {
@@ -29,8 +27,8 @@ void debugViewCreate(void)
 
     s_pFont = fontCreate("data/font.fnt");
 
-    s_pTextBmp = fontCreateTextBitMap(32 * s_pFont->uwWidth, s_pFont->uwHeight * 3);
-    s_pElapsedTimeBmp = fontCreateTextBitMap(32 * s_pFont->uwWidth, s_pFont->uwHeight);
+    s_pTextBmp = fontCreateTextBitMap(160, s_pFont->uwHeight * 3);
+    s_pElapsedTimeBmp = fontCreateTextBitMap(160, s_pFont->uwHeight);
     s_ulDelta = timerGet();
 
     s_ulFps = systemIsPal() ? 50 : 60;
@@ -47,8 +45,8 @@ void debugViewProcess(void)
 
     s_ulDelta = ulNow;
 
-    //sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
-    sprintf(s_memSize, "Chip: %ld KB ", memGetChipSize() >> 10);
+    sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
+    //sprintf(s_memSize, "Chip: %ld KB ", memGetChipSize() >> 10);
     fontFillTextBitMap(s_pFont, s_pTextBmp, s_memSize);
 
     sprintf(s_elapsedTime, "Elapsed Time: %lds.", ulNow / s_ulFps);
