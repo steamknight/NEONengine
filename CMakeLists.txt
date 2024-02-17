@@ -10,6 +10,7 @@ endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DAMIGA -Wall -Wextra -fomit-frame-pointer")
+set(ACE_TEST_RUNNER OFF CACHE BOOL "Enable the test runner")
 file(GLOB_RECURSE SOURCES src/*.c src/core/*.c src/states/*.c src/utils/*.c)
 file(GLOB_RECURSE HEADERS src/*.h src/core/*.h src/states/*.h src/utils/*.h)
 
@@ -19,6 +20,11 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 if(GAME_DEBUG)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DGAME_DEBUG")
 endif()
+
+if(ACE_TEST_RUNNER)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DACE_TEST_RUNNER")
+endif()
+
 
 # ACE
 add_subdirectory(modules/ace ace)

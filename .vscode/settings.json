@@ -117,7 +117,8 @@
         "chunky.h": "c",
         "exec.h": "c",
         "exec_protos.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "array_tests.h": "c"
     },
     "cSpell.words": [
         "blit",

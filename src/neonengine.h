@@ -13,6 +13,11 @@ extern tState
     g_stateSplash,
     g_stateLangSelect;
 
+#ifdef ACE_TEST_RUNNER
+extern tState
+    g_stateTestRunner;
+#endif
+
 extern Screen g_mainScreen;
 
 extern GameData *g_gameData;

@@ -25,7 +25,11 @@ void genericCreate(void)
     screenLoad(g_mainScreen);
     screenBindMouse(g_mainScreen);
 
+#ifdef ACE_TEST_RUNNER
+    statePush(g_gameStateManager, &g_stateTestRunner);
+#else
     statePush(g_gameStateManager, &g_stateSplash);
+#endif
 }
 
 void genericProcess(void)
