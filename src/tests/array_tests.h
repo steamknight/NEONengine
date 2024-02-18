@@ -4,6 +4,7 @@
 #ifdef ACE_TEST_RUNNER
 
 #include <ace/managers/memory.h>
+#include <string.h>
 #include "utils/array.h"
 
 #include "test_macros.h"
@@ -200,6 +201,29 @@ TEST_IMPL(test_array_copy)
     TEST_SUCCESS;
 }
 
+TEST_IMPL(test_array_strings)
+{
+    ULONG ulLength = 3;
+    ULONG ulElementSize = sizeof(char*);
+
+    Array array = arrayCreate(ulLength, ulElementSize, MEMF_FAST);
+    TEST_ASSERT(array, "Failed to allocate memory");
+
+    char* szFirst = "Hello World";
+    char* szSecond = "Test";
+    char* szThird = "I sure hope this works...";
+
+    arrayPut(array, 0, &szFirst);
+    arrayPut(array, 1, &szSecond);
+    arrayPut(array, 2, &szThird);
+
+    char** pszText = arrayGet(array, 1);
+    TEST_ASSERT(strcmp(*pszText, szSecond) == 0, "Strings don't match");
+
+    arrayDestroy(&array);
+    TEST_SUCCESS;
+}
+
 TEST_SUITE_BEGIN(array)
     TEST(test_array_create_basic)
     TEST(test_array_create_in_chip_ram)
@@ -210,6 +234,7 @@ TEST_SUITE_BEGIN(array)
     TEST(test_array_resize_larger)
     TEST(test_array_resize_smaller)
     TEST(test_array_copy)
+    TEST(test_array_strings)
 TEST_SUITE_END
 
 #endif // #ifdef ACE_TEST_RUNNER
