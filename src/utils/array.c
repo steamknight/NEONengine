@@ -39,7 +39,7 @@ void arrayDestroy(Array* pArray)
 
 ULONG arrayLength(Array array)
 {
-    assert(array, "Trying to get the length of a NULL array");
+    assert(array, "Trying to get the length of a NULL array.");
     return array->ulLength;
 }
 

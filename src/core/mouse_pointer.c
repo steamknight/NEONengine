@@ -24,7 +24,7 @@ void mousePointerCreate(char const *szFilePath)
     UWORD uwSourceWidth;
 
     systemUse();
-    tBitMap *pAtlas = bitmapCreateFromFile(szFilePath, 0);
+    tBitMap *pAtlas = bitmapCreateFromPath(szFilePath, 0);
 
     for (BYTE idx = 0; idx < MOUSE_MAX_COUNT; idx++)
     {

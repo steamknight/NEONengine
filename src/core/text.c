@@ -10,11 +10,11 @@
 static tFont *s_pDefaultFont;
 static tBitMap *s_pFramePatch;
 static tBitMap *s_pScratch;
-static UwSize s_uwFrameElementSize;
+//static UwSize s_uwFrameElementSize;
 
-void textCreate(const char *szFontName, const char *szFrameBitmap)
+void textCreate(const char *szFontName, const char */*szFrameBitmap*/)
 {
-    s_pDefaultFont = fontCreate(szFontName);
+    s_pDefaultFont = fontCreateFromPath(szFontName);
     s_pScratch = bitmapCreate(320, 200, 8, 0);
 }
 
@@ -49,7 +49,7 @@ void textBegin(TextContext *pContext, UBYTE ubAddFrame, UBYTE ubCenterVertical)
     pContext->ubCenterVertical = ubCenterVertical;
 }
 
-void textEnd(TextContext *pContext, UwPoint uwXY, UBYTE ubShouldWait)
+void textEnd(TextContext *pContext, UwPoint /*uwXY*/, UBYTE /*ubShouldWait*/)
 {
     if (!pContext)
     {
@@ -58,14 +58,14 @@ void textEnd(TextContext *pContext, UwPoint uwXY, UBYTE ubShouldWait)
     }
 }
 
-UwSize textPut(TextContext *pContext, UWORD uwStringId, UWORD uwMaxLength, TextJustify justification, UBYTE ubColorIdx)
+UwSize textPut(TextContext *pContext, UWORD /*uwStringId*/, UWORD /*uwMaxLength*/, TextJustify /*justification*/, UBYTE /*ubColorIdx*/)
 {
-    UwSize size;
+    UwSize size = {0, 0};
 
     if (!pContext)
     {
         logWrite("ERROR: Context is null.");
-        return;
+        return size;
     }
 
     return size;

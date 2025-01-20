@@ -118,7 +118,8 @@
         "exec.h": "c",
         "exec_protos.h": "c",
         "string.h": "c",
-        "array_tests.h": "c"
+        "array_tests.h": "c",
+        "stddef.h": "c"
     },
     "cSpell.words": [
         "blit",

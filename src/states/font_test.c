@@ -13,7 +13,7 @@ void fontTestCreate(void)
 {
     logBlockBegin("fontTestCreate");
 
-    s_pFont = fontCreate("data/font.fnt");
+    s_pFont = fontCreateFromPath("data/font.fnt");
 
     logBlockEnd("fontTestCreate");
 }

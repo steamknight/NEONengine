@@ -73,8 +73,8 @@ void langSelectCreate(void)
     screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
     screenClear(g_mainScreen, 0);
 
-    paletteLoad("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-    s_pFlagsAtlas = bitmapCreateFromFile("data/core/flags.bm", 0);
+    paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
+    s_pFlagsAtlas = bitmapCreateFromPath("data/core/flags.bm", 0);
 
     mousePointerCreate("data/core/pointers.bm");
     s_flagsLayer = layerCreate();

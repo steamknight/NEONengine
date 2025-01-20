@@ -25,7 +25,7 @@ void debugViewCreate(void)
 {
     logBlockBegin("debugViewCreate");
 
-    s_pFont = fontCreate("data/font.fnt");
+    s_pFont = fontCreateFromPath("data/font.fnt");
 
     s_pTextBmp = fontCreateTextBitMap(160, s_pFont->uwHeight * 3);
     s_pElapsedTimeBmp = fontCreateTextBitMap(160, s_pFont->uwHeight);

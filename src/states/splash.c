@@ -31,8 +31,8 @@ void splashCreate(void)
 {
     logBlockBegin(STATE_NAME);
 
-    paletteLoad("data/mpg.plt", screenGetPalette(g_mainScreen), 255);
-    tBitMap *pLogo = bitmapCreateFromFile("data/mpg.bm", 0);
+    paletteLoadFromPath("data/mpg.plt", screenGetPalette(g_mainScreen), 255);
+    tBitMap *pLogo = bitmapCreateFromPath("data/mpg.bm", 0);
 
     screenBlitCopy(g_mainScreen, pLogo, 0, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, MINTERM_COPY);
 

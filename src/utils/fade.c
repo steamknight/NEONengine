@@ -18,9 +18,9 @@ tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount)
     pFade->ubColorCount = ubColorCount;
 
     UWORD uwMaxColors;
-    if (pView->uwFlags & VIEWPORT_USES_AGA)
+    if (pView->uwFlags & VP_FLAG_AGA)
     {
-        uwMaxColors = 1 << pView->pFirstVPort->ubBPP;
+        uwMaxColors = 1 << pView->pFirstVPort->ubBpp;
         pFade->pPaletteRef = memAllocFastClear(sizeof(ULONG) * uwMaxColors);
     }
     else
@@ -45,10 +45,10 @@ tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount)
 
 void fadeDestroy(tFade *pFade)
 {
-    if (pFade->pView->uwFlags & VIEWPORT_USES_AGA)
+    if (pFade->pView->uwFlags & VP_FLAG_AGA)
     {
         // AGA uses 24 bit palette entries.
-        memFree(pFade->pPaletteRef, sizeof(ULONG) * (1 << pFade->pView->pFirstVPort->ubBPP));
+        memFree(pFade->pPaletteRef, sizeof(ULONG) * (1 << pFade->pView->pFirstVPort->ubBpp));
     }
     else
     {
@@ -87,7 +87,7 @@ tFadeState fadeProcess(tFade *pFade)
             ubCnt = pFade->ubCntEnd - pFade->ubCnt;
         }
 
-        if (pFade->pView->uwFlags & VIEWPORT_USES_AGA)
+        if (pFade->pView->uwFlags & VP_FLAG_AGA)
         {
             UBYTE ubRatio = (255 * ubCnt) / pFade->ubCntEnd;
             paletteDimAGA(
@@ -101,7 +101,7 @@ tFadeState fadeProcess(tFade *pFade)
                 pFade->pPaletteRef, pFade->pView->pFirstVPort->pPalette,
                 pFade->ubColorCount, ubRatio);
         }
-        viewUpdateCLUT(pFade->pView);
+        viewUpdateGlobalPalette(pFade->pView);
 
         if(pFade->isMusic) {
             UBYTE ubVolume = (64 * ubCnt) / pFade->ubCntEnd;
