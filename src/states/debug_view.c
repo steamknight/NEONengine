@@ -45,7 +45,7 @@ void debugViewProcess(void)
 
     s_ulDelta = ulNow;
 
-    sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
+    sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetFreeChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
     //sprintf(s_memSize, "Chip: %ld KB ", memGetChipSize() >> 10);
     fontFillTextBitMap(s_pFont, s_pTextBmp, s_memSize);
 

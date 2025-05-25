@@ -23,16 +23,19 @@ void textDestroy()
     if (s_pDefaultFont)
     {
         fontDestroy(s_pDefaultFont);
+        s_pDefaultFont = NULL;
     }
 
     if (s_pFramePatch)
     {
         bitmapDestroy(s_pFramePatch);
+        s_pFramePatch = NULL;
     }
 
     if (s_pScratch)
     {
         bitmapDestroy(s_pScratch);
+        s_pScratch = NULL;
     }
 }
 

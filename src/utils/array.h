@@ -1,5 +1,5 @@
-#ifndef __ARRAY_H_INCLUDED__
-#define __ARRAY_H_INCLUDED__
+#ifndef __ARRAY_H__INCLUDED__
+#define __ARRAY_H__INCLUDED__
 
 #include <ace/types.h>
 
@@ -26,7 +26,7 @@ Array arrayCreate(ULONG ulLength, ULONG ulElementSize, ULONG ulFlags);
  *
  * @param pArray Pointer to the array (not the array iself)
  */
-void arrayDestroy(Array* pArray);
+void arrayDestroy(Array *pArray);
 
 /**
  * @brief Returns the length of the array.
@@ -53,7 +53,7 @@ ULONG arrayElementSize(Array array);
  *
  * @see arrayPut
  */
-void* arrayGet(Array array, ULONG ulIndex);
+void *arrayGet(Array array, ULONG ulIndex);
 
 /**
  * @brief Sets a value at a specified index.
@@ -64,7 +64,7 @@ void* arrayGet(Array array, ULONG ulIndex);
  * @param pElement Pointer to the element to set.
  * @return void* pointer to the element passed in, not the copy in the array.
  */
-void* arrayPut(Array array, ULONG ulIndex, void* pElement);
+void *arrayPut(Array array, ULONG ulIndex, void *pElement);
 
 /**
  * @brief Resizes the array.
@@ -73,7 +73,7 @@ void* arrayPut(Array array, ULONG ulIndex, void* pElement);
  * @param array A pointer to the array to resize
  * @param ulNewLength The new length
  */
-void arrayResize(Array* array, ULONG ulNewLength);
+void arrayResize(Array *array, ULONG ulNewLength);
 
 /**
  * @brief Copies a number of values from one array to another starting from some index.
@@ -87,4 +87,4 @@ void arrayResize(Array* array, ULONG ulNewLength);
  */
 void arrayCopy(Array source, Array destination, ULONG ulStartIndex, ULONG ulCount);
 
-#endif //__ARRAY_H_INCLUDED__
+#endif //__ARRAY_H__INCLUDED__

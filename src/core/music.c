@@ -15,7 +15,7 @@ void musicLoad(char const *szFilePath)
         s_currentMod = 0;
     }
 
-    s_currentMod = ptplayerModCreate(szFilePath);
+    s_currentMod = ptplayerModCreateFromPath(szFilePath);
 
     systemUnuse();
 }

@@ -58,7 +58,12 @@ void screenDestroy(Screen screen)
         viewDestroy(screen->pView);
         fadeDestroy(screen->pFade);
         memFree(screen, sizeof(Screen));
-    }
+
+        screen->pBuffer = NULL;
+        screen->pView = NULL;
+        screen->pFade = NULL;
+        screen = NULL;
+       }
 }
 
 void screenLoad(Screen screen)

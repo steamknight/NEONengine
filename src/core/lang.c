@@ -2,7 +2,7 @@
 
 #include <ace/managers/log.h>
 #include <ace/managers/system.h>
-#include <ace/utils/file.h>
+#include <ace/utils/disk_file.h>
 
 typedef struct _LocHeader
 {
@@ -45,7 +45,7 @@ LanguageCode langLoad(const char *szFilePath)
     systemUse();
     logBlockBegin("langLoad()");
 
-    tFile *pFile = fileOpen(szFilePath, "r");
+    tFile *pFile = diskFileOpen(szFilePath, DISK_FILE_MODE_READ, 0);
     if (!pFile)
     {
         logWrite("ERROR: could not find file '%s'\n", szFilePath);

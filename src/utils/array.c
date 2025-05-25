@@ -85,13 +85,14 @@ void arrayResize(Array* pArray, ULONG ulNewLength)
     ULONG ulTotalSize = (*pArray)->ulElementSize * ulMaxElements;
     memcpy(newArray->pBuffer, (*pArray)->pBuffer, ulTotalSize);
 
+    arrayDestroy(pArray);
     *pArray = newArray;
 }
 
 void arrayCopy(Array source, Array destination, ULONG ulStartIndex, ULONG ulCount)
 {
     assert(source, "Source array is NULL");
-    assert(source->ulLength <= (ulStartIndex + ulCount), "Attempting to copy more elements than there are in the source array.");
+    assert(source->ulLength >= (ulStartIndex + ulCount), "Attempting to copy more elements than there are in the source array.");
     assert(destination, "Destination array is NULL");
     assert(destination->ulLength <= ulCount, "Destination array is too small");
     assert(source->ulElementSize == destination->ulElementSize, "Arrays are incompatible");

@@ -119,7 +119,9 @@
         "exec_protos.h": "c",
         "string.h": "c",
         "array_tests.h": "c",
-        "stddef.h": "c"
+        "stddef.h": "c",
+        "disk_file_private.h": "c",
+        "memory.h": "c"
     },
     "cSpell.words": [
         "blit",
@@ -134,5 +136,11 @@
     ],
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
     "C_Cpp.default.enableConfigurationSquiggles": true,
-    "C_Cpp.default.configurationProvider": ""
+    "C_Cpp.default.configurationProvider": "",
+    "files.exclude": {
+        "**/*.rpyc": true,
+        "**/*.rpa": true,
+        "**/*.rpymc": true,
+        "**/cache/": true
+    }
 }

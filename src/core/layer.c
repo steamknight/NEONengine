@@ -200,6 +200,7 @@ void layerSetEnable(Layer *pLayer, UBYTE ubIsEnabled)
     if (!pLayer)
     {
         logWrite("layerSetEnable: layer cannot be null");
+        return;
     }
 
     pLayer->ubIsEnabled = ubIsEnabled;
@@ -210,6 +211,7 @@ void layerSetUpdateOutsideBounds(Layer *pLayer, UBYTE ubUpdateOutsideBounds)
     if (!pLayer)
     {
         logWrite("layerSetUpdateOutsideBounds: layer cannot be null");
+        return;
     }
 
     pLayer->ubUpdateOutsideBounds = ubUpdateOutsideBounds;

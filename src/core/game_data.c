@@ -2,7 +2,7 @@
 
 #include <ace/managers/log.h>
 #include <ace/managers/system.h>
-#include <ace/utils/file.h>
+#include <ace/utils/disk_file.h>
 
 typedef struct _GameDataCounts
 {
@@ -51,7 +51,7 @@ GameDataResult gameDataLoad(const char *szFilePath)
     if (g_pGameData)
         gameDataDestroy();
 
-    tFile *pFile = fileOpen(szFilePath, "r");
+    tFile *pFile = diskFileOpen(szFilePath, DISK_FILE_MODE_READ, 0);
     GDL_VERIFY(pFile, GDR_FILE_NOT_FOUND);
 
     // Read in the header and verify it's a valid file

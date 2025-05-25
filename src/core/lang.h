@@ -1,5 +1,5 @@
-#ifndef __LANG_H_INCLUDED__
-#define __LANG_H_INCLUDED__
+#ifndef __LANG_H__INCLUDED__
+#define __LANG_H__INCLUDED__
 
 #include <ace/types.h>
 
@@ -83,4 +83,4 @@ const NeonString *langGetStringById(UWORD uwStringId);
  */
 const NeonWordList *langGetStringWordsById(UWORD uwStringId);
 
-#endif // __LANG_H_INCLUDED__
+#endif // __LANG_H__INCLUDED__
