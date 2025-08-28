@@ -22,9 +22,8 @@ if(GAME_DEBUG)
 endif()
 
 if(ACE_TEST_RUNNER)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DACE_TEST_RUNNER")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DACE_TEST_RUNNER")
 endif()
-
 
 # ACE
 add_subdirectory(modules/ace ace)

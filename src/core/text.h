@@ -126,3 +126,22 @@ void textDraw(
 void textDrawString(const char *pString, UwPoint uwXY, TextJustify justification, UBYTE ubColorIdx);
 
 #endif // __TEXT_H__INCLUDED__
+
+
+
+
+
+// textToken token = textRender(stringId, colorIdx, width, hJustify)
+// textDraw(token, uwXY)
+// textFree(token)
+
+// documentToken doc = documentCreate()
+// documentAddText(doc, stringId, colorIdx, width, hJustify)
+// documentAddNewLine(doc, newLineCount)
+// documentDraw(doc, uwXY, hJustify, vJustify)
+// documentFree(doc)
+
+// dialogueToken dlg = dialogueCreate(portraitId, stringId, colorIdx, width)
+// dialogueAddChoice(dlg, stringId, colorIdx)
+// dialogueDraw(dlg)
+// BYTE selectedChoice = dialogueUpdate(dlg)
