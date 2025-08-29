@@ -38,7 +38,7 @@ void splashCreate(void)
 
     bitmapDestroy(pLogo);
 
-    //musicLoad("data/music/theme.mod");
+    musicLoad("data/music/theme.mod");
 
     systemUnuse();
     musicPlayCurrent(1);
