@@ -4,6 +4,8 @@
 #include <ace/managers/system.h>
 #include <ace/utils/disk_file.h>
 
+#include "utils/bstr.h"
+
 typedef struct _LocHeader
 {
     UWORD uwVersion;
@@ -14,7 +16,7 @@ typedef struct _NeonStringTable
 {
     ULONG ulStringCount;
     ULONG ulStringDataSize;
-    NeonString *pStrings[];
+    Bstring pStrings[];
 } NeonStringTable;
 
 typedef struct _NeonWordTable
@@ -31,7 +33,7 @@ const char wordsChunk[4] =   { 'W', 'O', 'R', 'D' };
 static NeonStringTable *s_pStringTable;
 static NeonWordTable *s_pWordTable;
 
-static NeonString *s_pStringData;
+static Bstring s_pStringData;
 static NeonWordList *s_pWordData;
 
 int createStringTable(tFile *pFile);
@@ -114,7 +116,7 @@ void langDestroy()
     if (s_pStringTable)
     {
         memFree(s_pStringTable, sizeof(NeonStringTable) + 
-            s_pStringTable->ulStringCount * sizeof(NeonString*));
+            s_pStringTable->ulStringCount * sizeof(Bstring));
     }
 
     if (s_pWordData)
@@ -129,9 +131,9 @@ void langDestroy()
     }
 }
 
-const NeonString *langGetStringById(UWORD uwStringId)
+Bstring langGetStringById(UWORD uwStringId)
 {
-    return (NeonString*)s_pStringTable->pStrings[uwStringId];
+    return (Bstring)s_pStringTable->pStrings[uwStringId];
 }
 
 const NeonWordList *langGetStringWordsById(UWORD uwStringId)
@@ -158,7 +160,7 @@ int createStringTable(tFile *pFile)
     }
 
     // Allocate the string table, this will contain pointers to all the strings
-    s_pStringTable = memAllocFastClear(sizeof(NeonStringTable) + ulStringCount * sizeof(NeonString*));
+    s_pStringTable = memAllocFastClear(sizeof(NeonStringTable) + ulStringCount * sizeof(Bstring));
     s_pStringTable->ulStringCount = ulStringCount;
 
     // Allocate space for all the strings with and extra byte to null-terminate
@@ -171,8 +173,8 @@ int createStringTable(tFile *pFile)
 
     for (ULONG ulId = 0; ulId < ulStringCount; ulId++)
     {
-        s_pStringTable->pStrings[ulId] = (NeonString*)pCurrentString;
-        pCurrentString += (sizeof(ULONG) + ((NeonString*)pCurrentString)->ulSize);
+        s_pStringTable->pStrings[ulId] = (Bstring)pCurrentString;
+        pCurrentString += (sizeof(ULONG) + bstrLength((Bstring)pCurrentString) + 1);
     }
 
     logBlockEnd("createStringTable()");
@@ -198,7 +200,7 @@ int createWordsTable(tFile *pFile)
     }
 
     // Allocate the words table, this will contain pointers to all the word lists
-    s_pWordTable = memAllocFastClear(sizeof(NeonWordTable) + ulWordListCount * sizeof(NeonString*));
+    s_pWordTable = memAllocFastClear(sizeof(NeonWordTable) + ulWordListCount * sizeof(Bstring));
     s_pWordTable->ulWordListCount = ulWordListCount;
     s_pWordTable->ulWordDataSize = ulDataSize;
 

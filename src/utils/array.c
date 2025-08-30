@@ -94,10 +94,10 @@ void arrayCopy(Array source, Array destination, ULONG ulStartIndex, ULONG ulCoun
     assert(source, "Source array is NULL");
     assert(source->ulLength >= (ulStartIndex + ulCount), "Attempting to copy more elements than there are in the source array.");
     assert(destination, "Destination array is NULL");
-    assert(destination->ulLength <= ulCount, "Destination array is too small");
+    assert(destination->ulLength >= ulCount, "Destination array is too small");
     assert(source->ulElementSize == destination->ulElementSize, "Arrays are incompatible");
 
-    void* pSource = source->pBuffer + (source->ulElementSize * ulStartIndex);
+    void* pSource = (UBYTE*)source->pBuffer + (source->ulElementSize * ulStartIndex);
     ULONG ulSize = ulCount * source->ulElementSize;
 
     memcpy(destination->pBuffer, pSource, ulSize);

@@ -34,8 +34,8 @@ Screen screenCreate(void)
 
         screen->pViewport = vPortCreate(0,
             TAG_VPORT_BPP, BIT_DEPTH,
-            TAG_VPORT_VIEW, screen->pView,
             TAG_VPORT_USES_AGA, TRUE,
+            TAG_VPORT_VIEW, screen->pView,
         TAG_END);
 
         screen->pBuffer = simpleBufferCreate(0,

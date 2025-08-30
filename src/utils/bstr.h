@@ -67,7 +67,7 @@ Bstring bstrCopy(Bstring source, Bstring destination);
  * @return The destination string or NULL of the destination is smaller than the
  *         number of characters to be copied.
  */
-Bstring bstrCopyAmount(Bstring source, Bstring destination, ULONG count);
+Bstring bstrCopyN(Bstring source, Bstring destination, ULONG count);
 
 /**
  * @brief Concatenates two strings into a new string.
@@ -89,6 +89,11 @@ Bstring bstrConcat(Bstring lhs, Bstring rhs, ULONG ulFlags);
  *        Positive value if lhs appears after rhs in lexicographical order.
  */
 int bstrCompare(const Bstring lhs, const Bstring rhs);
+
+/**
+ * @brief Get the C-style string data from a Bstring.
+ */
+char *bstrGetData(Bstring bstr);
 
 /**
  * @brief Convenience macros named similarly to the bonkers C standard string

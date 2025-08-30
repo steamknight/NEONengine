@@ -3,18 +3,10 @@
 
 #include <ace/types.h>
 
+#include "utils/bstr.h"
+
 #define LOC_SUPPORTED_VERSION 1
 
-/**
- * @brief String entry in the language pack. These string should not be altered.
- * ulSize is the character count of the string, not including a null terminator.
- * pData is the null-terminated string.
- */
-typedef struct _NeonString
-{
-    ULONG ulSize;
-    char pData[];
-} NeonString;
 
 /**
  * @brief Defines the start and end indices for a word in a string.
@@ -73,7 +65,7 @@ void langDestroy();
  * @param uwStringId Id if the string to retrieve.
  * @return const NeonString* The requested string.
  */
-const NeonString *langGetStringById(UWORD uwStringId);
+Bstring langGetStringById(UWORD uwStringId);
 
 /**
  * @brief Get all the words in a string specified by id.

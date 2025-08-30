@@ -121,7 +121,11 @@
         "array_tests.h": "c",
         "stddef.h": "c",
         "disk_file_private.h": "c",
-        "memory.h": "c"
+        "memory.h": "c",
+        "text_render.h": "c",
+        "font.h": "c",
+        "lang.h": "c",
+        "bstr.h": "c"
     },
     "cSpell.words": [
         "blit",

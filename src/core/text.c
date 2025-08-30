@@ -87,8 +87,8 @@ void textPutNewLine(TextContext *pContext, UWORD uwCount)
 
 void textDraw(UWORD uwStringId, UwPoint uwXY, TextJustify justification, UBYTE ubColorIdx)
 {
-    const NeonString *pString = langGetStringById(uwStringId);
-    textDrawString(pString->pData, uwXY, justification, ubColorIdx);
+    Bstring pString = langGetStringById(uwStringId);
+    textDrawString(bstrGetData(pString), uwXY, justification, ubColorIdx);
 }
 
 void textDrawString(const char *pString, UwPoint uwXY, TextJustify justification, UBYTE ubColorIdx)

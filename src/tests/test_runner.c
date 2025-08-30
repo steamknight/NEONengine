@@ -10,6 +10,7 @@
 #include "core/text.h"
 
 #include "tests/array_tests.h"
+#include "tests/bstring_tests.h"
 
 void runTestSuite(char const* szSuiteName, Test tests[], ULONG ulTestCount);
 
@@ -21,6 +22,7 @@ void testRunnerCreate(void)
     logBlockBegin("testRunner");
 
     RUN_SUITE(array);
+    RUN_SUITE(bstring);
 
     logBlockEnd("testRunner");
 }
