@@ -121,5 +121,5 @@ endif()
 # Fonts
 convertFont(
     TARGET ${GAME_LINKED} FIRST_CHAR 32
-    SOURCE ${RES_DIR}/font2.png DESTINATION ${DATA_DIR}/font.fnt
+    SOURCE ${RES_DIR}/font_winds7.png DESTINATION ${DATA_DIR}/font.fnt
 )
