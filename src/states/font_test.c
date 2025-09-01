@@ -8,7 +8,6 @@
 #include "core/screen.h"
 #include "core/text_render.h"
 
-// static tFont* s_pFont;
 static tTextBitMap* s_pTextBitmap;
 
 void drawText(Bstring bstr, UWORD uwX, UWORD uwY, UWORD uwMaxWidth, UBYTE ubColorIdx, TextHJustify justification)
@@ -22,17 +21,13 @@ void drawText(Bstring bstr, UWORD uwX, UWORD uwY, UWORD uwMaxWidth, UBYTE ubColo
 void fontTestCreate(void)
 {
     logBlockBegin("fontTestCreate");
+
+    ULONG ulStartFullPage = timerGetPrec();
+
     screenFadeFromBlack(g_mainScreen, 25, 0, NULL);
     screenClear(g_mainScreen, 0);
 
-    //s_pFont = fontCreateFromPath("data/font.fnt");
-
     paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-
-    for (UBYTE i = 0; i < 32; ++i)
-    {
-        logWrite("Color %02d: $%04x", i, screenGetPalette(g_mainScreen)[i]);
-    }
 
     textRendererCreate("data/font.fnt");
 
@@ -48,7 +43,7 @@ void fontTestCreate(void)
     drawText(B("This is a longer line that should wrap around to the next line"), 220, 40, 100, 27, TX_RIGHT_JUSTIFY);
     drawText(B("Palette"), 0, 105, 10, 24, TX_LEFT_JUSTIFY);
 
-    for (UBYTE color = 0; color < 32; ++color)
+    for (UBYTE color = 1; color < 32; ++color)
     {
         UWORD x = 20 + (color / 8) * 30;
         UWORD y = 100 + (color % 8) * 10;
@@ -63,23 +58,33 @@ void fontTestCreate(void)
     timerFormatPrec(timerBuffer, timerGetDelta(ulStart, ulEnd));
     drawText(bstrCreateF(MEMF_FAST, "Rendered in %s ", timerBuffer), 140, 185, 240, 1, TX_LEFT_JUSTIFY);
 
+    Bstring palette0 = B("00");
+    s_pTextBitmap = textCreateFromString(palette0, 20, TX_LEFT_JUSTIFY);
+    bstrDestroy(&palette0);
+
+    ULONG ulEndFullPage = timerGetPrec();
+    timerFormatPrec(timerBuffer, timerGetDelta(ulStartFullPage, ulEndFullPage));
+    drawText(bstrCreateF(MEMF_FAST, "Whole page rendered in %s ", timerBuffer), 0, 230, 320, 1, TX_CENTER_JUSTIFY);
 }
 
 static UBYTE ubColor = 0;
+static ULONG ulLastTime = 0;
 void fontTestProcess(void)
 {
-    // fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBitmap, 0, 0, ubColor++, FONT_COOKIE);
+    ULONG delta = timerGetDelta(ulLastTime, timerGet());
 
-    // if (ubColor == 255)
-    // {
-    //     logWrite("Cycled through all colors");
-    // }
+    if (delta < 10)
+        return;
+    
+    ulLastTime = timerGet();
+
+    fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBitmap, 20, 100, ubColor++, FONT_COOKIE);
+    if (ubColor > 31)
+        ubColor = 0;
 }
 
 void fontTestDestroy(void)
 {
-    //fontDestroy(s_pFont);
-
     textRendererDestroy();
     fontDestroyTextBitMap(s_pTextBitmap);
 }

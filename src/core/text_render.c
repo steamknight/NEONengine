@@ -2,22 +2,22 @@
 
 #include <ace/utils/bitmap.h>
 #include <ace/utils/font.h>
+#include <ace/managers/system.h>
 
 #include "utils/array.h"
 #include "core/lang.h"
 
 #define ROUND_16(x) (((x) + 15) & ~15)
 
-typedef struct _TextRenderContext
-{
-    tBitMap *pBitmap;
-} TextRenderContext;
-
 static tFont* s_pDefaultFont;
 
 static const WORD INITIAL_LINE_CAPACITY = 5;
 
-tTextBitMap* breakTextIntoLines(Bstring bstrText, ULONG* pStartIndex, ULONG uwMaxWidth)
+#define LINE_START(line) (ULONG)(((line) & 0xFFFF0000) >> 16)
+#define LINE_END(line)   (ULONG)((line) & 0x0000FFFF)
+#define MAKE_LINE(start, end) (((ULONG)(start) << 16) | ((ULONG)(end) & 0x0000FFFF))
+
+ULONG breakTextIntoLines(Bstring bstrText, ULONG* pStartIndex, ULONG uwMaxWidth, ULONG* pOutInfo)
 {
     ULONG ulTextLength = bstrLength(bstrText);
     ULONG ulEndOfLine = 0;
@@ -26,7 +26,7 @@ tTextBitMap* breakTextIntoLines(Bstring bstrText, ULONG* pStartIndex, ULONG uwMa
 
     if (!bstrText || *pStartIndex >= ulTextLength)
     {
-        return NULL;
+        return FALSE;
     }
 
     char* pBuffer = bstrGetData(bstrText);
@@ -68,16 +68,9 @@ tTextBitMap* breakTextIntoLines(Bstring bstrText, ULONG* pStartIndex, ULONG uwMa
         ulEndOfLine = ulTextLength;
     }
 
-
-    // Split the string into a line and the remainder by temporarily terminating it
-    char temp = pBuffer[ulEndOfLine];
-    pBuffer[ulEndOfLine] = '\0';
-    tTextBitMap* pLineBitmap = fontCreateTextBitMapFromStr(s_pDefaultFont, pBuffer + *pStartIndex);
-    pBuffer[ulEndOfLine] = temp;
-
-    
+    *pOutInfo = MAKE_LINE(*pStartIndex, ulEndOfLine);
     *pStartIndex = ulEndOfLine + ulOffset;
-    return pLineBitmap;
+    return TRUE;
 }
 
 
@@ -93,57 +86,6 @@ void textRendererDestroy()
         fontDestroy(s_pDefaultFont);
         s_pDefaultFont = NULL;
     }
-}
-
-tTextBitMap* textCreateFromString1(Bstring bstrText, UWORD uwMaxWidth, TextHJustify justification)
-{
-    if (!bstrText)
-    {
-        logWrite("ERROR: Bstring is NULL.");
-        return NULL;
-    }
-
-    if (!s_pDefaultFont)
-    {
-        logWrite("ERROR: Default font is not initialized.");
-        return NULL;
-    }
-
-    ULONG ulEndOfLine = 0;
-    ULONG ulLineWidth = 0;
-    ULONG ulCurrentWidth = 0;
-    ULONG ulTextLength = bstrLength(bstrText);
-    
-    Bstring bstrWork = bstrClone(bstrText, MEMF_FAST);
-    char* pBuffer = bstrGetData(bstrWork);
-
-    for (ULONG idx = 0; idx < ulTextLength; ++idx)
-    {
-        char c = pBuffer[idx];
-        
-        if (c == ' ')
-        {
-            ulEndOfLine = idx;
-            ulLineWidth = ulCurrentWidth + fontGlyphWidth(s_pDefaultFont, c) + 1;
-        }
-
-        if (c >= ' ')
-        {
-            ulCurrentWidth += fontGlyphWidth(s_pDefaultFont, c) + 1; // +1 for spacing
-            
-            if (uwMaxWidth > 0 && ulCurrentWidth > uwMaxWidth)
-            {
-                pBuffer[ulEndOfLine] = '\n';
-                ulCurrentWidth -= ulLineWidth;
-            }
-        }
-    }
-
-    tTextBitMap* pResult = fontCreateTextBitMapFromStr(s_pDefaultFont, pBuffer);
-    bstrDestroy(&bstrWork);
-
-    return pResult;
-
 }
 
 tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJustify justification)
@@ -162,18 +104,22 @@ tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJusti
 
     ULONG ulLineCount = 0;
     ULONG ulStartIndex = 0;
-    Array lineBitmaps = arrayCreate(INITIAL_LINE_CAPACITY, sizeof(tTextBitMap*), MEMF_FAST);
-    tTextBitMap* pLineBitmap = NULL;
+
+    systemUse();
+    Array lines = arrayCreate(INITIAL_LINE_CAPACITY, sizeof(ULONG), MEMF_FAST);
+    tTextBitMap* pLineBitmap = fontCreateTextBitMap(320, ROUND_16(s_pDefaultFont->uwHeight));
+    systemUnuse();
 
     // Create the individual line bitmaps
-    while((pLineBitmap = breakTextIntoLines(bstrText, &ulStartIndex, uwMaxWidth)))
+    ULONG line = 0;
+    while((breakTextIntoLines(bstrText, &ulStartIndex, uwMaxWidth, &line)))
     {
-        if (ulLineCount >= arrayLength(lineBitmaps))
+        if (ulLineCount >= arrayLength(lines))
         {
-            arrayAutoResize(&lineBitmaps);
+            arrayAutoResize(&lines);
         }
 
-        arrayPut(lineBitmaps, ulLineCount++, &pLineBitmap);
+        arrayPut(lines, ulLineCount++, &line);
     }
 
     // .. and stitch them all together
@@ -184,10 +130,22 @@ tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJusti
 
     for (ULONG idx = 0; idx < ulLineCount; ++idx)
     {
-        pLineBitmap = *(tTextBitMap**)arrayGet(lineBitmaps, idx);
-        if (!pLineBitmap)
+        ULONG line = *(ULONG*)arrayGet(lines, idx);
+
+        if (!line)
             continue;
         
+        ULONG ulStart = LINE_START(line);
+        ULONG ulEnd = LINE_END(line);
+
+        // Split the string into a line and the remainder by temporarily terminating it
+        char* pBuffer = bstrGetData(bstrText);
+        char temp = pBuffer[ulEnd];
+
+        pBuffer[ulEnd] = '\0';
+        fontFillTextBitMap(s_pDefaultFont, pLineBitmap, pBuffer + ulStart);
+        pBuffer[ulEnd] = temp;
+
         UWORD uwX = 0;
         switch (justification)
         {
@@ -206,8 +164,12 @@ tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJusti
         }
 
         fontDrawTextBitMap(pResult->pBitMap, pLineBitmap, uwX, idx * s_pDefaultFont->uwHeight, 1, 0);
-        fontDestroyTextBitMap(pLineBitmap);
     }
+    
+    systemUse();
+    fontDestroyTextBitMap(pLineBitmap);
+    arrayDestroy(&lines);
+    systemUnuse();
 
     return pResult;
 }

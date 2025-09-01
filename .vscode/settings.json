@@ -125,7 +125,8 @@
         "text_render.h": "c",
         "font.h": "c",
         "lang.h": "c",
-        "bstr.h": "c"
+        "bstr.h": "c",
+        "test_macros.h": "c"
     },
     "cSpell.words": [
         "blit",
