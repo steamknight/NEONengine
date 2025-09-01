@@ -112,6 +112,12 @@ configure_file(
     ${RES_DIR}/lang/en.noir ${DATA_DIR}/lang/en.noir COPYONLY
 )
 
+if(ACE_TEST_RUNNER)
+    configure_file(
+        ${RES_DIR}/lang/test.noir ${DATA_DIR}/lang/test.noir COPYONLY
+    )
+endif()
+
 # Fonts
 convertFont(
     TARGET ${GAME_LINKED} FIRST_CHAR 32

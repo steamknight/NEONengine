@@ -49,6 +49,15 @@ void bstrDestroy(Bstring* pString);
 ULONG bstrLength(Bstring string);
 
 /**
+ * @brief Clones a Bstring.
+ * 
+ * @param source the string to clone
+ * @param ulFlags Memory allocation flags e.g. MEMF_FAST, MEMF_CHIP, MEMF_ANY
+ * @return A cloned string 
+ */
+Bstring bstrClone(Bstring source, ULONG ulFlags);
+
+/**
  * @brief Copies the source string into the destination.
  *
  * @param source The source string.
@@ -95,6 +104,8 @@ int bstrCompare(const Bstring lhs, const Bstring rhs);
  */
 char *bstrGetData(Bstring bstr);
 
+Bstring bstrCreateF(ULONG ulFlags, const char *szFormat, ...) __attribute__((format(printf, 2, 3)));
+
 /**
  * @brief Convenience macros named similarly to the bonkers C standard string
  * functions.
@@ -109,5 +120,7 @@ char *bstrGetData(Bstring bstr);
 #define bstrncpy(dest, source, count) bstrCopyAmount(source, dest, count)
 #define bstrcat(dest, source) bstrConcat(source, dest, MEMF_ANY)
 #define bstrcmp(lhs, rhs) bstrCompare(lhs, rhs)
+
+#define B(text) bstrCreate((text), MEMF_FAST)
 
 #endif // __BSTR_H__INCLUDED__

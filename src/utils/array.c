@@ -63,10 +63,9 @@ void* arrayPut(Array array, ULONG ulIndex, void* pElement)
     assert(ulIndex < array->ulLength, "Index out of bounds");
     assert(pElement, "Inserting invalid element");
 
-    void* pElementStart = (void*)(array->pBuffer + (array->ulElementSize * ulIndex));
-    memcpy(pElementStart, pElement, array->ulElementSize);
+    memcpy(array->pBuffer + (array->ulElementSize * ulIndex), pElement, array->ulElementSize);
 
-    return pElement;
+    return arrayGet(array, ulIndex);
 }
 
 void arrayResize(Array* pArray, ULONG ulNewLength)
@@ -87,6 +86,14 @@ void arrayResize(Array* pArray, ULONG ulNewLength)
 
     arrayDestroy(pArray);
     *pArray = newArray;
+}
+
+void arrayAutoResize(Array* pArray)
+{
+    assert(pArray && *pArray, "Trying to auto-resize a NULL array");
+
+    ULONG ulNewLength = (*pArray)->ulLength ? (*pArray)->ulLength * 2 : 1;
+    arrayResize(pArray, ulNewLength);
 }
 
 void arrayCopy(Array source, Array destination, ULONG ulStartIndex, ULONG ulCount)

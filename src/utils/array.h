@@ -73,7 +73,14 @@ void *arrayPut(Array array, ULONG ulIndex, void *pElement);
  * @param array A pointer to the array to resize
  * @param ulNewLength The new length
  */
-void arrayResize(Array *array, ULONG ulNewLength);
+void arrayResize(Array *pArray, ULONG ulNewLength);
+
+/**
+ * @brief Automatically resizes the array to double its current size.
+ * 
+ * @param pArray A pointer to the array to resize
+ */
+void arrayAutoResize(Array* pArray);
 
 /**
  * @brief Copies a number of values from one array to another starting from some index.

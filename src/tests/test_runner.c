@@ -11,6 +11,7 @@
 
 #include "tests/array_tests.h"
 #include "tests/bstring_tests.h"
+#include "tests/lang_tests.h"
 
 void runTestSuite(char const* szSuiteName, Test tests[], ULONG ulTestCount);
 
@@ -23,6 +24,7 @@ void testRunnerCreate(void)
 
     RUN_SUITE(array);
     RUN_SUITE(bstring);
+    RUN_SUITE(lang);
 
     logBlockEnd("testRunner");
 }

@@ -1,6 +1,7 @@
 #include "bstr.h"
 
 #include <ace/managers/memory.h>
+#include <mini_std/printf.h>
 
 #include <string.h>
 
@@ -51,6 +52,12 @@ ULONG bstrLength(Bstring string)
 {
     assert(string, "Trying to get the length of a NULL string.");
     return string->ulLength;
+}
+
+Bstring bstrClone(Bstring source, ULONG ulFlags)
+{
+    assert(source, "Source string is NULL.");
+    return bstrCreate(source->pBuffer, ulFlags);
 }
 
 Bstring bstrCopy(Bstring source, Bstring target)
@@ -105,9 +112,47 @@ int bstrCompare(const Bstring lhs, const Bstring rhs)
 
 char *bstrGetData(Bstring bstr)
 {
-    assert(bstr, "Bstring is NULL.");
     if (bstr)
         return bstr->pBuffer;
     else
         return NULL;
+}
+
+Bstring bstrCreateF(ULONG ulFlags, const char *szFormat, ...)
+{
+    assert(szFormat, "Format string is NULL.");
+
+    // Allocate a temporary buffer on the stack for formatting
+    char buffer[1024];
+    va_list args;
+    va_start(args, szFormat);
+    int needed = vsnprintf(buffer, sizeof(buffer), szFormat, args);
+    va_end(args);
+
+    if (needed < 0)
+    {
+        // Encoding error
+        return NULL;
+    }
+    else if ((size_t)needed < sizeof(buffer))
+    {
+        // Fits in the buffer
+        return bstrCreate(buffer, ulFlags);
+    }
+    else
+    {
+        // Allocate a larger buffer on the heap
+        size_t size = needed + 1; // +1 for null terminator
+        char *heapBuffer = memAlloc(size, ulFlags);
+        if (!heapBuffer)
+            return NULL;
+
+        va_start(args, szFormat);
+        vsnprintf(heapBuffer, size, szFormat, args);
+        va_end(args);
+
+        Bstring result = bstrCreate(heapBuffer, ulFlags);
+        memFree(heapBuffer, size);
+        return result;
+    }
 }
