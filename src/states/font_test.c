@@ -47,40 +47,21 @@ void fontTestCreate(void)
     drawText(B("|||||"), 210, 40, 10, 24, TX_LEFT_JUSTIFY);
     drawText(B("This is a longer line that should wrap around to the next line"), 220, 40, 100, 27, TX_RIGHT_JUSTIFY);
     drawText(B("Palette"), 0, 105, 10, 24, TX_LEFT_JUSTIFY);
-    drawText(B("00"),  20, 100, 20, 0, TX_LEFT_JUSTIFY);
-    drawText(B("01"),  20, 110, 20, 1, TX_LEFT_JUSTIFY);
-    drawText(B("02"),  20, 120, 20, 2, TX_LEFT_JUSTIFY);
-    drawText(B("03"),  20, 130, 20, 3, TX_LEFT_JUSTIFY);
-    drawText(B("04"),  20, 140, 20, 4, TX_LEFT_JUSTIFY);
-    drawText(B("05"),  20, 150, 20, 5, TX_LEFT_JUSTIFY);
-    drawText(B("06"),  20, 160, 20, 6, TX_LEFT_JUSTIFY);
-    drawText(B("07"),  20, 170, 20, 7, TX_LEFT_JUSTIFY);
-    drawText(B("08"),  50, 100, 20, 8, TX_LEFT_JUSTIFY);
-    drawText(B("09"),  50, 110, 20, 9, TX_LEFT_JUSTIFY);
-    drawText(B("10"),  50, 120, 20, 10, TX_LEFT_JUSTIFY);
-    drawText(B("11"),  50, 130, 20, 11, TX_LEFT_JUSTIFY);
-    drawText(B("12"),  50, 140, 20, 12, TX_LEFT_JUSTIFY);
-    drawText(B("13"),  50, 150, 20, 13, TX_LEFT_JUSTIFY);
-    drawText(B("14"),  50, 160, 20, 14, TX_LEFT_JUSTIFY);
-    drawText(B("15"),  50, 170, 20, 15, TX_LEFT_JUSTIFY);
-    drawText(B("16"),  80, 100, 20, 16, TX_LEFT_JUSTIFY);
-    drawText(B("17"),  80, 110, 20, 17, TX_LEFT_JUSTIFY);
-    drawText(B("18"),  80, 120, 20, 18, TX_LEFT_JUSTIFY);
-    drawText(B("19"),  80, 130, 20, 19, TX_LEFT_JUSTIFY);
-    drawText(B("20"),  80, 140, 20, 20, TX_LEFT_JUSTIFY);
-    drawText(B("21"),  80, 150, 20, 21, TX_LEFT_JUSTIFY);
-    drawText(B("22"),  80, 160, 20, 22, TX_LEFT_JUSTIFY);
-    drawText(B("23"),  80, 170, 20, 23, TX_LEFT_JUSTIFY);
-    drawText(B("24"), 110, 100, 20, 24, TX_LEFT_JUSTIFY);
-    drawText(B("25"), 110, 110, 20, 25, TX_LEFT_JUSTIFY);
-    drawText(B("26"), 110, 120, 20, 26, TX_LEFT_JUSTIFY);
-    drawText(B("27"), 110, 130, 20, 27, TX_LEFT_JUSTIFY);
-    drawText(B("28"), 110, 140, 20, 28, TX_LEFT_JUSTIFY);
-    drawText(B("29"), 110, 150, 20, 29, TX_LEFT_JUSTIFY);
-    drawText(B("30"), 110, 160, 20, 30, TX_LEFT_JUSTIFY);
-    drawText(B("31"), 110, 170, 20, 31, TX_LEFT_JUSTIFY);
 
-    drawText(bstrCreateF(MEMF_FAST, "Font height: %d px", 8), 0, 180, 240, 1, TX_LEFT_JUSTIFY);
+    for (UBYTE color = 0; color < 32; ++color)
+    {
+        UWORD x = 20 + (color / 8) * 30;
+        UWORD y = 100 + (color % 8) * 10;
+        drawText(bstrCreateF(MEMF_FAST, "%02d", color), x, y, 20, color, TX_LEFT_JUSTIFY);
+    }
+
+    ULONG ulStart = timerGetPrec();
+    drawText(B("This is a long string and it's going to wrap around quite a few times in order to test the worst case performance scenario. Let's see how it does. Right below this line is the time it took to render."), 140, 100, 180, 18, TX_LEFT_JUSTIFY);
+    ULONG ulEnd = timerGetPrec();
+
+    char timerBuffer[256];
+    timerFormatPrec(timerBuffer, timerGetDelta(ulStart, ulEnd));
+    drawText(bstrCreateF(MEMF_FAST, "Rendered in %s ", timerBuffer), 140, 185, 240, 1, TX_LEFT_JUSTIFY);
 
 }
 
