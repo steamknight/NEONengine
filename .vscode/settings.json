@@ -126,7 +126,8 @@
         "font.h": "c",
         "lang.h": "c",
         "bstr.h": "c",
-        "test_macros.h": "c"
+        "test_macros.h": "c",
+        "nine_patch.h": "c"
     },
     "cSpell.words": [
         "blit",

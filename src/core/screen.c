@@ -3,6 +3,7 @@
 #include <ace/managers/blit.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/viewport/simplebuffer.h>
+#include <ace/utils/font.h>
 
 #include "neonengine.h"
 
@@ -161,4 +162,9 @@ void screenBlitCopy(Screen screen, const tBitMap *pSrc, WORD wSrcX, WORD wSrcY,
         screen->pBuffer->pBack, wDstX, wDstY + screen->uwOffset,
         wWidth, wHeight, ubMinterm
     );
+}
+
+void screenTextCopy(Screen screen, tTextBitMap *pTextBitMap, UWORD uwX, UWORD uwY, UBYTE ubColor, UBYTE ubFlags)
+{
+    fontDrawTextBitMap(screen->pBuffer->pBack, pTextBitMap, uwX, uwY + screen->uwOffset, ubColor, ubFlags);
 }

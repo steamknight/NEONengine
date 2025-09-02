@@ -138,6 +138,9 @@ tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJusti
         ULONG ulStart = LINE_START(line);
         ULONG ulEnd = LINE_END(line);
 
+        if (ulStart == ulEnd)
+            continue;
+
         // Split the string into a line and the remainder by temporarily terminating it
         char* pBuffer = bstrGetData(bstrText);
         char temp = pBuffer[ulEnd];

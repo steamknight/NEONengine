@@ -11,6 +11,8 @@
 
 typedef struct Screen *Screen;
 
+typedef struct _tTextBitMap tTextBitMap;
+
 /**
  * @brief Create the a full screen view.
  * The screen will only be 200px tall and in PAL mode, it will be centered
@@ -148,5 +150,8 @@ UWORD* screenGetPalette(Screen screen);
 void screenBlitCopy(Screen screen, const tBitMap *pSrc, WORD wSrcX, WORD wSrcY,
     WORD wDstX, WORD wDstY, WORD wWidth, WORD wHeight,
     UBYTE ubMinterm);
+
+void screenTextCopy(Screen screen, tTextBitMap *pTextBitMap, UWORD uwX, UWORD uwY, 
+    UBYTE ubColor, UBYTE ubFlags);
 
 #endif //__SCREEN_H__INCLUDED__

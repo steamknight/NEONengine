@@ -25,8 +25,6 @@ void textRendererDestroy();
 tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJustify justification);
 tTextBitMap* textCreateFromId(ULONG stringId, UWORD uwMaxWidth, TextHJustify justification);
 
-void textDestroy(tTextToken token);
-
 
 
 #endif // __TEXT_RENDERER__INCLUDED_H__

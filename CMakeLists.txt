@@ -100,6 +100,13 @@ convertBitmaps(
     INTERLEAVED
 )
 
+convertBitmaps(
+    TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/base.act
+    SOURCES ${RES_DIR}/core/frame_9.png
+    DESTINATIONS ${DATA_DIR}/core/frame_9.bm
+    INTERLEAVED
+)
+
 configure_file(
     ${RES_DIR}/music/theme.mod ${DATA_DIR}/music/theme.mod COPYONLY
 )

@@ -11,7 +11,8 @@ extern tState
     g_stateFontTest,
     g_stateDebugView,
     g_stateSplash,
-    g_stateLangSelect;
+    g_stateLangSelect,
+    g_stateDialogueTest;
 
 #ifdef ACE_TEST_RUNNER
 extern tState
@@ -27,5 +28,9 @@ extern GameData *g_gameData;
     if (fn)                   \
         fn(__VA_ARGS__);
 #endif // !defined (SAFE_CB_CALL)
+
+#if !defined(ROUND_16)
+#define ROUND_16(x) (((x) + 15) & ~15)
+#endif
 
 #endif //__NEONENGINE_H__INCLUDED__
