@@ -18,7 +18,8 @@
 /**
  * @brief Opaque pointer to the string
  */
-typedef struct Bstring *Bstring;
+struct _Bstring;
+typedef _Bstring *Bstring;
 typedef unsigned long ULONG;
 
 /**

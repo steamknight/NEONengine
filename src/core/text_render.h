@@ -5,26 +5,28 @@
 
 #include "utils/bstr.h"
 
-typedef UWORD tTextToken;
 typedef struct _tTextBitMap tTextBitMap;
-
-/**
- * @brief Defines how the text should be justified horizontally
- */
-typedef enum _eTextHJustify
+namespace NEONengine
 {
-    TX_LEFT_JUSTIFY,
-    TX_RIGHT_JUSTIFY,
-    TX_CENTER_JUSTIFY,
-} TextHJustify;
+    typedef UWORD tTextToken;
+
+    /**
+     * @brief Defines how the text should be justified horizontally
+     */
+    typedef enum _eTextHJustify
+    {
+        TX_LEFT_JUSTIFY,
+        TX_RIGHT_JUSTIFY,
+        TX_CENTER_JUSTIFY,
+    } TextHJustify;
 
 
-void textRendererCreate(char const *szFontName);
-void textRendererDestroy();
+    void textRendererCreate(char const *szFontName);
+    void textRendererDestroy();
 
-tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJustify justification);
-tTextBitMap* textCreateFromId(ULONG stringId, UWORD uwMaxWidth, TextHJustify justification);
-
+    tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJustify justification);
+    tTextBitMap* textCreateFromId(ULONG stringId, UWORD uwMaxWidth, TextHJustify justification);
+}
 
 
 #endif // __TEXT_RENDERER__INCLUDED_H__

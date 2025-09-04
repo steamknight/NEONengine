@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(NEONengine VERSION 1.2 LANGUAGES C)
+project(NEONengine VERSION 1.2 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 20)
 
 # Lowercase project name for binaries and packaging
 string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
@@ -13,7 +15,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DAMIGA -Wall -Wextra -fomit-frame-pointer")
 set(ACE_TEST_RUNNER OFF CACHE BOOL "Enable the test runner")
 set(ACE_USE_AGA_FEATURES ON)
 set(ACE_USE_ECS_FEATURES ON)
-file(GLOB_RECURSE SOURCES src/*.c src/core/*.c src/states/*.c src/utils/*.c)
+file(GLOB_RECURSE SOURCES src/*.c?? src/core/*.c?? src/states/*.c?? src/utils/*.c??)
 file(GLOB_RECURSE HEADERS src/*.h src/core/*.h src/states/*.h src/utils/*.h)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)

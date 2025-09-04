@@ -7,44 +7,47 @@
 
 #include <ace/utils/extview.h>
 
-typedef enum _tFadeState {
-    FADE_STATE_IN,
-    FADE_STATE_OUT,
-    FADE_STATE_PALETTE,
-    FADE_STATE_IDLE,
-    FADE_STATE_EVENT_FIRED
-} tFadeState;
+namespace NEONengine
+{
+    typedef enum _tFadeState {
+        FADE_STATE_IN,
+        FADE_STATE_OUT,
+        FADE_STATE_PALETTE,
+        FADE_STATE_IDLE,
+        FADE_STATE_EVENT_FIRED
+    } tFadeState;
 
-typedef void (*tCbFadeOnDone)(void);
+    typedef void (*tCbFadeOnDone)(void);
 
-typedef struct _tFade {
-    tFadeState eState;
-    UBYTE ubColorCount;
-    UBYTE ubCnt;
-    UBYTE ubCntEnd;
-    UBYTE isMusic;
-    UWORD* pPaletteRef;
-    tCbFadeOnDone cbOnDone;
-    tView *pView;
-} tFade;
+    typedef struct _tFade {
+        tFadeState eState;
+        UBYTE ubColorCount;
+        UBYTE ubCnt;
+        UBYTE ubCntEnd;
+        UBYTE isMusic;
+        UWORD* pPaletteRef;
+        tCbFadeOnDone cbOnDone;
+        tView *pView;
+    } tFade;
 
-tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount);
+    tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount);
 
-void fadeDestroy(tFade *pFade);
+    void fadeDestroy(tFade *pFade);
 
-void fadeSet(
-    tFade *pFade, tFadeState eState, UBYTE ubFramesToFullFade, UBYTE isMusic,
-    tCbFadeOnDone cbOnDone
-);
+    void fadeSet(
+        tFade *pFade, tFadeState eState, UBYTE ubFramesToFullFade, UBYTE isMusic,
+        tCbFadeOnDone cbOnDone
+    );
 
-/**
- * @brief Processes fade-in or fade-out.
- * @param pFade Fade definition to be processed.
- *
- * @return Current fade state:
- * - FADE_STATE_EVENT_FIRED if fade is done, and OnDone event has just fired.
- * - FADE_STATE_IDLE if fade is done.
- */
-tFadeState fadeProcess(tFade *pFade);
+    /**
+     * @brief Processes fade-in or fade-out.
+     * @param pFade Fade definition to be processed.
+     *
+     * @return Current fade state:
+     * - FADE_STATE_EVENT_FIRED if fade is done, and OnDone event has just fired.
+     * - FADE_STATE_IDLE if fade is done.
+     */
+    tFadeState fadeProcess(tFade *pFade);
+}
 
 #endif // _GERMZ_FADE_H_

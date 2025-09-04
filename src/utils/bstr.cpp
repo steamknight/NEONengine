@@ -2,43 +2,52 @@
 
 #include <ace/managers/memory.h>
 #include <mini_std/printf.h>
-
-#include <string.h>
+#include <mini_std/string.h>
 
 #include "assert.h"
 
-struct Bstring
+__attribute__((optimize("no-tree-loop-distribute-patterns"))) 
+void* memcopy(void *dest, const void *src, unsigned long len) {
+	char *d = (char *)dest;
+	const char *s = (const char *)src;
+	while(len--)
+		*d++ = *s++;
+	return dest;
+}
+
+struct _Bstring
 {
     ULONG ulLength;
     char pBuffer[];
 };
 
 // Helper function to calculate the allocation size for a Bstring
-static inline ULONG bstrAllocSize(ULONG ulLength) {
-    return sizeof(struct Bstring) + ulLength + 1;
+static inline ULONG bstrAllocSize(ULONG ulLength)
+{
+    return sizeof(_Bstring) + ulLength + 1;
 }
 
-Bstring bstrCreate(char const* szValue, ULONG ulFlags)
+Bstring bstrCreate(char const *szValue, ULONG ulFlags)
 {
     assert(szValue, "Input string is null.");
 
     ULONG ulLength = strlen(szValue);
 
-    // strlen does not account for the terminator, so compensate here rather 
+    // strlen does not account for the terminator, so compensate here rather
     // than adding it to ulLength, so our length will always be the number of
     // characters.
-    Bstring string = memAlloc(bstrAllocSize(ulLength), ulFlags);
+    Bstring string = (Bstring)memAlloc(bstrAllocSize(ulLength), ulFlags);
 
     assert(string, "Allocating memory for string failed!");
 
-    memcpy(string->pBuffer, szValue, ulLength);
+    memcopy(string->pBuffer, szValue, ulLength);
     string->pBuffer[ulLength] = '\0';
     string->ulLength = ulLength;
-    
+
     return string;
 }
 
-void bstrDestroy(Bstring* pString)
+void bstrDestroy(Bstring *pString)
 {
     if (!pString || !*pString)
         return;
@@ -79,7 +88,7 @@ Bstring bstrCopyN(Bstring source, Bstring destination, ULONG count)
     assert(destination->ulLength >= count, "Destination string can't contain the input characters.");
 
     memcpy(destination->pBuffer, source->pBuffer, count);
-    
+
     return destination;
 }
 
@@ -90,7 +99,7 @@ Bstring bstrConcat(Bstring lhs, Bstring rhs, ULONG ulFlags)
 
     ULONG ulLength = lhs->ulLength + rhs->ulLength;
     ULONG ulTotalSize = bstrAllocSize(ulLength);
-    Bstring result = memAlloc(ulTotalSize, ulFlags);
+    Bstring result = (Bstring)memAlloc(ulTotalSize, ulFlags);
 
     assert(result, "Allocating memory for string failed!");
 
@@ -98,7 +107,7 @@ Bstring bstrConcat(Bstring lhs, Bstring rhs, ULONG ulFlags)
     memcpy(result->pBuffer + lhs->ulLength, rhs->pBuffer, rhs->ulLength);
     result->pBuffer[ulLength] = '\0';
     result->ulLength = ulLength;
-    
+
     return result;
 }
 
@@ -143,7 +152,7 @@ Bstring bstrCreateF(ULONG ulFlags, const char *szFormat, ...)
     {
         // Allocate a larger buffer on the heap
         size_t size = needed + 1; // +1 for null terminator
-        char *heapBuffer = memAlloc(size, ulFlags);
+        char *heapBuffer = (char*)memAlloc(size, ulFlags);
         if (!heapBuffer)
             return NULL;
 

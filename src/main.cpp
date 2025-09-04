@@ -9,8 +9,9 @@
 #include "core/music.h"
 #include "core/game_data.h"
 
-tStateManager *g_gameStateManager;
-Screen g_mainScreen;
+#include "test.h"
+
+using namespace NEONengine;
 
 UBYTE ubDebugToggle = 1;
 
@@ -22,8 +23,8 @@ void genericCreate(void)
 
     g_gameStateManager = stateManagerCreate();
     g_mainScreen = screenCreate();
-    screenLoad(g_mainScreen);
-    screenBindMouse(g_mainScreen);
+    screenLoad(NEONengine::g_mainScreen);
+    screenBindMouse(NEONengine::g_mainScreen);
 
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &g_stateTestRunner);
@@ -34,11 +35,12 @@ void genericCreate(void)
 
 void genericProcess(void)
 {
+    auto a = add(1, 2);
     keyProcess();
     mouseProcess();
     ptplayerProcess();
     stateProcess(g_gameStateManager);
-    screenProcess(g_mainScreen);
+    screenProcess(NEONengine::g_mainScreen);
 
     if (keyUse(KEY_F1))
     {
@@ -57,7 +59,7 @@ void genericProcess(void)
 
 void genericDestroy(void)
 {
-    screenDestroy(g_mainScreen);
+    screenDestroy(NEONengine::g_mainScreen);
     musicFree();
     stateManagerDestroy(g_gameStateManager);
     ptplayerDestroy();

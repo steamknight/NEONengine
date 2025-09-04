@@ -3,8 +3,11 @@
 
 #include <exec/types.h>
 
-void musicLoad(char const *szFilePath);
-void musicPlayCurrent(UBYTE ubLoop);
-void musicFree(void);
+namespace NEONengine
+{
+    void musicLoad(char const *szFilePath);
+    void musicPlayCurrent(UBYTE ubLoop);
+    void musicFree(void);
+}
 
 #endif //__MUSIC_H__INCLUDED__

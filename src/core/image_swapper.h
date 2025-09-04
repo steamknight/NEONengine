@@ -6,12 +6,16 @@
 
 #include "utils/array.h"
 
-typedef struct ImageSwapper *ImageSwapper;
+namespace NEONengine
+{
+    struct _ImageSwapper;
+    typedef _ImageSwapper *ImageSwapper;
 
-ImageSwapper imageSwapperCreate(Array imageFilePaths);
+    ImageSwapper imageSwapperCreate(Array imageFilePaths);
 
-void imageSwapperDestroy(ImageSwapper* pSwapper);
+    void imageSwapperDestroy(ImageSwapper* pSwapper);
 
-void imageSwap(tBitMap* pDest, ULONG ulIndex);
+    void imageSwap(tBitMap* pDest, ULONG ulIndex);
+}
 
 #endif // __IMAGE_SWAPPER_H__INCLUDED__/
