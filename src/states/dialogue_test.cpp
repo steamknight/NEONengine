@@ -13,6 +13,8 @@
 #include "core/nine_patch.h"
 #include "core/music.h"
 
+#include "utils/bstr_view.h"
+
 namespace NEONengine 
 {
     void dialogueTestCreate(void)
@@ -27,13 +29,13 @@ namespace NEONengine
 
         tBitMap* pPatchBitmap = bitmapCreateFromPath("data/core/frame_9.bm", 0);
 
-        Bstring text = B("I'm the love child of Icarus and Sisyphus; no matter how hard I try to rise above, my hubris crashes me face first back into the Gutter.\n\nAnd the cycle continues.");
+        bstr_view text = "I'm the love child of Icarus and Sisyphus; no matter how hard I try to rise above, my hubris crashes me face first back into the Gutter.\n\nAnd the cycle continues.";
 
         UWORD uwMargins = 8;
         UWORD uwWidth = 240;
 
         ULONG ulStartText = timerGetPrec();
-        tTextBitMap* pTextBitmap = textCreateFromString(text, uwWidth - uwMargins * 2, TX_LEFT_JUSTIFY);
+        tTextBitMap* pTextBitmap = textCreateFromString(text, uwWidth - uwMargins * 2, TextHJustify::LEFT);
         ULONG ulEndText = timerGetPrec();
 
         NinePatch pPatch = ninePatchCreate(&pPatchBitmap, 16, 16, 16, 16);
@@ -51,16 +53,16 @@ namespace NEONengine
         char timerBuffer[256];
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartText, ulEndText));
-        Bstring sTextCreate = bstrCreateF(MEMF_FAST, "Text created in %s", timerBuffer);
-        tTextBitMap* pTextCreate = textCreateFromString(sTextCreate, 320, TX_CENTER_JUSTIFY);
+        snprintf(timerBuffer, sizeof(timerBuffer), "Text created in %s", timerBuffer);
+        tTextBitMap* pTextCreate = textCreateFromString(timerBuffer, 320, TextHJustify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartPatch, ulEndPatch));
-        Bstring sPatchCreate = bstrCreateF(MEMF_FAST, "Patch created in %s", timerBuffer);
-        tTextBitMap* pPatchCreate = textCreateFromString(sPatchCreate, 320, TX_CENTER_JUSTIFY);
+        snprintf(timerBuffer, sizeof(timerBuffer), "Patch created in %s", timerBuffer);
+        tTextBitMap* pPatchCreate = textCreateFromString(timerBuffer, 320, TextHJustify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartRender, ulEndRender));
-        Bstring sRender = bstrCreateF(MEMF_FAST, "Rendered in %s", timerBuffer);
-        tTextBitMap* pRender = textCreateFromString(sRender, 320, TX_CENTER_JUSTIFY);
+        snprintf(timerBuffer, sizeof(timerBuffer), "Rendered in %s", timerBuffer);
+        tTextBitMap* pRender = textCreateFromString(timerBuffer, 320, TextHJustify::CENTER);
 
         screenTextCopy(g_mainScreen, pTextCreate, 0, 180, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pPatchCreate, 0, 191, 1, FONT_COOKIE);
@@ -70,9 +72,6 @@ namespace NEONengine
         fontDestroyTextBitMap(pPatchCreate);
         fontDestroyTextBitMap(pTextBitmap);
         fontDestroyTextBitMap(pRender);
-
-        bstrDestroy(&sTextCreate);
-        bstrDestroy(&sPatchCreate);
 
         ninePatchDestroy(&pPatch);
         bitmapDestroy(pRenderedPatch);

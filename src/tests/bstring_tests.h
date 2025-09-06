@@ -8,7 +8,7 @@
 #include "utils/bstr.h"
 #include "test_macros.h"
 
-namepace NEONengine::tests
+namespace NEONengine::tests
 {
     TEST_IMPL(test_bstr_create_basic)
     {

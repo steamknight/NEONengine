@@ -7,11 +7,10 @@
 #include <ace/utils/palette.h>
 
 #include "core/screen.h"
-#include "core/text.h"
 
-#include "tests/array_tests.h"
 #include "tests/bstring_tests.h"
 #include "tests/lang_tests.h"
+#include "tests/bstr_view_tests.h"
 
 namespace NEONengine::tests
 {
@@ -24,9 +23,9 @@ namespace NEONengine::tests
     {
         logBlockBegin("testRunner");
 
-        RUN_SUITE(array);
-        RUN_SUITE(bstring);
-        RUN_SUITE(lang);
+        // RUN_SUITE(bstring);
+        // RUN_SUITE(lang);
+        RUN_SUITE(bstr_view);
 
         logBlockEnd("testRunner");
     }

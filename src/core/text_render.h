@@ -2,30 +2,30 @@
 #define __TEXT_RENDERER__INCLUDED_H__
 
 #include <ace/types.h>
+#include <ace/utils/font.h>
 
-#include "utils/bstr.h"
+#include "mtl/memory.h"
+#include "utils/bstr_view.h"
 
-typedef struct _tTextBitMap tTextBitMap;
 namespace NEONengine
 {
-    typedef UWORD tTextToken;
-
     /**
      * @brief Defines how the text should be justified horizontally
      */
-    typedef enum _eTextHJustify
+    enum class TextHJustify
     {
-        TX_LEFT_JUSTIFY,
-        TX_RIGHT_JUSTIFY,
-        TX_CENTER_JUSTIFY,
-    } TextHJustify;
+        LEFT,
+        RIGHT,
+        CENTER,
+    };
 
+    using text_bitmap_ptr = mtl::unique_ptr<tTextBitMap, fontDestroyTextBitMap>;
 
     void textRendererCreate(char const *szFontName);
     void textRendererDestroy();
 
-    tTextBitMap* textCreateFromString(Bstring bstrText, UWORD uwMaxWidth, TextHJustify justification);
-    tTextBitMap* textCreateFromId(ULONG stringId, UWORD uwMaxWidth, TextHJustify justification);
+    text_bitmap_ptr textCreateFromString(bstr_view const& text, UWORD uwMaxWidth, TextHJustify justification);
+    text_bitmap_ptr textCreateFromId(ULONG stringId, UWORD uwMaxWidth, TextHJustify justification);
 }
 
 

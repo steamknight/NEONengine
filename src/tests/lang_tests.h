@@ -11,7 +11,7 @@
 
 #include "test_macros.h"
 
-namepace NEONengine::tests
+namespace NEONengine::tests
 {
     TEST_IMPL(test_lang_load_invalid_file)
     {

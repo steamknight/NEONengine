@@ -5,6 +5,8 @@
 #include <ace/managers/memory.h>
 #include <ace/utils/bitmap.h>
 
+#include "mtl/utility.h"
+
 namespace NEONengine
 {
     constexpr UBYTE NINE_PATCH_BITPLANES = 8;
@@ -56,7 +58,7 @@ namespace NEONengine
 
     tBitMap* ninePatchRender(NinePatch patch, UWORD uwWidth, UWORD uwHeight, ULONG ulFlags)
     {
-        tBitMap* pResult = bitmapCreate(ROUND_16(uwWidth), ROUND_16(uwHeight), NINE_PATCH_BITPLANES, BMF_CLEAR | BMF_INTERLEAVED | ulFlags);
+        tBitMap* pResult = bitmapCreate(mtl::ROUND_16(uwWidth), mtl::ROUND_16(uwHeight), NINE_PATCH_BITPLANES, BMF_CLEAR | BMF_INTERLEAVED | ulFlags);
         if (!pResult)
             return NULL;
 

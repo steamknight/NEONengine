@@ -356,7 +356,8 @@ namespace NEONengine
 
         return (tUwRect) {
             .uwY = minY, .uwX = minX,
-            .uwWidth = maxX - minX, .uwHeight = maxY - minY
+            .uwWidth = static_cast<UWORD>(maxX - minX),
+            .uwHeight = static_cast<UWORD>(maxY - minY)
         };
     }
 }

@@ -8,17 +8,19 @@
 #include "core/screen.h"
 #include "core/text_render.h"
 
+#include "mtl/vector.h"
+
+static tTextBitMap* s_pTextBitmap = nullptr;
 namespace NEONengine
 {
-    static tTextBitMap* s_pTextBitmap;
+    using textBitMap_ptr = mtl::unique_ptr<tTextBitMap, fontDestroyTextBitMap>;
 
-    void drawText(Bstring bstr, UWORD uwX, UWORD uwY, UWORD uwMaxWidth, UBYTE ubColorIdx, TextHJustify justification)
+    void drawText(bstr_view const& bstr, UWORD uwX, UWORD uwY, UWORD uwMaxWidth, UBYTE ubColorIdx, TextHJustify justification)
     {
-        tTextBitMap* pTextBmp = textCreateFromString(bstr, uwMaxWidth, justification);
+        auto pTextBmp = textBitMap_ptr(textCreateFromString(bstr, uwMaxWidth, justification));
         fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), pTextBmp, uwX, uwY, ubColorIdx, FONT_COOKIE);
-        fontDestroyTextBitMap(pTextBmp);
-        bstrDestroy(&bstr);
     }
+
     static UWORD s_uwFH = 11;
     void fontTestCreate(void)
     {
@@ -33,46 +35,53 @@ namespace NEONengine
 
         textRendererCreate("data/font.fnt");
 
-        drawText(B(">>>"), 0, 0, 10, 1, TX_LEFT_JUSTIFY);
-        drawText(B("Left justified text"), 10, 0, 200, 1, TX_LEFT_JUSTIFY);
-        drawText(B("Center justified text"), 10, s_uwFH, 200, 9, TX_CENTER_JUSTIFY);
-        drawText(B("Right justified text"), 10, s_uwFH * 2, 200, 8, TX_RIGHT_JUSTIFY);
-        drawText(B("<<<"), 210, 0, 10, 1, TX_LEFT_JUSTIFY);
-        drawText(B("This is a longer line that should wrap around to the next line"),   0, s_uwFH * 4, 100, 17, TX_LEFT_JUSTIFY);
-        drawText(B("|||||"), 103, s_uwFH * 4, 4, 24, TX_LEFT_JUSTIFY);
-        drawText(B("This is a longer line that should wrap around to the next line"), 110, s_uwFH * 4, 100, 26, TX_CENTER_JUSTIFY);
-        drawText(B("|||||"), 213, s_uwFH * 4, 4, 24, TX_LEFT_JUSTIFY);
-        drawText(B("This is a longer line that should wrap around to the next line"), 220, s_uwFH * 4, 100, 27, TX_RIGHT_JUSTIFY);
-        drawText(B("Palette"), 0, s_uwFH * 10 + (s_uwFH >> 1), 10, 24, TX_LEFT_JUSTIFY);
+        drawText((">>>"), 0, 0, 10, 1, TextHJustify::LEFT);
+        drawText(("Left justified text"), 10, 0, 200, 1, TextHJustify::LEFT);
+        drawText(("Center justified text"), 10, s_uwFH, 200, 9, TextHJustify::CENTER);
+        drawText(("Right justified text"), 10, s_uwFH * 2, 200, 8, TextHJustify::RIGHT);
+        drawText(("<<<"), 210, 0, 10, 1, TextHJustify::LEFT);
+        drawText(("This is a longer line that should wrap around to the next line"),   0, s_uwFH * 4, 100, 17, TextHJustify::LEFT);
+        drawText(("|||||"), 103, s_uwFH * 4, 4, 24, TextHJustify::LEFT);
+        drawText(("This is a longer line that should wrap around to the next line"), 110, s_uwFH * 4, 100, 26, TextHJustify::CENTER);
+        drawText(("|||||"), 213, s_uwFH * 4, 4, 24, TextHJustify::LEFT);
+        drawText(("This is a longer line that should wrap around to the next line"), 220, s_uwFH * 4, 100, 27, TextHJustify::RIGHT);
+        drawText(("Palette"), 0, s_uwFH * 10 + (s_uwFH >> 1), 10, 24, TextHJustify::LEFT);
 
+        char buffer[16];
         for (UBYTE color = 1; color < 32; ++color)
         {
             UWORD x = 20 + (color / 8) * 30;
             UWORD y = s_uwFH * 10 + (color % 8) * s_uwFH;
-            drawText(bstrCreateF(MEMF_FAST, "%02d", color), x, y, 20, color, TX_LEFT_JUSTIFY);
+            snprintf(buffer, sizeof(buffer), "%02d", color);
+            drawText(buffer, x, y, 20, color, TextHJustify::LEFT);
         }
 
         ULONG ulStart = timerGetPrec();
-        drawText(B("This is a long string and it's going to wrap around quite a few times in order to test the worst case performance scenario. Let's see how it does. Right below this line is the time it took to render."), 140, s_uwFH * 10, 180, 18, TX_LEFT_JUSTIFY);
+        drawText("This is a long string and it's going to wrap around quite a few times in order to test the worst case performance scenario. Let's see how it does. Right below this line is the time it took to render.", 140, s_uwFH * 10, 180, 18, TextHJustify::LEFT);
         ULONG ulEnd = timerGetPrec();
 
         char timerBuffer[256];
+        char renderBuffer[256]; 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStart, ulEnd));
-        drawText(bstrCreateF(MEMF_FAST, "Rendered in %s ", timerBuffer), 140, s_uwFH * 18 + (s_uwFH >> 1), 240, 1, TX_LEFT_JUSTIFY);
+        snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
+        drawText(renderBuffer, 140, s_uwFH * 18 + (s_uwFH >> 1), 240, 1, TextHJustify::LEFT);
 
-        Bstring palette0 = B("00");
-        s_pTextBitmap = textCreateFromString(palette0, 20, TX_LEFT_JUSTIFY);
-        bstrDestroy(&palette0);
 
         ULONG ulEndFullPage = timerGetPrec();
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartFullPage, ulEndFullPage));
-        drawText(bstrCreateF(MEMF_FAST, "Whole page rendered in %s ", timerBuffer), 0, 255 - s_uwFH, 320, 1, TX_CENTER_JUSTIFY);
+        snprintf(renderBuffer, sizeof(renderBuffer), "Whole page rendered in %s ", timerBuffer);
+        drawText(renderBuffer, 0, 255 - s_uwFH, 320, 1, TextHJustify::CENTER);
     }
 
     static UBYTE ubColor = 0;
     static ULONG ulLastTime = 0;
     void fontTestProcess(void)
     {
+        if (!s_pTextBitmap)
+        {
+            s_pTextBitmap = textCreateFromString("00", 20, TextHJustify::LEFT);
+        }
+
         ULONG delta = timerGetDelta(ulLastTime, timerGet());
 
         if (delta < 10)

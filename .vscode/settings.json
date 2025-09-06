@@ -127,7 +127,8 @@
         "lang.h": "c",
         "bstr.h": "c",
         "test_macros.h": "c",
-        "nine_patch.h": "c"
+        "nine_patch.h": "c",
+        "stdint-gcc.h": "c"
     },
     "cSpell.words": [
         "blit",
@@ -143,6 +144,7 @@
     "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
     "C_Cpp.default.enableConfigurationSquiggles": true,
     "C_Cpp.default.configurationProvider": "",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "files.exclude": {
         "**/*.rpyc": true,
         "**/*.rpa": true,

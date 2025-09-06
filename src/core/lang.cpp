@@ -6,23 +6,26 @@
 #include <ace/utils/disk_file.h>
 
 #include "utils/bstr.h"
+#include "mtl/memory.h"
 
 namespace NEONengine
 {
-    typedef struct LocHeader
+    using namespace mtl;
+
+    struct LocHeader
     {
         UWORD uwVersion;
         UWORD uwLanguage;
     };
 
-    typedef struct NeonStringTable
+    struct NeonStringTable
     {
         ULONG ulStringCount;
         ULONG ulStringDataSize;
         Bstring pStrings[];
     };
 
-    typedef struct NeonWordTable
+    struct NeonWordTable
     {
         ULONG ulWordListCount;
         ULONG ulWordDataSize;
@@ -163,13 +166,13 @@ namespace NEONengine
         }
 
         // Allocate the string table, this will contain pointers to all the strings
-        s_pStringTable = allocBufferFastClear<NeonStringTable*>(sizeof(NeonStringTable) + ulStringCount * sizeof(Bstring));
+        s_pStringTable = allocFastClear<NeonStringTable*>(sizeof(NeonStringTable) + ulStringCount * sizeof(Bstring));
         s_pStringTable->ulStringCount = ulStringCount;
 
         // Allocate space for all the strings with and extra byte to null-terminate
         // the last string
         s_pStringTable->ulStringDataSize = ulDataSize + 1;
-        s_pStringData = allocBufferFastClear<Bstring>(s_pStringTable->ulStringDataSize);
+        s_pStringData = allocFastClear<Bstring>(s_pStringTable->ulStringDataSize);
         fileRead(pFile, s_pStringData, ulDataSize);
 
         ULONG pCurrentString = (ULONG)(void*)s_pStringData;

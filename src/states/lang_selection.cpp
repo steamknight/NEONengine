@@ -12,6 +12,8 @@
 #include "core/mouse_pointer.h"
 #include "core/layer.h"
 
+#include "utils/types.h"
+
 namespace NEONengine
 {
     #define STATE_NAME "State: Language Selection"
@@ -100,7 +102,7 @@ namespace NEONengine
 
         ULONG itCtx = MAKE_CONTEXT(IT, 1);
         Hotspot italianFlag = {
-            .bounds = (tUwRect){.uwY = uwY + FLAG_HEIGHT,.uwX = uwX, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT},
+            .bounds = (tUwRect){.uwY = to<UWORD>(uwY + FLAG_HEIGHT), .uwX = uwX, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT},
             .pointer = MousePointer::USE,
             .cbOnHovered = cbOnHovered,
             .cbOnUnhovered = cbOnUnhovered,

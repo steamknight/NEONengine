@@ -29,7 +29,7 @@ void genericCreate(void)
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &g_stateTestRunner);
 #else
-    statePush(g_gameStateManager, &g_stateDialogueTest);
+    statePush(g_gameStateManager, &g_stateFontTest);
 #endif
 }
 

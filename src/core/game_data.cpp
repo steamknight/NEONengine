@@ -5,8 +5,12 @@
 #include <ace/managers/system.h>
 #include <ace/utils/disk_file.h>
 
+#include "mtl/memory.h"
+
 namespace NEONengine
 {
+    using namespace mtl;
+    
     typedef struct _GameDataCounts
     {
         ULONG ulLocationCount;
@@ -65,8 +69,8 @@ namespace NEONengine
         GDL_VERIFY(ulMagic == *(ULONG *)dataFileMagic, GameDataResult::NOT_NEON_FILE);
         GDL_VERIFY(ulVersion == GDL_SUPPORTED_VERSION, GameDataResult::VERSION_NOT_SUPPORTED);
 
-        g_pGameData = allocFastAndClear<GameData>();
-        s_pGameDataCounts = allocFastAndClear<GameDataCounts>();
+        g_pGameData = allocTypeFastClear<GameData>();
+        s_pGameDataCounts = allocTypeFastClear<GameDataCounts>();
 
         // Load the chunks
         while (!fileIsEof(pFile))

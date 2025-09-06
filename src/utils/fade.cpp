@@ -7,15 +7,19 @@
 #include <ace/utils/palette.h>
 #include <ace/managers/ptplayer.h>
 
+#include "mtl/memory.h"
+
 namespace NEONengine
 {
+    using namespace mtl;
+
     tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount)
     {
         logBlockBegin(
             "fadeCreate(pView: %p, pPalette: %p, ubColorCount: %hhu)",
             pView, pPalette, ubColorCount);
 
-        tFade *pFade = allocFastAndClear<tFade>();
+        tFade *pFade = allocTypeFastClear<tFade>();
         pFade->eState = FADE_STATE_IDLE;
         pFade->pView = pView;
         pFade->ubColorCount = ubColorCount;
@@ -24,12 +28,12 @@ namespace NEONengine
         if (pView->uwFlags & VP_FLAG_AGA)
         {
             uwMaxColors = 1 << pView->pFirstVPort->ubBpp;
-            pFade->pPaletteRef = alloc<UWORD>(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
+            pFade->pPaletteRef = (UWORD*)memAlloc(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
         }
         else
         {
             uwMaxColors = 32;
-            pFade->pPaletteRef = alloc<UWORD>(sizeof(UWORD) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
+            pFade->pPaletteRef = allocFastClear<UWORD*>(sizeof(UWORD) * uwMaxColors);
         }
 
         if (ubColorCount > uwMaxColors)

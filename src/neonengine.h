@@ -31,27 +31,6 @@ namespace NEONengine
             fn(__VA_ARGS__);
     #endif // !defined (SAFE_CB_CALL)
 
-    #if !defined(ROUND_16)
-    #define ROUND_16(x) (((x) + 15) & ~15)
-    #endif
-
-    template <typename T>
-    T *alloc(ULONG ulTotalSize, UBYTE ubFlags)
-    {
-        return reinterpret_cast<T *>(memAlloc(ulTotalSize, ubFlags));
-    }
-
-    template <typename T>
-    T allocBufferFastClear(ULONG ulTotalSize)
-    {
-        return reinterpret_cast<T>(memAlloc(ulTotalSize, MEMF_FAST | MEMF_CLEAR));
-    }
-
-    template <typename T>
-    T *allocFastAndClear()
-    {
-        return reinterpret_cast<T *>(memAlloc(sizeof(T), MEMF_ANY | MEMF_CLEAR));
-    }
 }
 
 #endif //__NEONENGINE_H__INCLUDED__
