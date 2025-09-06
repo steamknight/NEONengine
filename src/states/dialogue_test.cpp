@@ -17,6 +17,8 @@
 
 namespace NEONengine 
 {
+    using bitmap_ptr = mtl::unique_ptr<tBitMap, bitmapDestroy>;
+
     void dialogueTestCreate(void)
     {
         logBlockBegin("dialogueTestCreate");
@@ -35,14 +37,14 @@ namespace NEONengine
         UWORD uwWidth = 240;
 
         ULONG ulStartText = timerGetPrec();
-        tTextBitMap* pTextBitmap = textCreateFromString(text, uwWidth - uwMargins * 2, TextHJustify::LEFT);
+        auto pTextBitmap = textCreateFromString(text, uwWidth - uwMargins * 2, TextHJustify::LEFT);
         ULONG ulEndText = timerGetPrec();
 
         NinePatch pPatch = ninePatchCreate(&pPatchBitmap, 16, 16, 16, 16);
         UWORD uwHeight = pTextBitmap->uwActualHeight + uwMargins * 2;
 
         ULONG ulStartPatch = timerGetPrec();
-        tBitMap* pRenderedPatch = ninePatchRender(pPatch, uwWidth, uwHeight, 0);
+        auto pRenderedPatch = bitmap_ptr(ninePatchRender(pPatch, uwWidth, uwHeight, 0));
         ULONG ulEndPatch = timerGetPrec();
 
         ULONG ulStartRender = timerGetPrec();
@@ -51,30 +53,25 @@ namespace NEONengine
         ULONG ulEndRender = timerGetPrec();
 
         char timerBuffer[256];
+        char renderBuffer[256];
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartText, ulEndText));
-        snprintf(timerBuffer, sizeof(timerBuffer), "Text created in %s", timerBuffer);
-        tTextBitMap* pTextCreate = textCreateFromString(timerBuffer, 320, TextHJustify::CENTER);
+        snprintf(renderBuffer, sizeof(renderBuffer), "Text created in %s", timerBuffer);
+        auto pTextCreate = textCreateFromString(renderBuffer, 320, TextHJustify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartPatch, ulEndPatch));
-        snprintf(timerBuffer, sizeof(timerBuffer), "Patch created in %s", timerBuffer);
-        tTextBitMap* pPatchCreate = textCreateFromString(timerBuffer, 320, TextHJustify::CENTER);
+        snprintf(renderBuffer, sizeof(renderBuffer), "Patch created in %s", timerBuffer);
+        auto pPatchCreate = textCreateFromString(renderBuffer, 320, TextHJustify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartRender, ulEndRender));
-        snprintf(timerBuffer, sizeof(timerBuffer), "Rendered in %s", timerBuffer);
-        tTextBitMap* pRender = textCreateFromString(timerBuffer, 320, TextHJustify::CENTER);
+        snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
+        auto pRender = textCreateFromString(renderBuffer, 320, TextHJustify::CENTER);
 
         screenTextCopy(g_mainScreen, pTextCreate, 0, 180, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pPatchCreate, 0, 191, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pRender, 0, 202, 1, FONT_COOKIE);
 
-        fontDestroyTextBitMap(pTextCreate);
-        fontDestroyTextBitMap(pPatchCreate);
-        fontDestroyTextBitMap(pTextBitmap);
-        fontDestroyTextBitMap(pRender);
-
         ninePatchDestroy(&pPatch);
-        bitmapDestroy(pRenderedPatch);
     }
 
 

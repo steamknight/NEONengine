@@ -13,6 +13,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "cstdint.h"
+#include "utility.h"
 
 namespace mtl
 {
@@ -99,7 +100,7 @@ namespace mtl
              * 
              * @warning No bounds checking is performed. Use at() for safe access.
              */
-            constexpr T const& operator[](size_t index) { return _data[index]; }
+            constexpr T const& operator[](size_t index) const { return _data[index]; }
 
             /**
              * @brief Access element with bounds checking
@@ -111,7 +112,15 @@ namespace mtl
              */
             constexpr T& at(size_t index)
             {
-                return (index < Size) ? _data[index] : TRAP("Index out of bounds.");
+                if (index < Size)
+                {
+                    return _data[index];
+                }
+                else
+                {
+                    TRAP("Index out of bounds.");
+                    return _data[0]; // To satisfy compiler, will never reach here
+                }
             }
             
             /**
@@ -122,9 +131,17 @@ namespace mtl
              * 
              * @throws Calls TRAP() if index is out of bounds
              */
-            constexpr T const& at(size_t index)
+            constexpr T const& at(size_t index) const
             {
-                return (index < Size) ? _data[index] : TRAP("Index out of bounds.");
+                if (index < Size)
+                {
+                    return _data[index];
+                }
+                else
+                {
+                    TRAP("Index out of bounds.");
+                    return _data[0]; // To satisfy compiler, will never reach here
+                }
             }
 
             /*
@@ -149,7 +166,7 @@ namespace mtl
              * 
              * @return Const pointer to the first element
              */
-            constexpr T const* begin() { return _data; }
+            constexpr T const* begin() const { return _data; }
 
             /**
              * @brief Get iterator to the end
@@ -163,7 +180,7 @@ namespace mtl
              * 
              * @return Const pointer to one past the last element
              */
-            constexpr T const* end() { return _data + Size; }
+            constexpr T const* end() const { return _data + Size; }
 
             /**
              * @brief Get the number of elements

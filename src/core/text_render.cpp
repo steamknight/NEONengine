@@ -6,7 +6,7 @@
 
 #include "mtl/cstdint.h"
 #include "mtl/memory.h"
-#include "mtl/vector.h"
+#include "mtl/array.h"
 #include "mtl/utility.h"
 #include "core/lang.h"
 #include "utils/bstr_view.h"
@@ -19,7 +19,7 @@ namespace NEONengine
     static char* s_pLineScratch = nullptr;
     static u32   s_ulLineScratchCap = 0; // characters capacity (excludes null terminator)
 
-    constexpr size_t INITIAL_LINE_CAPACITY = 5;
+    constexpr size_t INITIAL_LINE_CAPACITY = 16;
 
     #define LINE_START(line) to<u32>(((line) & 0xFFFF0000) >> 16)
     #define LINE_END(line)   to<u32>((line) & 0x0000FFFF)
@@ -82,6 +82,7 @@ namespace NEONengine
     void textRendererCreate(char const *szFontName)
     {
         s_pDefaultFont = fontCreateFromPath(szFontName);
+
         if(!s_pLineScratch) {
             s_ulLineScratchCap = 128;
             s_pLineScratch = (char*)memAlloc(s_ulLineScratchCap + 1, MEMF_FAST);
@@ -100,6 +101,7 @@ namespace NEONengine
             fontDestroy(s_pDefaultFont);
             s_pDefaultFont = nullptr;
         }
+
         if(s_pLineScratch) {
             memFree(s_pLineScratch, s_ulLineScratchCap + 1);
             s_pLineScratch = nullptr;
@@ -124,26 +126,28 @@ namespace NEONengine
         u32 ulStartIndex = 0;
 
         systemUse();
-        auto lines = mtl::vector<u32>(INITIAL_LINE_CAPACITY);
+        auto lines = mtl::array<u32, INITIAL_LINE_CAPACITY>();
         auto pLineBitmap = text_bitmap_ptr(fontCreateTextBitMap(320, mtl::ROUND_16(s_pDefaultFont->uwHeight)));
         systemUnuse();
 
         // Create the individual line bitmaps
         u32 line = 0;
+        u32 ulLineCount = 0;
         while((breakTextIntoLines(text, &ulStartIndex, uwMaxWidth, &line)))
         {
-            lines.push_back(line);
+            lines[ulLineCount++] = line;
         }
 
         // .. and stitch them all together
-        u16 uwHeight = s_pDefaultFont->uwHeight * lines.size();
+        u16 uwHeight = s_pDefaultFont->uwHeight * ulLineCount;
         auto pResult = text_bitmap_ptr(fontCreateTextBitMap(mtl::ROUND_16(uwMaxWidth), mtl::ROUND_16(uwHeight)));
         pResult->uwActualWidth = uwMaxWidth;
         pResult->uwActualHeight = uwHeight;
 
-        u32 idx = 0;
-        for (auto& line : lines)
+        for (auto idx = 0; idx < ulLineCount; ++idx)
         {
+            line = lines[idx];
+            
             if (!line)
                 continue;
             
@@ -152,29 +156,10 @@ namespace NEONengine
 
             if (ulStart == ulEnd)
                 continue;
-            u32 needed = ulEnd - ulStart; // number of characters in this line
-            if (needed == 0) continue;
 
-            // Ensure capacity (need space for null terminator)
-            if (!s_pLineScratch) {
-                s_ulLineScratchCap = 128;
-                s_pLineScratch = (char*)memAlloc(s_ulLineScratchCap + 1, MEMF_FAST);
-                if(!s_pLineScratch) continue;
-            }
-            if (s_ulLineScratchCap < needed) {
-                u32 newCap = s_ulLineScratchCap ? s_ulLineScratchCap : 128;
-                while (newCap < needed) newCap <<= 1;
-                char* pNew = (char*)memAlloc(newCap + 1, MEMF_FAST);
-                if(!pNew) {
-                    logWrite("ERROR: Failed to grow scratch buffer to %lu bytes", (ULONG)(newCap + 1));
-                    continue;
-                }
-                // copy existing partial (not strictly needed for new line but keep data stable)
-                for(u32 i=0;i<needed && i<s_ulLineScratchCap;++i) pNew[i]=s_pLineScratch[i];
-                memFree(s_pLineScratch, s_ulLineScratchCap + 1);
-                s_pLineScratch = pNew;
-                s_ulLineScratchCap = newCap;
-            }
+            u32 needed = ulEnd - ulStart; // number of characters in this line
+            if (needed == 0)
+                continue;
 
             // Copy characters
             char* dst = s_pLineScratch;
@@ -202,7 +187,7 @@ namespace NEONengine
                     break;
             }
 
-            fontDrawTextBitMap(pResult->pBitMap, pLineBitmap, uwX, idx++ * s_pDefaultFont->uwHeight, 1, 0);
+            fontDrawTextBitMap(pResult->pBitMap, pLineBitmap, uwX, idx * s_pDefaultFont->uwHeight, 1, 0);
         }
 
         return pResult;

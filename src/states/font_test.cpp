@@ -10,7 +10,7 @@
 
 #include "mtl/vector.h"
 
-static tTextBitMap* s_pTextBitmap = nullptr;
+tTextBitMap* s_pTextBitmap = nullptr;
 namespace NEONengine
 {
     using textBitMap_ptr = mtl::unique_ptr<tTextBitMap, fontDestroyTextBitMap>;
@@ -66,25 +66,22 @@ namespace NEONengine
         snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
         drawText(renderBuffer, 140, s_uwFH * 18 + (s_uwFH >> 1), 240, 1, TextHJustify::LEFT);
 
-
         ULONG ulEndFullPage = timerGetPrec();
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartFullPage, ulEndFullPage));
         snprintf(renderBuffer, sizeof(renderBuffer), "Whole page rendered in %s ", timerBuffer);
         drawText(renderBuffer, 0, 255 - s_uwFH, 320, 1, TextHJustify::CENTER);
+
+        s_pTextBitmap = textCreateFromString("00", 20, TextHJustify::LEFT);
+        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBitmap, 20, s_uwFH * 10, 1, FONT_COOKIE);
     }
 
     static UBYTE ubColor = 0;
     static ULONG ulLastTime = 0;
     void fontTestProcess(void)
     {
-        if (!s_pTextBitmap)
-        {
-            s_pTextBitmap = textCreateFromString("00", 20, TextHJustify::LEFT);
-        }
-
         ULONG delta = timerGetDelta(ulLastTime, timerGet());
 
-        if (delta < 10)
+        if (delta < 100)
             return;
         
         ulLastTime = timerGet();
