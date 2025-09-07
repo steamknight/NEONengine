@@ -117,14 +117,15 @@ namespace mtl
     };
 
     /**
-     * @brief Rounds a value up to the next multiple of 16.
+     * @brief Rounds a value up to the next multiple of Size.
      * 
      * @param value 
      * @return constexpr size_t 
      */
-    constexpr size_t ROUND_16(size_t value) noexcept
+    template<size_t Size>
+    constexpr size_t round_up(size_t value) noexcept
     {
-        return (value + 15) & ~15;
+        return (value + (Size - 1)) & ~(Size - 1);
     }
 }
 

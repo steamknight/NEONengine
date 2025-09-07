@@ -8,8 +8,12 @@
 #include "core/screen.h"
 #include "neonengine.h"
 
+#include "mtl/utility.h"
+
 namespace NEONengine
 {
+    using namespace mtl;
+    
     enum class HotspotState
     {
         IDLE,
@@ -164,7 +168,7 @@ namespace NEONengine
                     break;
 
                 default:
-                    logWrite("layerUpdate: Unknown hotspot state %d", pCurrent->state);
+                    logWrite("layerUpdate: Unknown hotspot state %d", to<int>(pCurrent->state));
                     break;
             };
 

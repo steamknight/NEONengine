@@ -1,8 +1,8 @@
 #include "neonengine.h"
 
+#include "ace++/font.h"
 #include <ace/managers/system.h>
 #include <ace/managers/timer.h>
-#include <ace/utils/font.h>
 #include <ace/utils/palette.h>
 
 #include "core/screen.h"
@@ -10,15 +10,13 @@
 
 #include "mtl/vector.h"
 
-tTextBitMap* s_pTextBitmap = nullptr;
+ace::text_bitmap_ptr s_pTextBitmap = nullptr; 
 namespace NEONengine
 {
-    using textBitMap_ptr = mtl::unique_ptr<tTextBitMap, fontDestroyTextBitMap>;
-
     void drawText(bstr_view const& bstr, UWORD uwX, UWORD uwY, UWORD uwMaxWidth, UBYTE ubColorIdx, TextHJustify justification)
     {
-        auto pTextBmp = textBitMap_ptr(textCreateFromString(bstr, uwMaxWidth, justification));
-        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), pTextBmp, uwX, uwY, ubColorIdx, FONT_COOKIE);
+        auto pTextBmp = textCreateFromString(bstr, uwMaxWidth, justification);
+        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), pTextBmp.get(), uwX, uwY, ubColorIdx, FONT_COOKIE);
     }
 
     static UWORD s_uwFH = 11;
@@ -60,7 +58,7 @@ namespace NEONengine
         drawText("This is a long string and it's going to wrap around quite a few times in order to test the worst case performance scenario. Let's see how it does. Right below this line is the time it took to render.", 140, s_uwFH * 10, 180, 18, TextHJustify::LEFT);
         ULONG ulEnd = timerGetPrec();
 
-        char timerBuffer[256];
+        char timerBuffer[16];
         char renderBuffer[256]; 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStart, ulEnd));
         snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
@@ -70,15 +68,14 @@ namespace NEONengine
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartFullPage, ulEndFullPage));
         snprintf(renderBuffer, sizeof(renderBuffer), "Whole page rendered in %s ", timerBuffer);
         drawText(renderBuffer, 0, 255 - s_uwFH, 320, 1, TextHJustify::CENTER);
-
-        s_pTextBitmap = textCreateFromString("00", 20, TextHJustify::LEFT);
-        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBitmap, 20, s_uwFH * 10, 1, FONT_COOKIE);
     }
 
     static UBYTE ubColor = 0;
     static ULONG ulLastTime = 0;
     void fontTestProcess(void)
     {
+        static auto palette00 = ace::text_bitmap_ptr(textCreateFromString("00", 20, TextHJustify::LEFT));
+
         ULONG delta = timerGetDelta(ulLastTime, timerGet());
 
         if (delta < 100)
@@ -86,7 +83,7 @@ namespace NEONengine
         
         ulLastTime = timerGet();
 
-        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBitmap, 20, s_uwFH * 10, ubColor++, FONT_COOKIE);
+        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), palette00.get(), 20, s_uwFH * 10, ubColor++, FONT_COOKIE);
         if (ubColor > 31)
             ubColor = 0;
     }
@@ -94,7 +91,6 @@ namespace NEONengine
     void fontTestDestroy(void)
     {
         textRendererDestroy();
-        fontDestroyTextBitMap(s_pTextBitmap);
     }
 
     tState g_stateFontTest = {

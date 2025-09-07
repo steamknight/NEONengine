@@ -15,7 +15,7 @@
         "types.h": "c",
         "stdint.h": "c",
         "fade.h": "c",
-        "bitmap.h": "c",
+        "bitmap.h": "cpp",
         "screen.h": "c",
         "vector": "cpp",
         "neonengine.h": "c",
@@ -122,13 +122,14 @@
         "stddef.h": "c",
         "disk_file_private.h": "c",
         "memory.h": "c",
-        "text_render.h": "c",
-        "font.h": "c",
+        "text_render.h": "cpp",
+        "font.h": "cpp",
         "lang.h": "c",
         "bstr.h": "c",
         "test_macros.h": "c",
-        "nine_patch.h": "c",
-        "stdint-gcc.h": "c"
+        "nine_patch.h": "cpp",
+        "stdint-gcc.h": "c",
+        "utility.h": "cpp"
     },
     "cSpell.words": [
         "blit",

@@ -13,6 +13,8 @@
 
 using namespace NEONengine;
 
+extern "C" void __cxa_finalize(void*);
+
 UBYTE ubDebugToggle = 1;
 
 void genericCreate(void)
@@ -29,13 +31,12 @@ void genericCreate(void)
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &g_stateTestRunner);
 #else
-    statePush(g_gameStateManager, &g_stateDialogueTest);
+    statePush(g_gameStateManager, &g_stateFontTest);
 #endif
 }
 
 void genericProcess(void)
 {
-    auto a = add(1, 2);
     keyProcess();
     mouseProcess();
     ptplayerProcess();
@@ -66,4 +67,7 @@ void genericDestroy(void)
     mouseDestroy();
     keyDestroy();
     systemDestroy();
+
+    // Run global/static destructors that registered with __cxa_atexit
+    __cxa_finalize(nullptr);
 }

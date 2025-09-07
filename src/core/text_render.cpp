@@ -4,6 +4,8 @@
 #include <ace/utils/font.h>
 #include <ace/managers/system.h>
 
+#include "ace++/font.h"
+
 #include "mtl/cstdint.h"
 #include "mtl/memory.h"
 #include "mtl/array.h"
@@ -109,25 +111,25 @@ namespace NEONengine
         }
     }
 
-    text_bitmap_ptr textCreateFromString(bstr_view const& text, u16 uwMaxWidth, TextHJustify justification)
+    ace::text_bitmap_ptr textCreateFromString(bstr_view const& text, u16 uwMaxWidth, TextHJustify justification)
     {
         if (text.empty())
         {
             logWrite("ERROR: Bstring is null.");
-            return text_bitmap_ptr(nullptr);
+            return ace::text_bitmap_ptr(nullptr);
         }
 
         if (!s_pDefaultFont)
         {
             logWrite("ERROR: Default font is not initialized.");
-            return text_bitmap_ptr(nullptr);
+            return ace::text_bitmap_ptr(nullptr);
         }
 
         u32 ulStartIndex = 0;
 
         systemUse();
         auto lines = mtl::array<u32, INITIAL_LINE_CAPACITY>();
-        auto pLineBitmap = text_bitmap_ptr(fontCreateTextBitMap(320, mtl::ROUND_16(s_pDefaultFont->uwHeight)));
+        auto pLineBitmap = ace::text_bitmap_ptr(fontCreateTextBitMap(320, mtl::round_up<16>(s_pDefaultFont->uwHeight)));
         systemUnuse();
 
         // Create the individual line bitmaps
@@ -140,14 +142,14 @@ namespace NEONengine
 
         // .. and stitch them all together
         u16 uwHeight = s_pDefaultFont->uwHeight * ulLineCount;
-        auto pResult = text_bitmap_ptr(fontCreateTextBitMap(mtl::ROUND_16(uwMaxWidth), mtl::ROUND_16(uwHeight)));
+        auto pResult = ace::text_bitmap_ptr(fontCreateTextBitMap(mtl::round_up<16>(uwMaxWidth), mtl::round_up<16>(uwHeight)));
         pResult->uwActualWidth = uwMaxWidth;
         pResult->uwActualHeight = uwHeight;
 
-        for (auto idx = 0; idx < ulLineCount; ++idx)
+        for (auto idx = 0u; idx < ulLineCount; ++idx)
         {
             line = lines[idx];
-            
+
             if (!line)
                 continue;
             
@@ -168,7 +170,7 @@ namespace NEONengine
             }
             dst[needed] = '\0';
 
-            fontFillTextBitMap(s_pDefaultFont, pLineBitmap, dst);
+            fontFillTextBitMap(s_pDefaultFont, pLineBitmap.get(), dst);
 
             u16 uwX = 0;
             switch (justification)
@@ -187,19 +189,19 @@ namespace NEONengine
                     break;
             }
 
-            fontDrawTextBitMap(pResult->pBitMap, pLineBitmap, uwX, idx * s_pDefaultFont->uwHeight, 1, 0);
+            fontDrawTextBitMap(pResult->pBitMap, pLineBitmap.get(), uwX, idx * s_pDefaultFont->uwHeight, 1, 0);
         }
 
         return pResult;
     }
 
-    text_bitmap_ptr textCreateFromId(u32 stringId, u16 uwMaxWidth, TextHJustify justification)
+    ace::text_bitmap_ptr textCreateFromId(u32 stringId, u16 uwMaxWidth, TextHJustify justification)
     {
         Bstring bstrText = langGetStringById(stringId);
         if (!bstrText)
         {
             logWrite("ERROR: Could not find string with id %ld", stringId);
-            return text_bitmap_ptr(nullptr);
+            return ace::text_bitmap_ptr(nullptr);
         }
 
         bstr_view view(bstrGetData(bstrText));

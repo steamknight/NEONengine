@@ -2,8 +2,8 @@
 #define __MTL__MEMORY__INCLUDED__
 
 #include <ace/managers/memory.h>
-#include "cstdint.h"
 #include <stddef.h>
+#include <stdint.h>
 
 // Placement new declaration (since we don't use std::new)
 inline void* operator new(decltype(sizeof(int)), void* ptr) noexcept { return ptr; }
@@ -113,8 +113,6 @@ namespace mtl
         return allocType<T, MemF::Chip | MemF::Clear>();
     }
 
-
-
     /**
      * Manages the lifetime of a raw pointer. Can have a function or lambda as
      * a custom deleter for that type allowing easy deletion of pointers created
@@ -134,6 +132,8 @@ namespace mtl
              * @param pointer The pointer to manage
              */
             explicit unique_ptr(T* pointer) noexcept : _pointer(pointer) {}
+
+            unique_ptr(nullptr_t) noexcept : _pointer(nullptr) {}
 
             /*
              * Copy constructor and assignment are removed as, like the
@@ -210,7 +210,7 @@ namespace mtl
              * 
              * @return T* The owned pointer
              */
-            operator T*() { return _pointer; }
+            T* get() { return _pointer; }
 
             /**
              * @brief Convenience operator to easily verify if the pointer is valid.

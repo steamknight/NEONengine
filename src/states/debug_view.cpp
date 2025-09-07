@@ -25,40 +25,40 @@ namespace NEONengine
 
     void debugViewCreate(void)
     {
-    //     logBlockBegin("debugViewCreate");
+        logBlockBegin("debugViewCreate");
 
-    //     s_pFont = fontCreateFromPath("data/font.fnt");
+        s_pFont = fontCreateFromPath("data/font.fnt");
 
-    //     s_pTextBmp = fontCreateTextBitMap(160, s_pFont->uwHeight * 3);
-    //     s_pElapsedTimeBmp = fontCreateTextBitMap(160, s_pFont->uwHeight);
-    //     s_ulDelta = timerGet();
+        s_pTextBmp = fontCreateTextBitMap(160, s_pFont->uwHeight * 3);
+        s_pElapsedTimeBmp = fontCreateTextBitMap(160, s_pFont->uwHeight);
+        s_ulDelta = timerGet();
 
-    //     s_ulFps = systemIsPal() ? 50 : 60;
+        s_ulFps = systemIsPal() ? 50 : 60;
 
-    //     logBlockEnd("debugViewCreate");
+        logBlockEnd("debugViewCreate");
     }
 
     void debugViewProcess(void)
     {
-    //     ULONG ulNow = timerGet();
-    //     ULONG ulDelta = timerGetDelta(s_ulDelta, ulNow);
+        ULONG ulNow = timerGet();
+        ULONG ulDelta = timerGetDelta(s_ulDelta, ulNow);
 
-    //     if (ulDelta < DELAY) return;
+        if (ulDelta < DELAY) return;
 
-    //     s_ulDelta = ulNow;
+        s_ulDelta = ulNow;
 
-    //     sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetFreeChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
-    //     //sprintf(s_memSize, "Chip: %ld KB ", memGetChipSize() >> 10);
-    //     fontFillTextBitMap(s_pFont, s_pTextBmp, s_memSize);
+        sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetFreeChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
+        //sprintf(s_memSize, "Chip: %ld KB ", memGetChipSize() >> 10);
+        fontFillTextBitMap(s_pFont, s_pTextBmp, s_memSize);
 
-    //     sprintf(s_elapsedTime, "Elapsed Time: %lds.", ulNow / s_ulFps);
-    //     fontFillTextBitMap(s_pFont, s_pElapsedTimeBmp, s_elapsedTime);
+        sprintf(s_elapsedTime, "Elapsed Time: %lds.", ulNow / s_ulFps);
+        fontFillTextBitMap(s_pFont, s_pElapsedTimeBmp, s_elapsedTime);
 
-    //     blitRect(screenGetBackBuffer(g_mainScreen), 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight, 0);
-    //     fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBmp, 0, 0, 24, FONT_COOKIE);
+        blitRect(screenGetBackBuffer(g_mainScreen), 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight, 0);
+        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBmp, 0, 0, 24, FONT_COOKIE);
 
-    //     blitRect(screenGetBackBuffer(g_mainScreen), 0, SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight, s_pElapsedTimeBmp->uwActualWidth, s_pElapsedTimeBmp->uwActualHeight, 0);
-    //     fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pElapsedTimeBmp, 0, SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight, 24, FONT_COOKIE);
+        blitRect(screenGetBackBuffer(g_mainScreen), 0, SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight, s_pElapsedTimeBmp->uwActualWidth, s_pElapsedTimeBmp->uwActualHeight, 0);
+        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pElapsedTimeBmp, 0, SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight, 24, FONT_COOKIE);
     }
 
     void debugViewDestroy(void)
