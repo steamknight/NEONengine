@@ -9,6 +9,7 @@
 #include <mtl/cstdint.h>
 #include <mtl/memory.h>
 #include <mtl/array.h>
+#include <mtl/vector.h>
 #include <mtl/utility.h>
 #include "core/lang.h"
 #include "utils/bstr_view.h"
@@ -16,99 +17,111 @@
 namespace NEONengine
 {
     using namespace mtl;
-    static tFont* s_pDefaultFont;
-    // Reusable per-line temporary buffer (raw, manually managed)
-    static char* s_pLineScratch = nullptr;
-    static u32   s_ulLineScratchCap = 0; // characters capacity (excludes null terminator)
-
+    
+    // Configuration constants
     constexpr size_t INITIAL_LINE_CAPACITY = 16;
+    constexpr size_t DEFAULT_SCRATCH_CAPACITY = 256;
+    
+    static tFont* s_font;
+    static mtl::vector<char> s_scratch_area;
+    static mtl::array<uint16_t, 256> s_glyph_cache(0);
 
-    #define LINE_START(line) to<u32>(((line) & 0xFFFF0000) >> 16)
-    #define LINE_END(line)   to<u32>((line) & 0x0000FFFF)
-    #define MAKE_LINE(start, end) ((to<u32>((start)) << 16) | (to<u32>((end)) & 0x0000FFFF))
+    struct line_data
+    {
+        u16 start;
+        u16 end;
 
-    bool breakTextIntoLines(bstr_view const& text, u32* pStartIndex, u32 uwMaxWidth, u32* pOutInfo)
-    {;
-        u32 ulEndOfLine = 0;
-        u32 ulLineWidth = 0;
-        u32 ulOffset = 1;
+        size_t length() { return end - start; }
+    };
 
-        if (!text || *pStartIndex >= text.length())
+    bool break_text_into_lines(bstr_view const& text, u32* p_start_index, u32 max_width, line_data* p_out_data)
+    {
+        u32 end_of_line = 0u;
+        u32 line_width = 0u;
+        u32 offset = 1u;
+        u32 last_space_pos = 0u;
+
+        if (!text || *p_start_index >= text.length())
         {
             return false;
         }
 
-        // NOTE: We go one character beyond the string length to catch the null terminator
-        for (u32 idx = *pStartIndex; idx < text.length() + 1; ++idx)
+        auto text_length = text.length();
+        auto const text_data = text.data();
+        
+        // Early exit for newline-only cases
+        if (text_data[*p_start_index] == '\n')
         {
-            char c = text[idx];
+            p_out_data->start = *p_start_index;
+            p_out_data->end = *p_start_index;
+            *p_start_index += 1;
+            return *p_start_index <= text_length;
+        }
+
+        // NOTE: We go one character beyond the string length to catch the null terminator
+        for (u32 idx = *p_start_index; idx <= text_length; ++idx)
+        {
+            char c = (idx < text_length) ? text_data[idx] : '\0';
 
             if (c == ' ')
             {
-                ulEndOfLine = idx;
+                last_space_pos = idx;
+                end_of_line = idx;
             }
             else if (c == '\n' || c == '\0')
             {
-                ulEndOfLine = idx;
+                end_of_line = idx;
                 break;
             }
 
             if (c >= ' ')
             {
-                ulLineWidth += fontGlyphWidth(s_pDefaultFont, c) + 1; // +1 for spacing
+                u16 glyphWidth = s_glyph_cache[to<u8>(c)];
+
+                line_width += glyphWidth + 1; // +1 for spacing
                 
-                if (uwMaxWidth > 0 && ulLineWidth > uwMaxWidth)
+                if (max_width > 0 && line_width > max_width)
                 {
-                    // If we haven't found a space to break on, break at the current character
-                    if (ulEndOfLine == 0)
-                    {
-                        ulEndOfLine = idx;
-                        ulOffset = 0;
-                    }
+                    // Prefer breaking at last space, otherwise break at current position
+                    end_of_line = (last_space_pos > *p_start_index) ? last_space_pos : idx;
+                    offset = (end_of_line == last_space_pos) ? 1 : 0;
                     break;
                 }
             }
         }
 
-        if (ulEndOfLine == 0)
+        if (end_of_line == 0)
         {
-            ulEndOfLine = text.length();
+            end_of_line = text_length;
         }
 
-        *pOutInfo = MAKE_LINE(*pStartIndex, ulEndOfLine);
-        *pStartIndex = ulEndOfLine + ulOffset;
+        p_out_data->start = *p_start_index;
+        p_out_data->end = end_of_line;
+        *p_start_index = end_of_line + offset;
         return true;
     }
 
 
     void textRendererCreate(char const *szFontName)
     {
-        s_pDefaultFont = fontCreateFromPath(szFontName);
-
-        if(!s_pLineScratch) {
-            s_ulLineScratchCap = 128;
-            s_pLineScratch = (char*)memAlloc(s_ulLineScratchCap + 1, MEMF_FAST);
-            if(!s_pLineScratch) {
-                s_ulLineScratchCap = 0;
-            } else {
-                s_pLineScratch[0] = '\0';
-            }
+        s_font = fontCreateFromPath(szFontName);
+        for (auto glyph = 0; glyph < 256; ++glyph)
+        {
+            s_glyph_cache[glyph] = fontGlyphWidth(s_font, (char)glyph);
         }
+
+        s_scratch_area.resize(DEFAULT_SCRATCH_CAPACITY);
     }
 
     void textRendererDestroy()
     {
-        if (s_pDefaultFont)
+        if (s_font)
         {
-            fontDestroy(s_pDefaultFont);
-            s_pDefaultFont = nullptr;
+            fontDestroy(s_font);
+            s_font = nullptr;
         }
 
-        if(s_pLineScratch) {
-            memFree(s_pLineScratch, s_ulLineScratchCap + 1);
-            s_pLineScratch = nullptr;
-            s_ulLineScratchCap = 0;
-        }
+        s_scratch_area.clear();
     }
 
     ace::text_bitmap_ptr textCreateFromString(bstr_view const& text, u16 uwMaxWidth, TextHJustify justification)
@@ -119,7 +132,7 @@ namespace NEONengine
             return ace::text_bitmap_ptr(nullptr);
         }
 
-        if (!s_pDefaultFont)
+        if (!s_font)
         {
             logWrite("ERROR: Default font is not initialized.");
             return ace::text_bitmap_ptr(nullptr);
@@ -128,20 +141,20 @@ namespace NEONengine
         u32 ulStartIndex = 0;
 
         systemUse();
-        auto lines = mtl::array<u32, INITIAL_LINE_CAPACITY>();
-        auto pLineBitmap = ace::text_bitmap_ptr(fontCreateTextBitMap(320, mtl::round_up<16>(s_pDefaultFont->uwHeight)));
+        auto lines = mtl::array<line_data, INITIAL_LINE_CAPACITY>();
+        auto pLineBitmap = ace::text_bitmap_ptr(fontCreateTextBitMap(320, mtl::round_up<16>(s_font->uwHeight)));
         systemUnuse();
 
         // Create the individual line bitmaps
-        u32 line = 0;
+        line_data line{};
         u32 ulLineCount = 0;
-        while((breakTextIntoLines(text, &ulStartIndex, uwMaxWidth, &line)))
+        while((break_text_into_lines(text, &ulStartIndex, uwMaxWidth, &line)))
         {
             lines[ulLineCount++] = line;
         }
 
         // .. and stitch them all together
-        u16 uwHeight = s_pDefaultFont->uwHeight * ulLineCount;
+        u16 uwHeight = s_font->uwHeight * ulLineCount;
         auto pResult = ace::text_bitmap_ptr(fontCreateTextBitMap(mtl::round_up<16>(uwMaxWidth), mtl::round_up<16>(uwHeight)));
         pResult->uwActualWidth = uwMaxWidth;
         pResult->uwActualHeight = uwHeight;
@@ -149,28 +162,24 @@ namespace NEONengine
         for (auto idx = 0u; idx < ulLineCount; ++idx)
         {
             line = lines[idx];
-
-            if (!line)
-                continue;
-            
-            u32 ulStart = LINE_START(line);
-            u32 ulEnd = LINE_END(line);
-
-            if (ulStart == ulEnd)
+            auto line_length = line.length();
+            if (line_length == 0)
                 continue;
 
-            u32 needed = ulEnd - ulStart; // number of characters in this line
-            if (needed == 0)
-                continue;
-
-            // Copy characters
-            char* dst = s_pLineScratch;
-            for (u32 i = 0; i < needed; ++i) {
-                dst[i] = text[ulStart + i];
+            // Resize to exact needed size + null terminator
+            if (s_scratch_area.size() < line_length + 1)
+            {
+                logWrite("*******************************************scratch resize");
+                s_scratch_area.resize(line_length + 1);
             }
-            dst[needed] = '\0';
 
-            fontFillTextBitMap(s_pDefaultFont, pLineBitmap.get(), dst);
+            // Use memcpy for bulk character copying instead of loop
+            const char* srcStart = text.data() + line.start;
+            memcpy(s_scratch_area.data(), srcStart, line_length);
+            s_scratch_area[line_length] = '\0';
+
+            fontFillTextBitMap(s_font, pLineBitmap.get(), s_scratch_area.data());
+            logWrite(" -> %s*", s_scratch_area.data());
 
             u16 uwX = 0;
             switch (justification)
@@ -189,7 +198,7 @@ namespace NEONengine
                     break;
             }
 
-            fontDrawTextBitMap(pResult->pBitMap, pLineBitmap.get(), uwX, idx * s_pDefaultFont->uwHeight, 1, 0);
+            fontDrawTextBitMap(pResult->pBitMap, pLineBitmap.get(), uwX, idx * s_font->uwHeight, 1, 0);
         }
 
         return pResult;

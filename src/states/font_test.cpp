@@ -1,6 +1,7 @@
 #include "neonengine.h"
 
 #include "ace++/font.h"
+#include <ace/managers/key.h>
 #include <ace/managers/system.h>
 #include <ace/managers/timer.h>
 #include <ace/utils/palette.h>
@@ -13,6 +14,7 @@
 ace::text_bitmap_ptr s_pTextBitmap = nullptr; 
 namespace NEONengine
 {
+    void drawFontTest(ULONG ulStartFullPage);
     void drawText(bstr_view const& bstr, UWORD uwX, UWORD uwY, UWORD uwMaxWidth, UBYTE ubColorIdx, TextHJustify justification)
     {
         auto pTextBmp = textCreateFromString(bstr, uwMaxWidth, justification);
@@ -24,7 +26,6 @@ namespace NEONengine
     {
         logBlockBegin("fontTestCreate");
 
-        ULONG ulStartFullPage = timerGetPrec();
 
         screenFadeFromBlack(g_mainScreen, 25, 0, NULL);
         screenClear(g_mainScreen, 0);
@@ -33,6 +34,13 @@ namespace NEONengine
 
         textRendererCreate("data/font.fnt");
 
+        drawText("Press the Spacebar", 0, (200 - s_uwFH) / 2, 320, 2, TextHJustify::CENTER);
+    }
+
+    void drawFontTest()
+    {
+        ULONG ulStartFullPage = timerGetPrec();
+        screenClear(g_mainScreen, 0);
         drawText((">>>"), 0, 0, 10, 1, TextHJustify::LEFT);
         drawText(("Left justified text"), 10, 0, 200, 1, TextHJustify::LEFT);
         drawText(("Center justified text"), 10, s_uwFH, 200, 9, TextHJustify::CENTER);
@@ -44,6 +52,7 @@ namespace NEONengine
         drawText(("|||||"), 213, s_uwFH * 4, 4, 24, TextHJustify::LEFT);
         drawText(("This is a longer line that should wrap around to the next line"), 220, s_uwFH * 4, 100, 27, TextHJustify::RIGHT);
         drawText(("Palette"), 0, s_uwFH * 10 + (s_uwFH >> 1), 10, 24, TextHJustify::LEFT);
+        drawText("This has...\n\n...a few new-lines", 0, s_uwFH * 18 + 5, 160, 27, TextHJustify::LEFT);
 
         char buffer[16];
         for (UBYTE color = 1; color < 32; ++color)
@@ -72,8 +81,15 @@ namespace NEONengine
 
     static UBYTE ubColor = 0;
     static ULONG ulLastTime = 0;
+    static bool is_drawn = false;
+
     void fontTestProcess(void)
     {
+        if (keyUse(KEY_SPACE) and !is_drawn)
+        {
+            drawFontTest();
+            is_drawn = true;
+        }
         static auto palette00 = ace::text_bitmap_ptr(textCreateFromString("00", 20, TextHJustify::LEFT));
 
         ULONG delta = timerGetDelta(ulLastTime, timerGet());

@@ -73,6 +73,16 @@ namespace mtl
                 }
             }
 
+            /**
+             * @brief Initialize with a single value
+             * 
+             * @param initial_value The value to initialize all elements of the array with
+             */
+            constexpr array(T const& initial_value) : array()
+            {
+                fill(initial_value);
+            }
+
             /*
              *     /\                                        
              *    /  \   ___ ___ ___  ___ ___  ___  _ __ ___ 
