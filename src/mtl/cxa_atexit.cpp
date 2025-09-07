@@ -7,8 +7,8 @@
  * global/static destructors.
  */
 
-#include "cstdint.h"
 #include <ace/managers/log.h>
+#include <stdint.h>
 #include <stddef.h>
 
 // Provide minimal guard variable implementation for function-scope statics.

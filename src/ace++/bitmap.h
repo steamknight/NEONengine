@@ -2,8 +2,8 @@
 #define __ACEPP__BITMAP_H___INCLUDED__
 
 #include <ace/utils/bitmap.h>
-#include "mtl/memory.h"
-#include "mtl/utility.h"
+#include <mtl/memory.h>
+#include <mtl/utility.h>
 
 namespace ace
 {

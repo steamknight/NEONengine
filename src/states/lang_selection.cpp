@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#include "mtl/utility.h"
+#include <mtl/utility.h>
 
 #include "core/screen.h"
 #include "core/mouse_pointer.h"
