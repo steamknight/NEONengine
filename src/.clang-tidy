@@ -1,0 +1,49 @@
+Checks: >
+  -readability-identifier-naming
+
+CheckOptions:
+  # 🎯 General Naming Styles
+  - key: readability-identifier-naming.VariableCase
+    value: camelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: snake_case
+  - key: readability-identifier-naming.ClassCase
+    value: snake_case
+
+  # 🔒 Private Members
+  - key: readability-identifier-naming.PrivateMemberPrefix
+    value: _
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: camelCase
+
+  # 🧊 Static Variables
+  - key: readability-identifier-naming.StaticVariablePrefix
+    value: s_
+  - key: readability-identifier-naming.StaticVariableCase
+    value: camelCase
+
+  # 🧷 Pointers
+  - key: readability-identifier-naming.PointerPrefix
+    value: p
+  - key: readability-identifier-naming.PointerCase
+    value: camelCase
+
+  # 🧮 Constants
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+
+  # 🧬 Template Parameters
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: PascalCase
+
+  # 🧾 Enums
+  - key: readability-identifier-naming.EnumCase
+    value: PascalCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+
+  # 🧪 Optional: Global and Member Variables
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: camelCase
+  - key: readability-identifier-naming.MemberVariableCase
+    value: camelCase

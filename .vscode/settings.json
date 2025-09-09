@@ -151,5 +151,8 @@
         "**/*.rpa": true,
         "**/*.rpymc": true,
         "**/cache/": true
-    }
+    },
+    "editor.rulers": [
+        100
+    ]
 }

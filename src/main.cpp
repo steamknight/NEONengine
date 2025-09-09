@@ -1,14 +1,14 @@
+#include "neonengine.h"
+
 #include <ace/generic/main.h>
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
-#include <ace/managers/state.h>
 #include <ace/managers/ptplayer.h>
+#include <ace/managers/state.h>
 
-#include "neonengine.h"
 #include "build_number.h"
-#include "core/music.h"
 #include "core/game_data.h"
-
+#include "core/music.h"
 #include "test.h"
 
 using namespace NEONengine;
@@ -24,14 +24,14 @@ void genericCreate(void)
     ptplayerCreate(systemIsPal());
 
     g_gameStateManager = stateManagerCreate();
-    g_mainScreen = screenCreate();
+    g_mainScreen       = screenCreate();
     screenLoad(NEONengine::g_mainScreen);
     screenBindMouse(NEONengine::g_mainScreen);
 
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &g_stateTestRunner);
 #else
-    statePush(g_gameStateManager, &g_stateDialogueTest);
+    statePush(g_gameStateManager, &g_stateLangTest);
 #endif
 }
 
@@ -45,14 +45,8 @@ void genericProcess(void)
 
     if (keyUse(KEY_F1))
     {
-        if (ubDebugToggle)
-        {
-            statePush(g_gameStateManager, &g_stateDebugView);
-        }
-        else
-        {
-            statePop(g_gameStateManager);
-        }
+        if (ubDebugToggle) { statePush(g_gameStateManager, &g_stateDebugView); }
+        else { statePop(g_gameStateManager); }
 
         ubDebugToggle = 1 - ubDebugToggle;
     }

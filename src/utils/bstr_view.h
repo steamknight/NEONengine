@@ -1,137 +1,236 @@
 /**
  * @file bstr_view.h
- * @brief Lightweight non-owning view over a custom length-prefixed bstr.
+ * @brief Lightweight non‑owning string view for the engine's raw or
+ * length‑prefixed bstr blocks.
  *
- * bstr memory layout (little endian assumed for length field):
- *   [uint32 length][N bytes characters]['\0']
- * Where length is the number of character bytes (excluding the null terminator).
+ * A bstr (in this project) is laid out in memory as:
+ * @code
+ * [ uint32_t length ][ char data... ][ '\0' ]
+ * @endcode
+ * Where @c length is the number of character bytes (not counting the trailing
+ * null).
  *
- * This class does NOT allocate or free memory. It simply observes an existing
- * bstr or a plain C string. It's analogous to std::string_view but tailored to
- * the project constraints (no <string_view>, no <cstring>, no exceptions).
+ * This type never allocates, frees or throws; it is a pure façade over existing
+ * memory (similar in spirit to @c std::string_view). It can be constructed
+ * from:
+ *  - A raw C string (null terminated)
+ *  - A string literal
+ *  - A pair (pointer, length)
+ *  - A bstr block starting at its 4‑byte length header (@ref
+ * bstr_view::from_bstr)
+ *
+ * Limitations:
+ *  - No bounds checking on operator[] (mirrors typical unchecked access
+ * patterns).
+ *  - Assumes the string length is of the proper endienness.
+ *
+ * Unlike the @c std::string_view, this class considers the string IMMUTABLE
+ * since it can take string literals.
  */
 
 #ifndef __BSTR_VIEW__INCLUDED__
 #define __BSTR_VIEW__INCLUDED__
 
-#include <stddef.h> // size_t
+#include <stddef.h>
 
-// If project has a central assert / trap macro, you can include it here.
-// For now we stay minimal and avoid dependencies.
+#include <mini_std/stdint.h>
+#include <mini_std/string.h>
 
-class bstr_view {
-public:
-    using value_type = char;
-    using pointer = const value_type*;
-    using size_type = size_t;
+#include <mtl/utility.h>
 
-private:
-    // Pointer to first character (never null; points to static empty string if empty)
-    pointer _data;
-    // Stored length in characters (not including null terminator)
-    size_type _size;
+namespace NEONengine
+{
+    /**
+     * @brief Non‑owning view over contiguous character data.
+     *
+     * All accessors are @c constexpr where possible enabling compile‑time usage
+     * for string literals. The stored pointer always references a valid buffer
+     * (falls back to a static @c '\0' for empty views) so @ref data() never
+     * returns null.
+     *
+     * The string is considered immutable.
+     */
+    class bstr_view
+    {
+        public:
+        using value_type = char const;
+        using pointer    = value_type*;
+        using reference  = value_type&;
+        using size_type  = size_t;
 
-    // Helper to compute length of a C string (no std::strlen)
-    static constexpr size_type cstr_len(const char* s) noexcept {
-        if (!s) return 0; // treat null as empty
-        const char* p = s;
-        while (*p) { ++p; }
-        return static_cast<size_type>(p - s);
-    }
+        public:
+        /*
+         *   _____                _                   _
+         *  / ____|              | |                 | |
+         * | |     ___  _ __  ___| |_ _ __ _   _  ___| |_ ___  _ __ ___
+         * | |    / _ \| '_ \/ __| __| '__| | | |/ __| __/ _ \| '__/ __|
+         * | |___| (_) | | | \__ \ |_| |  | |_| | (__| || (_) | |  \__ \
+         *  \_____\___/|_| |_|___/\__|_|   \__,_|\___|\__\___/|_|  |___/
+         */
 
-    // Internal empty string storage
-    static constexpr char empty_char = '\0';
+        /**
+         * @brief Construct an empty view.
+         */
+        constexpr bstr_view() noexcept : _data(&empty_char), _length(0) {}
 
-public:
-    // ------------------------------------------------- ctors
+        /**
+         * @brief Construct from a string literal / char array.
+         *
+         * @tparam N Array extent (includes trailing null for literals).
+         * Stores length as N-1 when N > 0.
+         */
+        template<size_type N>
+        constexpr bstr_view(char const (&lit)[N]) noexcept : _data(lit)
+                                                           , _length(N ? (N - 1) : 0)
+        {}
 
-    // Default: empty view
-    constexpr bstr_view() noexcept
-        : _data(&empty_char), _size(0) {}
+        /**
+         * @brief Construct from null terminated C string (length scanned once).
+         *
+         * @param s Pointer (may be nullptr, treated as empty).
+         */
+        constexpr bstr_view(char const* s) noexcept : _data(s ? s : &empty_char), _length(strlen(s))
+        {}
 
-    // Construct directly from a string literal / char array.
-    // N includes the terminating null for standard string literals.
-    template <size_type N>
-    constexpr bstr_view(const char (&lit)[N]) noexcept
-        : _data(lit), _size(N ? (N - 1) : 0) {}
+        /**
+         * @brief Construct from pointer + explicit length (no null validation).
+         *
+         * @param s Data pointer (may be nullptr => becomes empty view unless
+         * len>0 which is ignored).
+         * @param len Number of characters to expose.
+         */
+        constexpr bstr_view(pointer s, size_type len) noexcept
+            : _data((s && len) ? s : (s ? s : &empty_char))
+            , _length(len)
+        {}
 
-    // Construct from C string (const char*) – computes length at runtime/constexpr
-    constexpr bstr_view(const char* s) noexcept
-        : _data(s ? s : &empty_char), _size(cstr_len(s)) {}
+        /**
+         * @brief Create from pointer to start of bstr length header.
+         *
+         * @param header Pointer to first byte of 32‑bit length field.
+         * @warning No validation of buffer size or terminator. Ensure the
+         * memory is valid.
+         */
+        static constexpr bstr_view from_bstr(void const* header) noexcept
+        {
+            if (!header) { return bstr_view(); }
 
-    // Construct from mutable C string (char*)
-    constexpr bstr_view(char* s) noexcept
-        : _data(s ? s : &empty_char), _size(cstr_len(s)) {}
+            uint8_t const* raw = mtl::to<uint8_t const*>(header);
 
-    // Construct directly from pointer + explicit size (does not check null terminator)
-    constexpr bstr_view(const char* s, size_type len) noexcept
-        : _data((s && len) ? s : (s ? s : &empty_char)), _size(len) {}
+            // Read 32-bit length (assuming native endianness matches stored
+            // format) Layout: [0..3] length, [4..4+len-1] chars, [4+len] '\0'
+            uint32_t len = (mtl::to<uint32_t>(raw[0]) << 24)    //
+                           | (mtl::to<uint32_t>(raw[1]) << 16)  //
+                           | (mtl::to<uint32_t>(raw[2]) << 8)   //
+                           | (mtl::to<uint32_t>(raw[3]) << 0);
+            pointer strData = reinterpret_cast<pointer>(raw + 4);
 
-    // Factory: create view from beginning of a bstr block (points at the 4-byte length header)
-    // NOTE: 'header' must point to at least 5 bytes (4 length + 1 null). No validation done.
-    static constexpr bstr_view from_bstr(const void* header) noexcept {
-        if (!header) {
-            return bstr_view();
+            return bstr_view(strData, mtl::to<size_type>(len));
         }
-        const unsigned char* raw = static_cast<const unsigned char*>(header);
-        // Read 32-bit length (assuming native endianness matches stored format)
-        // Layout: [0..3] length, [4..4+len-1] chars, [4+len] '\0'
-        unsigned long len =
-            (static_cast<unsigned long>(raw[0])      ) |
-            (static_cast<unsigned long>(raw[1]) << 8 ) |
-            (static_cast<unsigned long>(raw[2]) << 16) |
-            (static_cast<unsigned long>(raw[3]) << 24);
-        const char* strData = reinterpret_cast<const char*>(raw + 4);
-        return bstr_view(strData, static_cast<size_type>(len));
-    }
 
-    // ------------------------------------------------- observers
+        /*
+         *     /\
+         *    /  \   ___ ___ ___  ___ ___  ___  _ __ ___
+         *   / /\ \ / __/ __/ _ \/ __/ __|/ _ \| '__/ __|
+         *  / ____ \ (_| (_|  __/\__ \__ \ (_) | |  \__ \
+         * /_/    \_\___\___\___||___/___/\___/|_|  |___/
+         *
+         */
 
-    constexpr size_type size() const noexcept { return _size; }
-    constexpr size_type length() const noexcept { return _size; }
-    constexpr bool empty() const noexcept { return _size == 0; }
+        /**
+         * @brief Length of the string
+         *
+         * @return Number of characters (not including trailing null).
+         */
+        constexpr size_type length() const noexcept { return _length; }
 
-    // Pointer to characters (never null). Guaranteed null-terminated if source was a valid bstr or C string.
-    constexpr const char* data() const noexcept { return _data; }
-    constexpr const char* c_str() const noexcept { return _data; }
+        /**
+         * @brief Checks if the view is empty.
+         *
+         * @return True if the view has zero length.
+         */
+        constexpr bool is_empty() const noexcept { return _length == 0; }
 
-    // Provide mutable pointer only if the source was non-const (cannot reliably track that without extra state).
-    // For zero-overhead we always expose a non-const pointer via cast; user must ensure they are allowed to modify.
-    constexpr char* data() noexcept { return const_cast<char*>(_data); }
-    constexpr char* c_str() noexcept { return const_cast<char*>(_data); }
+        /**
+         * @brief Pointer to characters (never null).
+         * Guaranteed null-terminated if source was a valid bstr or C string.
+         *
+         * @return Pointer to first character (never nullptr).
+         */
+        constexpr pointer data() const noexcept { return _data; }
 
-    // Indexing (no bounds check)
-    constexpr const char& operator[](size_type i) const noexcept { return _data[i]; }
-    constexpr char& operator[](size_type i) noexcept { return const_cast<char*>(_data)[i]; }
+        /**
+         * @brief Unchecked element access.
+         *
+         * @param i Index < size()
+         */
+        constexpr char const& operator[](size_type i) const noexcept { return _data[i]; }
 
-    // Iterators (raw pointers)
-    constexpr const char* begin() const noexcept { return _data; }
-    constexpr const char* end() const noexcept { return _data + _size; }
-    constexpr const char* cbegin() const noexcept { return _data; }
-    constexpr const char* cend() const noexcept { return _data + _size; }
+        /*
+         * Constant iterators for beginning and end.
+         */
+        constexpr pointer begin() const noexcept { return _data; }
+        constexpr pointer end() const noexcept { return _data + _length; }
 
-    // Conversions
-    constexpr operator const char*() const noexcept { return _data; }
-    constexpr operator char*() noexcept { return const_cast<char*>(_data); }
+        // Conversions
+        constexpr operator pointer() const noexcept { return _data; }
 
-    // Comparison (lexicographical, minimal implementation)
-    constexpr int compare(bstr_view other) const noexcept {
-        const size_type n = (_size < other._size) ? _size : other._size;
-        for (size_type i = 0; i < n; ++i) {
-            unsigned char a = static_cast<unsigned char>(_data[i]);
-            unsigned char b = static_cast<unsigned char>(other._data[i]);
-            if (a < b) return -1;
-            if (a > b) return 1;
+        /*
+         *   _____                                 _
+         *  / ____|                               (_)
+         * | |     ___  _ __ ___  _ __   __ _ _ __ _ ___  ___  _ __
+         * | |    / _ \| '_ ` _ \| '_ \ / _` | '__| / __|/ _ \| '_ \
+         * | |___| (_) | | | | | | |_) | (_| | |  | \__ \ (_) | | | |
+         *  \_____\___/|_| |_| |_| .__/ \__,_|_|  |_|___/\___/|_| |_|
+         *                       | |
+         *                       |_|
+         */
+
+        /**
+         * @brief Lexicographical comparison.
+         * @return < 0 if *this < other, 0 if equal, > 0 if *this > other.
+         */
+        constexpr int compare(bstr_view other) const noexcept
+        {
+            size_type const n = (_length < other._length) ? _length : other._length;
+            for (size_type i = 0; i < n; ++i)
+            {
+                auto a = mtl::to<uint8_t>(_data[i]);
+                auto b = mtl::to<uint8_t>(other._data[i]);
+                if (a < b) return -1;
+                if (a > b) return 1;
+            }
+            if (_length < other._length) return -1;
+            if (_length > other._length) return 1;
+            return 0;
         }
-        if (_size < other._size) return -1;
-        if (_size > other._size) return 1;
-        return 0;
-    }
 
-    constexpr bool operator==(bstr_view other) const noexcept { return compare(other) == 0; }
-    constexpr bool operator!=(bstr_view other) const noexcept { return compare(other) != 0; }
-    constexpr bool operator<(bstr_view other)  const noexcept { return compare(other) < 0; }
-};
+        /**
+         * @brief Equality comparison
+         */
+        constexpr bool operator==(bstr_view other) const noexcept { return compare(other) == 0; }
 
-#endif // __BSTR_VIEW__INCLUDED__
+        /**
+         * @brief Inequality comparison
+         */
+        constexpr bool operator!=(bstr_view other) const noexcept { return compare(other) != 0; }
 
+        /**
+         * @brief Strict weak ordering for associative containers / sorting
+         */
+        constexpr bool operator<(bstr_view other) const noexcept { return compare(other) < 0; }
+
+        private:
+        // Pointer to first character (never null; points to static empty string
+        // if empty)
+        pointer _data{ &empty_char };
+
+        // Stored length in characters (not including null terminator)
+        size_type _length{ 0 };
+
+        // Internal empty string storage
+        static constexpr char empty_char = '\0';
+    };
+}  // namespace NEONengine
+
+#endif  // __BSTR_VIEW__INCLUDED__

@@ -2,9 +2,11 @@
 #define __TEXT_RENDERER__INCLUDED_H__
 
 #include <ace/types.h>
-#include "ace++/font.h"
+
+#include <ace++/font.h>
 
 #include <mtl/memory.h>
+
 #include "utils/bstr_view.h"
 
 namespace NEONengine
@@ -19,12 +21,15 @@ namespace NEONengine
         CENTER,
     };
 
-    void textRendererCreate(char const *szFontName);
+    void textRendererCreate(char const* szFontName);
     void textRendererDestroy();
 
-    ace::text_bitmap_ptr textCreateFromString(bstr_view const& text, UWORD uwMaxWidth, TextHJustify justification);
-    ace::text_bitmap_ptr textCreateFromId(ULONG stringId, UWORD uwMaxWidth, TextHJustify justification);
-}
+    ace::text_bitmap_ptr textCreateFromString(bstr_view const& text,
+                                              UWORD uwMaxWidth,
+                                              TextHJustify justification);
+    ace::text_bitmap_ptr textCreateFromId(ULONG stringId,
+                                          UWORD uwMaxWidth,
+                                          TextHJustify justification);
+}  // namespace NEONengine
 
-
-#endif // __TEXT_RENDERER__INCLUDED_H__
+#endif  // __TEXT_RENDERER__INCLUDED_H__
