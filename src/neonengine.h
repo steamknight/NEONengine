@@ -4,11 +4,43 @@
 #include <ace/managers/state.h>
 #include <ace/managers/system.h>
 
+#include <ace++/font.h>
+
+#include <mtl/expected.h>
+#include <mtl/memory.h>
+
 #include "core/game_data.h"
 #include "core/screen.h"
+#include "core/text_render.h"
 
 namespace NEONengine
 {
+    class engine;
+    using engine_ptr = mtl::unique_ptr<engine>;
+    class engine
+    {
+        public:  //////////////////////////////////////////////////////////////////////////////////
+        enum class error_code
+        {
+            DEFAULT_FONT_NOT_FOUND,
+            FAILED_TO_CREATE_DEFAULT_TEXT_RENDERER,
+        };
+
+        using result = mtl::expected<engine_ptr, error_code>;
+
+        public:  //////////////////////////////////////////////////////////////////////////////////
+        tFont* default_font() noexcept { return _pDefaultFont.get(); }
+        text_renderer* default_text_renderer() noexcept { return _pDefaultTextRenderer.get(); }
+
+        static result initialize(char const* szDefaultFontPath);
+
+        private:  //////////////////////////////////////////////////////////////////////////////////
+        ace::font_ptr _pDefaultFont{ nullptr };
+        text_renderer_ptr _pDefaultTextRenderer{ nullptr };
+    };
+
+    extern engine_ptr g_pEngine;
+
     extern tStateManager* g_gameStateManager;
     extern tState g_stateFontTest,  //
         g_stateDebugView,           //

@@ -24,15 +24,6 @@ namespace NEONengine
         screenClear(g_mainScreen, 0);
 
         paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-        auto pFont = ace::fontCreateFromPath("data/font.fnt");
-
-        auto renderer_result = text_renderer::create(pFont.get());
-        if (!renderer_result)
-        {
-            NE_LOG("Failed to create text renderer: Error code %d",
-                   mtl::to<int>(renderer_result.error()));
-            return;
-        }
 
         auto string_result = string_table::create_from_file("data/lang/test.noir");
         if (!string_result)
@@ -42,7 +33,7 @@ namespace NEONengine
             return;
         }
 
-        auto pRenderer = mtl::move(renderer_result.value());
+        auto pRenderer = g_pEngine->default_text_renderer();
         auto pStrings  = mtl::move(string_result.value());
 
         auto pHelloWorld

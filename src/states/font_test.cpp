@@ -17,9 +17,6 @@
 ace::text_bitmap_ptr s_pTextBitmap = nullptr;
 namespace NEONengine
 {
-    ace::font_ptr s_pFont_FontTest{ nullptr };
-    text_renderer_ptr s_pFontTestTextRenderer{ nullptr };
-
     void drawFontTest(ULONG ulStartFullPage);
     void drawText(bstr_view const& bstr,
                   UWORD uwX,
@@ -28,7 +25,8 @@ namespace NEONengine
                   UBYTE ubColorIdx,
                   text_justify justification)
     {
-        auto pTextBmp = s_pFontTestTextRenderer->create_text(bstr, uwMaxWidth, justification);
+        auto pTextBmp
+            = g_pEngine->default_text_renderer()->create_text(bstr, uwMaxWidth, justification);
         fontDrawTextBitMap(
             screenGetBackBuffer(g_mainScreen), pTextBmp.get(), uwX, uwY, ubColorIdx, FONT_COOKIE);
     }
@@ -41,21 +39,10 @@ namespace NEONengine
         screenClear(g_mainScreen, 0);
 
         paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-        s_pFont_FontTest = ace::fontCreateFromPath("data/font.fnt");
-
-        auto renderer_result = text_renderer::create(s_pFont_FontTest.get());
-        if (!renderer_result)
-        {
-            NE_LOG("Failed to create text renderer: Error code %d",
-                   mtl::to<int>(renderer_result.error()));
-            return;
-        }
-
-        s_pFontTestTextRenderer = mtl::move(renderer_result.value());
 
         drawText("Press the Spacebar",
                  0,
-                 (200 - s_pFont_FontTest->uwHeight) / 2,
+                 (200 - g_pEngine->default_font()->uwHeight) / 2,
                  320,
                  2,
                  text_justify::CENTER);
@@ -63,7 +50,7 @@ namespace NEONengine
 
     void drawFontTest()
     {
-        auto const FH = s_pFont_FontTest->uwHeight;
+        auto const FH = g_pEngine->default_font()->uwHeight;
 
         ULONG ulStartFullPage = timerGetPrec();
         screenClear(g_mainScreen, 0);
@@ -101,7 +88,7 @@ namespace NEONengine
             UWORD x = 20 + (color / 8) * 30;
             UWORD y = FH * 10 + (color % 8) * FH;
             snprintf(buffer, sizeof(buffer), "%02d", color);
-            drawText(buffer, x, y, 20, color, text_justify::LEFT);
+            drawText((char const*)buffer, x, y, 20, color, text_justify::LEFT);
         }
 
         ULONG ulStart = timerGetPrec();
@@ -120,19 +107,19 @@ namespace NEONengine
         char renderBuffer[256];
         timerFormatPrec(timerBuffer, timerGetDelta(ulStart, ulEnd));
         snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
-        drawText(renderBuffer, 140, FH * 18 + (FH >> 1), 240, 1, text_justify::LEFT);
+        drawText((char const*)renderBuffer, 140, FH * 18 + (FH >> 1), 240, 1, text_justify::LEFT);
 
         ULONG ulEndFullPage = timerGetPrec();
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartFullPage, ulEndFullPage));
         snprintf(renderBuffer, sizeof(renderBuffer), "Whole page rendered in %s ", timerBuffer);
-        drawText(renderBuffer, 0, 255 - FH, 320, 1, text_justify::CENTER);
+        drawText((char const*)renderBuffer, 0, 255 - FH, 320, 1, text_justify::CENTER);
     }
 
     static UBYTE ubColor    = 0;
     static ULONG ulLastTime = 0;
     static bool is_drawn    = false;
 
-    void fontTestProcess(void)
+    void fontTestProcess()
     {
         if (keyUse(KEY_SPACE) and !is_drawn)
         {
@@ -140,7 +127,7 @@ namespace NEONengine
             is_drawn = true;
         }
         static auto palette00 = ace::text_bitmap_ptr(
-            s_pFontTestTextRenderer->create_text("00", 20, text_justify::LEFT));
+            g_pEngine->default_text_renderer()->create_text("00", 20, text_justify::LEFT));
 
         ULONG delta = timerGetDelta(ulLastTime, timerGet());
 
@@ -151,17 +138,13 @@ namespace NEONengine
         fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen),
                            palette00.get(),
                            20,
-                           s_pFont_FontTest->uwHeight * 10,
+                           g_pEngine->default_font()->uwHeight * 10,
                            ubColor++,
                            FONT_COOKIE);
         if (ubColor > 31) ubColor = 0;
     }
 
-    void fontTestDestroy(void)
-    {
-        s_pFontTestTextRenderer.release();
-        s_pFont_FontTest.release();
-    }
+    void fontTestDestroy() {}
 
     tState g_stateFontTest = {
         .cbCreate  = fontTestCreate,

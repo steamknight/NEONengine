@@ -132,9 +132,8 @@ namespace NEONengine
         uint32_t startIndex = 0;
 
         systemUse();
-        auto lines = mtl::array<line_data, INITIAL_LINE_CAPACITY>();
-        auto pLineBitmap
-            = ace::text_bitmap_ptr(fontCreateTextBitMap(320, mtl::round_up<16>(_pFont->uwHeight)));
+        auto lines       = mtl::array<line_data, INITIAL_LINE_CAPACITY>();
+        auto pLineBitmap = ace::fontCreateTextBitMap(320, mtl::round_up<16>(_pFont->uwHeight));
         systemUnuse();
 
         // Create the individual line bitmaps
@@ -147,8 +146,7 @@ namespace NEONengine
 
         // ... and stitch them all together
         uint16_t height = _pFont->uwHeight * lineCount;
-        auto pResult    = ace::text_bitmap_ptr(
-            fontCreateTextBitMap(mtl::round_up<16>(maxWidth), mtl::round_up<16>(height)));
+        auto pResult    = ace::fontCreateTextBitMap(mtl::round_up<16>(maxWidth), mtl::round_up<16>(height));
 
         pResult->uwActualWidth  = maxWidth;
         pResult->uwActualHeight = height;

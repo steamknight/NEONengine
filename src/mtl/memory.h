@@ -42,8 +42,7 @@ namespace mtl
         Reverse = MEMF_REVERSE,  // AllocMem: allocate from the top down
         Total   = MEMF_TOTAL,    // AvailMem: return total size of memory
 
-        NoExpunge
-        = MEMF_NO_EXPUNGE,  // AllocMem: Do not cause expunge on failure
+        NoExpunge = MEMF_NO_EXPUNGE,  // AllocMem: Do not cause expunge on failure
     };
 
     /**
@@ -55,70 +54,7 @@ namespace mtl
      */
     constexpr MemF operator|(MemF lhs, MemF rhs)
     {
-        return static_cast<MemF>(static_cast<uint32_t>(lhs)
-                                 | static_cast<uint32_t>(rhs));
-    }
-
-    template<class T, MemF AllocationFlags>
-    T alloc(size_t totalSize)
-    {
-        return reinterpret_cast<T>(
-            memAlloc(totalSize, static_cast<ULONG>(AllocationFlags)));
-    }
-
-    template<class T, MemF AllocationFlags>
-    T* allocType()
-    {
-        return reinterpret_cast<T*>(
-            memAlloc(sizeof(T), static_cast<ULONG>(AllocationFlags)));
-    }
-
-    template<class T>
-    T allocFast(size_t totalSize)
-    {
-        return alloc<T, MemF::Fast>(totalSize);
-    }
-
-    template<class T>
-    T allocChip(size_t totalSize)
-    {
-        return alloc<T, MemF::Chip>(totalSize);
-    }
-
-    template<class T>
-    T allocFastClear(size_t totalSize)
-    {
-        return alloc<T, MemF::Fast | MemF::Clear>(totalSize);
-    }
-
-    template<class T>
-    T allocChipClear(size_t totalSize)
-    {
-        return alloc<T, MemF::Chip | MemF::Clear>(totalSize);
-    }
-
-    template<class T>
-    T* allocTypeFast()
-    {
-        return allocType<T, MemF::Fast>();
-    }
-
-    template<class T>
-    T* allocTypeChip()
-    {
-        return allocType<T, MemF::Chip>();
-    }
-
-    template<class T>
-    T* allocTypeFastClear()
-    {
-        return allocType<T, MemF::Fast | MemF::Clear>();
-    }
-
-    template<class T>
-    T* allocTypeChipClear()
-    {
-        return allocType<T, MemF::Chip | MemF::Clear>();
+        return static_cast<MemF>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
     }
 
     /**

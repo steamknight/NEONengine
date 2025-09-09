@@ -25,13 +25,22 @@ void genericCreate(void)
 
     g_gameStateManager = stateManagerCreate();
     g_mainScreen       = screenCreate();
+
+    auto engineResult = engine::initialize("data/font.fnt");
+    if (!engineResult)
+    {
+        NE_LOG("Could not create NEONengine. Error %d", mtl::to<int>(engineResult.error()));
+        return;
+    }
+    g_pEngine = mtl::move(engineResult.value());
+
     screenLoad(NEONengine::g_mainScreen);
     screenBindMouse(NEONengine::g_mainScreen);
 
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &g_stateTestRunner);
 #else
-    statePush(g_gameStateManager, &g_stateLangTest);
+    statePush(g_gameStateManager, &g_stateFontTest);
 #endif
 }
 

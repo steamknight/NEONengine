@@ -58,7 +58,7 @@ namespace NEONengine
         using reference  = value_type&;
         using size_type  = size_t;
 
-        public:
+        public:  ///////////////////////////////////////////////////////////////////////////////////
         /*
          *   _____                _                   _
          *  / ____|              | |                 | |
@@ -220,7 +220,7 @@ namespace NEONengine
          */
         constexpr bool operator<(bstr_view other) const noexcept { return compare(other) < 0; }
 
-        private:
+        private:  //////////////////////////////////////////////////////////////////////////////////
         // Pointer to first character (never null; points to static empty string
         // if empty)
         pointer _data{ &empty_char };

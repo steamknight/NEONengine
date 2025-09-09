@@ -36,8 +36,7 @@ namespace NEONengine
 
     class string_table
     {
-        public
-            :  ////////////////////////////////////////////////////////////////////////////////////
+        public:  ///////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief Error codes for string_table operations.
          */
@@ -60,7 +59,7 @@ namespace NEONengine
             LAST_LANGUAGE
         };
 
-        using result = mtl::expected<string_table_ptr, string_table::error_code>;
+        using result = mtl::expected<string_table_ptr, error_code>;
 
         public:  ///////////////////////////////////////////////////////////////////////////////////
         /**

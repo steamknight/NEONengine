@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "neonengine.h"
 #include "fade.h"
-#include <ace/utils/palette.h>
+
+#include "neonengine.h"
+
 #include <ace/managers/ptplayer.h>
+#include <ace/utils/palette.h>
 
 #include <mtl/memory.h>
 
@@ -15,37 +17,34 @@ namespace NEONengine
 
     tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount)
     {
-        logBlockBegin(
-            "fadeCreate(pView: %p, pPalette: %p, ubColorCount: %hhu)",
-            pView, pPalette, ubColorCount);
+        logBlockBegin("fadeCreate(pView: %p, pPalette: %p, ubColorCount: %hhu)",
+                      pView,
+                      pPalette,
+                      ubColorCount);
 
-        tFade *pFade = allocTypeFastClear<tFade>();
-        pFade->eState = FADE_STATE_IDLE;
-        pFade->pView = pView;
+        tFade *pFade        = new (MemF::Fast | MemF::Clear) tFade();
+        pFade->eState       = FADE_STATE_IDLE;
+        pFade->pView        = pView;
         pFade->ubColorCount = ubColorCount;
 
         UWORD uwMaxColors;
         if (pView->uwFlags & VP_FLAG_AGA)
         {
             uwMaxColors = 1 << pView->pFirstVPort->ubBpp;
-            pFade->pPaletteRef = (UWORD*)memAlloc(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
+            pFade->pPaletteRef
+                = (UWORD *)memAlloc(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
         }
         else
         {
-            uwMaxColors = 32;
-            pFade->pPaletteRef = allocFastClear<UWORD*>(sizeof(UWORD) * uwMaxColors);
+            uwMaxColors        = 32;
+            pFade->pPaletteRef = new (MemF::Fast | MemF::Clear) UWORD(sizeof(UWORD) * uwMaxColors);
         }
 
         if (ubColorCount > uwMaxColors)
         {
-            logWrite(
-                "ERR: Unsupported palette size: %hhu, max: %hhu",
-                ubColorCount, uwMaxColors);
+            logWrite("ERR: Unsupported palette size: %hhu, max: %hhu", ubColorCount, uwMaxColors);
         }
-        for (UBYTE i = 0; i < ubColorCount; ++i)
-        {
-            pFade->pPaletteRef[i] = pPalette[i];
-        }
+        for (UBYTE i = 0; i < ubColorCount; ++i) { pFade->pPaletteRef[i] = pPalette[i]; }
         logBlockEnd("fadeCreate()");
         return pFade;
     }
@@ -66,18 +65,22 @@ namespace NEONengine
         memFree(pFade, sizeof(*pFade));
     }
 
-    void fadeSet(
-        tFade *pFade, tFadeState eState, UBYTE ubFramesToFullFade, UBYTE isMusic,
-        tCbFadeOnDone cbOnDone)
+    void fadeSet(tFade *pFade,
+                 tFadeState eState,
+                 UBYTE ubFramesToFullFade,
+                 UBYTE isMusic,
+                 tCbFadeOnDone cbOnDone)
     {
-        logBlockBegin(
-            "fadeSet(pFade: %p, eState: %d, ubFramesToFullFade: %hhu, cbOnDone: %p)",
-            pFade, eState, ubFramesToFullFade, cbOnDone);
-        pFade->eState = eState;
-        pFade->ubCnt = 0;
+        logBlockBegin("fadeSet(pFade: %p, eState: %d, ubFramesToFullFade: %hhu, cbOnDone: %p)",
+                      pFade,
+                      eState,
+                      ubFramesToFullFade,
+                      cbOnDone);
+        pFade->eState   = eState;
+        pFade->ubCnt    = 0;
         pFade->ubCntEnd = ubFramesToFullFade;
         pFade->cbOnDone = cbOnDone;
-        pFade->isMusic = isMusic;
+        pFade->isMusic  = isMusic;
         logBlockEnd("fadeSet()");
     }
 
@@ -89,24 +92,23 @@ namespace NEONengine
             ++pFade->ubCnt;
 
             UBYTE ubCnt = pFade->ubCnt;
-            if (pFade->eState == FADE_STATE_OUT)
-            {
-                ubCnt = pFade->ubCntEnd - pFade->ubCnt;
-            }
+            if (pFade->eState == FADE_STATE_OUT) { ubCnt = pFade->ubCntEnd - pFade->ubCnt; }
 
             if (pFade->pView->uwFlags & VP_FLAG_AGA)
             {
                 UBYTE ubRatio = (255 * ubCnt) / pFade->ubCntEnd;
-                paletteDimAGA(
-                    (ULONG *)pFade->pPaletteRef, (ULONG *)pFade->pView->pFirstVPort->pPalette,
-                    pFade->ubColorCount, ubRatio);
+                paletteDimAGA((ULONG *)pFade->pPaletteRef,
+                              (ULONG *)pFade->pView->pFirstVPort->pPalette,
+                              pFade->ubColorCount,
+                              ubRatio);
             }
             else
             {
                 UBYTE ubRatio = (15 * ubCnt) / pFade->ubCntEnd;
-                paletteDim(
-                    pFade->pPaletteRef, pFade->pView->pFirstVPort->pPalette,
-                    pFade->ubColorCount, ubRatio);
+                paletteDim(pFade->pPaletteRef,
+                           pFade->pView->pFirstVPort->pPalette,
+                           pFade->ubColorCount,
+                           ubRatio);
             }
             viewUpdateGlobalPalette(pFade->pView);
 
@@ -131,8 +133,8 @@ namespace NEONengine
         else
         {
             pFade->eState = FADE_STATE_IDLE;
-            eState = pFade->eState;
+            eState        = pFade->eState;
         }
         return eState;
     }
-}
+}  // namespace NEONengine
