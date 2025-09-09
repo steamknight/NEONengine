@@ -1,7 +1,8 @@
 #include "music.h"
 
-#include <ace/managers/ptplayer.h>
 #include "neonengine.h"
+
+#include <ace/managers/ptplayer.h>
 
 namespace NEONengine
 {
@@ -32,10 +33,7 @@ namespace NEONengine
     void musicFree(void)
     {
         systemUse();
-        if (s_currentMod)
-        {
-            ptplayerModDestroy(s_currentMod);
-        }
+        if (s_currentMod) { ptplayerModDestroy(s_currentMod); }
         systemUnuse();
     }
-}
+}  // namespace NEONengine

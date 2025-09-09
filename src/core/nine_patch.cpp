@@ -1,5 +1,7 @@
 #include "nine_patch.h"
 
+#include "neonengine.h"
+
 #include <stdint.h>
 
 #include <ace/managers/blit.h>
@@ -7,13 +9,16 @@
 #include <ace/utils/bitmap.h>
 
 #include "mtl/utility.h"
-#include "neonengine.h"
 
 namespace NEONengine
 {
     constexpr UBYTE NINE_PATCH_BITPLANES = 8;
 
-    nine_patch::nine_patch(ace::bitmap_ptr& source, uint16_t left, uint16_t top, uint16_t right, uint16_t bottom)
+    nine_patch::nine_patch(ace::bitmap_ptr& source,
+                           uint16_t left,
+                           uint16_t top,
+                           uint16_t right,
+                           uint16_t bottom)
         : _source(mtl::move(source))
         , _left(left)
         , _top(top)
@@ -35,7 +40,8 @@ namespace NEONengine
 
     ace::bitmap_ptr nine_patch::render(uint16_t width, uint16_t height, uint32_t flags)
     {
-        auto result = ace::bitmapCreate(width, height, NINE_PATCH_BITPLANES, BMF_CLEAR | BMF_INTERLEAVED | flags);
+        auto result = ace::bitmapCreate(
+            width, height, NINE_PATCH_BITPLANES, BMF_CLEAR | BMF_INTERLEAVED | flags);
         if (!result) return nullptr;
 
         // Aliases for easier reading

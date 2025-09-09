@@ -8,6 +8,6 @@ namespace NEONengine
     void musicLoad(char const *szFilePath);
     void musicPlayCurrent(UBYTE ubLoop);
     void musicFree(void);
-}
+}  // namespace NEONengine
 
-#endif //__MUSIC_H__INCLUDED__
+#endif  //__MUSIC_H__INCLUDED__

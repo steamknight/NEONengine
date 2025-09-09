@@ -9,12 +9,11 @@ typedef struct _tTextBitMap tTextBitMap;
 
 namespace NEONengine
 {
-    
+
     constexpr int SCREEN_WIDTH  = 320;
     constexpr int SCREEN_HEIGHT = 200;
 
     struct Screen;
-
 
     /**
      * @brief Create the a full screen view.
@@ -68,7 +67,10 @@ namespace NEONengine
      *
      * @see screenFadeFromBlack()
      */
-    void screenFadeToBlack(Screen* screen, UBYTE ubDuration, UBYTE ubFadeMusic, tCbFadeOnDone cbOnDone);
+    void screenFadeToBlack(Screen* screen,
+                           UBYTE ubDuration,
+                           UBYTE ubFadeMusic,
+                           tCbFadeOnDone cbOnDone);
 
     /**
      * @brief
@@ -80,7 +82,10 @@ namespace NEONengine
      *
      * @see screenFadeToBlack()
      */
-    void screenFadeFromBlack(Screen* screen, UBYTE ubDuration, UBYTE ubFadeMusic, tCbFadeOnDone cbOnDone);
+    void screenFadeFromBlack(Screen* screen,
+                             UBYTE ubDuration,
+                             UBYTE ubFadeMusic,
+                             tCbFadeOnDone cbOnDone);
 
     /**
      * @brief Waits until the next vertical blank
@@ -103,7 +108,7 @@ namespace NEONengine
      * @param screen A pointer to a Screen object.
      * @param pRect A pointer to a tUwRect object.
      */
-    void screenToScreenSpace(Screen* screen, tUwRect *pRect);
+    void screenToScreenSpace(Screen* screen, tUwRect* pRect);
 
     /**
      * @brief Returns a pointer to the view associated with the screen.
@@ -150,13 +155,23 @@ namespace NEONengine
      * @param wHeight The height of the rectangle.
      * @param ubMinterm Minterm to be used for blitter operation, usually MINTERM_COOKIE.
      */
-    void screenBlitCopy(Screen* screen, const tBitMap *pSrc, WORD wSrcX, WORD wSrcY,
-        WORD wDstX, WORD wDstY, WORD wWidth, WORD wHeight,
-        UBYTE ubMinterm);
+    void screenBlitCopy(Screen* screen,
+                        tBitMap const* pSrc,
+                        WORD wSrcX,
+                        WORD wSrcY,
+                        WORD wDstX,
+                        WORD wDstY,
+                        WORD wWidth,
+                        WORD wHeight,
+                        UBYTE ubMinterm);
 
-    void screenTextCopy(Screen* screen, tTextBitMap *pTextBitMap, UWORD uwX, UWORD uwY, 
-        UBYTE ubColor, UBYTE ubFlags);
+    void screenTextCopy(Screen* screen,
+                        tTextBitMap* pTextBitMap,
+                        UWORD uwX,
+                        UWORD uwY,
+                        UBYTE ubColor,
+                        UBYTE ubFlags);
 
-    }
+}  // namespace NEONengine
 
-#endif //__SCREEN_H__INCLUDED__
+#endif  //__SCREEN_H__INCLUDED__

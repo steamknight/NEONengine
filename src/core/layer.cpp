@@ -1,19 +1,19 @@
 #include "layer.h"
 
+#include "neonengine.h"
+
 #include <ace/managers/log.h>
 #include <ace/managers/memory.h>
 #include <ace/managers/mouse.h>
 
 #include "core/mouse_pointer.h"
 #include "core/screen.h"
-#include "neonengine.h"
-
 #include "mtl/utility.h"
 
 namespace NEONengine
 {
     using namespace mtl;
-    
+
     enum class HotspotState
     {
         IDLE,
@@ -40,44 +40,40 @@ namespace NEONengine
         UWORD uwOffsetY;
     };
 
-    tUwRect calculateLayerBounds(Layer * pLayer);
+    tUwRect calculateLayerBounds(Layer *pLayer);
 
-    Layer* layerCreate()
+    Layer *layerCreate()
     {
         logBlockBegin("layerCreate");
-        Layer *pLayer = (Layer*)memAllocFastClear(sizeof(Layer));
+        Layer *pLayer     = (Layer *)memAllocFastClear(sizeof(Layer));
         pLayer->uwOffsetY = systemIsPal() ? 28 : 0;
         logBlockEnd("layerCreate");
 
         return pLayer;
     }
 
-    void layerUpdate(Layer* pLayer)
+    void layerUpdate(Layer *pLayer)
     {
-        //logBlockBegin("layerUpdate");
+        // logBlockBegin("layerUpdate");
         if (!pLayer)
         {
             logWrite("layerUpdate: layer cannot be null");
             return;
         }
 
-        if (
-            !pLayer->ubIsEnabled ||
-            (!pLayer->ubUpdateOutsideBounds && !mouseInRect(MOUSE_PORT_1, pLayer->bounds)))
+        if (!pLayer->ubIsEnabled
+            || (!pLayer->ubUpdateOutsideBounds && !mouseInRect(MOUSE_PORT_1, pLayer->bounds)))
         {
             return;
         }
 
-        HotspotInternal *pCurrent = pLayer->pFirstHotspot;
-        UBYTE ubMousePressed = mouseCheck(MOUSE_PORT_1, MOUSE_LMB);
-        MousePointer mousePointerId = MousePointer::POINTER;
+        HotspotInternal *pCurrent    = pLayer->pFirstHotspot;
+        UBYTE ubMousePressed         = mouseCheck(MOUSE_PORT_1, MOUSE_LMB);
+        mouse_pointer mousePointerId = mouse_pointer::POINTER;
         while (pCurrent)
         {
             UBYTE ubOverHotspot = mouseInRect(MOUSE_PORT_1, pCurrent->hotspot.bounds);
-            if (ubOverHotspot)
-            {
-                mousePointerId = pCurrent->hotspot.pointer;
-            }
+            if (ubOverHotspot) { mousePointerId = pCurrent->hotspot.pointer; }
 
             switch (pCurrent->state)
             {
@@ -87,17 +83,17 @@ namespace NEONengine
                         if (ubMousePressed)
                         {
                             /*
-                            * If the mouse is pressed while hovering, go straight to
-                            * pressed.
-                            */
+                             * If the mouse is pressed while hovering, go straight to
+                             * pressed.
+                             */
                             pCurrent->state = HotspotState::PRESSED;
                             SAFE_CB_CALL(pCurrent->hotspot.cbOnPressed, &pCurrent->hotspot);
                         }
                         else
                         {
                             /*
-                            * If hovering without pressing, just go to hovered.
-                            */
+                             * If hovering without pressing, just go to hovered.
+                             */
                             pCurrent->state = HotspotState::HOVERED;
                             SAFE_CB_CALL(pCurrent->hotspot.cbOnHovered, &pCurrent->hotspot);
                         }
@@ -105,8 +101,8 @@ namespace NEONengine
                     else
                     {
                         /*
-                        * If not hovered, keep idling.
-                        */
+                         * If not hovered, keep idling.
+                         */
                         SAFE_CB_CALL(pCurrent->hotspot.cbOnIdle, &pCurrent->hotspot);
                     }
                     break;
@@ -115,18 +111,18 @@ namespace NEONengine
                     if (!ubOverHotspot)
                     {
                         /*
-                        * Regardless of mouse state, if we are no longer on the
-                        * hotspot, it should go back to idle. Note that "hot-hovered"
-                        * and "pressed" are not a valid combination for this state.
-                        */
+                         * Regardless of mouse state, if we are no longer on the
+                         * hotspot, it should go back to idle. Note that "hot-hovered"
+                         * and "pressed" are not a valid combination for this state.
+                         */
                         pCurrent->state = HotspotState::IDLE;
-                        SAFE_CB_CALL(pCurrent->hotspot.cbOnUnhovered ,&pCurrent->hotspot);
+                        SAFE_CB_CALL(pCurrent->hotspot.cbOnUnhovered, &pCurrent->hotspot);
                     }
                     else if (ubOverHotspot && ubMousePressed)
                     {
                         /*
-                        * If hovering and pressed, then the hotspot was pressed.
-                        */
+                         * If hovering and pressed, then the hotspot was pressed.
+                         */
                         pCurrent->state = HotspotState::PRESSED;
                         SAFE_CB_CALL(pCurrent->hotspot.cbOnPressed, &pCurrent->hotspot);
                     }
@@ -138,17 +134,17 @@ namespace NEONengine
                         if (ubMousePressed)
                         {
                             /*
-                            * If the mouse is pressed and we're over the hotspot, stop
-                            * processing so we don't keep sending onPressed events.
-                            */
+                             * If the mouse is pressed and we're over the hotspot, stop
+                             * processing so we don't keep sending onPressed events.
+                             */
                             break;
                         }
                         else
                         {
                             /*
-                            * If the mouse is not pressed and we're over the hotspot,
-                            * we must have released.
-                            */
+                             * If the mouse is not pressed and we're over the hotspot,
+                             * we must have released.
+                             */
                             pCurrent->state = HotspotState::HOVERED;
                             SAFE_CB_CALL(pCurrent->hotspot.cbOnReleased, &pCurrent->hotspot);
                         }
@@ -156,11 +152,11 @@ namespace NEONengine
                     else
                     {
                         /*
-                        * Regardless of the mouse state, if we move off the hotspot
-                        * it should be considered idle. This allows us to "cancel",
-                        * a press on hotspot my moving off of it. If we're no longer
-                        * over the hotspot, we must unhover
-                        */
+                         * Regardless of the mouse state, if we move off the hotspot
+                         * it should be considered idle. This allows us to "cancel",
+                         * a press on hotspot my moving off of it. If we're no longer
+                         * over the hotspot, we must unhover
+                         */
                         pCurrent->state = HotspotState::IDLE;
                         SAFE_CB_CALL(pCurrent->hotspot.cbOnUnhovered, &pCurrent->hotspot);
                     }
@@ -181,7 +177,7 @@ namespace NEONengine
         mousePointerSwitch(mousePointerId);
     }
 
-    void layerDestroy(Layer* pLayer)
+    void layerDestroy(Layer *pLayer)
     {
         logBlockBegin("layerDestroy");
         if (pLayer)
@@ -225,7 +221,7 @@ namespace NEONengine
 
     HotspotId layerAddHotspot(Layer *pLayer, Hotspot *pHotspot)
     {
-        HotspotInternal * pLastHotspot = NULL;
+        HotspotInternal *pLastHotspot = NULL;
 
         logBlockBegin("layerAddHotspot");
         if (!pLayer)
@@ -240,7 +236,8 @@ namespace NEONengine
             return INVALID_REGION;
         }
 
-        HotspotInternal *pNewHotspot = (HotspotInternal*)memAllocFastClear(sizeof(HotspotInternal));
+        HotspotInternal *pNewHotspot
+            = (HotspotInternal *)memAllocFastClear(sizeof(HotspotInternal));
         if (!pNewHotspot)
         {
             logWrite("layerAddHotspot: Unable to allocate memory for hotspot");
@@ -254,17 +251,11 @@ namespace NEONengine
         pNewHotspot->pNext = 0;
         pNewHotspot->hotspot.bounds.uwY += pLayer->uwOffsetY;
 
-        if (!pLayer->pFirstHotspot)
-        {
-            pLayer->pFirstHotspot = pNewHotspot;
-        }
+        if (!pLayer->pFirstHotspot) { pLayer->pFirstHotspot = pNewHotspot; }
         else
         {
             pLastHotspot = pLayer->pFirstHotspot;
-            while (pLastHotspot->pNext)
-            {
-                pLastHotspot = pLastHotspot->pNext;
-            }
+            while (pLastHotspot->pNext) { pLastHotspot = pLastHotspot->pNext; }
 
             pLastHotspot->pNext = pNewHotspot;
         }
@@ -276,7 +267,7 @@ namespace NEONengine
         return pNewHotspot->id;
     }
 
-    const Hotspot *layerGetHotspot(Layer *pLayer, HotspotId id)
+    Hotspot const *layerGetHotspot(Layer *pLayer, HotspotId id)
     {
         if (!pLayer)
         {
@@ -285,10 +276,7 @@ namespace NEONengine
         }
 
         HotspotInternal *pCurrent = pLayer->pFirstHotspot;
-        while (pCurrent && pCurrent->id != id)
-        {
-            pCurrent = pCurrent->pNext;
-        }
+        while (pCurrent && pCurrent->id != id) { pCurrent = pCurrent->pNext; }
 
         return (pCurrent) ? &pCurrent->hotspot : nullptr;
     }
@@ -312,9 +300,9 @@ namespace NEONengine
             return;
         }
 
-        while(pCurrent != 0 && pCurrent->id != id)
+        while (pCurrent != 0 && pCurrent->id != id)
         {
-            pPrev = pCurrent;
+            pPrev    = pCurrent;
             pCurrent = pCurrent->pNext;
         }
 
@@ -332,11 +320,11 @@ namespace NEONengine
     }
 
     /*
-    * Internal function.
-    * Assumptions:
-    *   - layer is not null
-    *   - layer hast at least one hotspot
-    */
+     * Internal function.
+     * Assumptions:
+     *   - layer is not null
+     *   - layer hast at least one hotspot
+     */
     tUwRect calculateLayerBounds(Layer *pLayer)
     {
         tUwRect *pBounds = &pLayer->pFirstHotspot->hotspot.bounds;
@@ -350,18 +338,17 @@ namespace NEONengine
         while (pLastHotspot)
         {
             pBounds = &pLastHotspot->hotspot.bounds;
-            minX = MIN(minX, pBounds->uwX);
-            minY = MIN(minY, pBounds->uwY);
-            maxX = MAX(maxX, pBounds->uwX + pBounds->uwWidth);
-            maxY = MAX(maxY, pBounds->uwY + pBounds->uwHeight);
+            minX    = MIN(minX, pBounds->uwX);
+            minY    = MIN(minY, pBounds->uwY);
+            maxX    = MAX(maxX, pBounds->uwX + pBounds->uwWidth);
+            maxY    = MAX(maxY, pBounds->uwY + pBounds->uwHeight);
 
             pLastHotspot = pLastHotspot->pNext;
         }
 
-        return (tUwRect) {
-            .uwY = minY, .uwX = minX,
-            .uwWidth = static_cast<UWORD>(maxX - minX),
-            .uwHeight = static_cast<UWORD>(maxY - minY)
-        };
+        return (tUwRect){ .uwY      = minY,
+                          .uwX      = minX,
+                          .uwWidth  = static_cast<UWORD>(maxX - minX),
+                          .uwHeight = static_cast<UWORD>(maxY - minY) };
     }
-}
+}  // namespace NEONengine

@@ -2,59 +2,60 @@
 
 #include <stdint.h>
 
-#include <ace/managers/blit.h>
-#include <ace/managers/system.h>
 #include <ace/managers/timer.h>
-#include <ace/managers/viewport/simplebuffer.h>
-#include <ace/utils/font.h>
 #include <ace/utils/palette.h>
 
-#include <ace++/bitmap.h>
 #include <ace++/font.h>
+#include <ace++/log.h>
 
 #include <mtl/utility.h>
 
 #include "core/screen.h"
 #include "core/string_table.h"
 #include "core/text_render.h"
-#include "utils/bstr_view.h"
 
 namespace NEONengine
 {
     void langTestCreate()
     {
-        logBlockBegin("langTestCreate");
+        ACE_LOG_BLOCK("langTestCreate");
 
         screenFadeFromBlack(g_mainScreen, 25, 0, nullptr);
         screenClear(g_mainScreen, 0);
 
         paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-        textRendererCreate("data/font.fnt");
+        auto pFont = ace::fontCreateFromPath("data/font.fnt");
 
-        auto result = string_table::create_from_file("data/lang/test.noir");
-        if (!result)
+        auto renderer_result = text_renderer::create(pFont.get());
+        if (!renderer_result)
         {
-            logWrite("Failed to load string table: Error code %d",
-                     static_cast<int>(result.error()));
+            NE_LOG("Failed to create text renderer: Error code %d",
+                   mtl::to<int>(renderer_result.error()));
             return;
         }
 
-        auto strings      = mtl::move(result.value());
-        auto first_string = strings->get_string(0);
+        auto string_result = string_table::create_from_file("data/lang/test.noir");
+        if (!string_result)
+        {
+            NE_LOG("Failed to load string table: Error code %d",
+                   mtl::to<int>(string_result.error()));
+            return;
+        }
 
-        auto pHelloWorld = textCreateFromString(first_string, 320, TextHJustify::CENTER);
+        auto pRenderer = mtl::move(renderer_result.value());
+        auto pStrings  = mtl::move(string_result.value());
+
+        auto pHelloWorld
+            = pRenderer->create_text(pStrings->get_string(0), 320, text_justify::CENTER);
         screenTextCopy(g_mainScreen, pHelloWorld.get(), 0, 0, 2, FONT_COOKIE);
 
-        auto pSailor = textCreateFromString(strings->get_string(1), 320, TextHJustify::CENTER);
+        auto pSailor = pRenderer->create_text(pStrings->get_string(1), 320, text_justify::CENTER);
         screenTextCopy(g_mainScreen, pSailor.get(), 0, 30, 2, FONT_COOKIE);
     }
 
     void langTestProcess() {}
 
-    void langTestDestroy()
-    {
-        textRendererDestroy();
-    }
+    void langTestDestroy() {}
 
     tState g_stateLangTest = {
         .cbCreate  = langTestCreate,

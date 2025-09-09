@@ -27,7 +27,7 @@ namespace mtl
         };
         bool _has;
 
-        public:
+        public:  ///////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief Tag type for error construction
          */
@@ -38,7 +38,7 @@ namespace mtl
          */
         static constexpr unexpected unexpect{};
 
-        public:
+        public:  ///////////////////////////////////////////////////////////////////////////////////
         /*
          *   _____                _                   _
          *  / ____|              | |                 | |

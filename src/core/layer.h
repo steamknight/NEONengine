@@ -18,7 +18,7 @@ namespace NEONengine
     struct Hotspot
     {
         tUwRect bounds;
-        MousePointer pointer;
+        mouse_pointer pointer;
         cbHotspot cbOnIdle;
         cbHotspot cbOnHovered;
         cbHotspot cbOnUnhovered;

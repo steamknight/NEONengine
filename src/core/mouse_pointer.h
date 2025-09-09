@@ -3,7 +3,7 @@
 
 namespace NEONengine
 {
-    enum class MousePointer : int
+    enum class mouse_pointer : int
     {
         POINTER,
         EXAMINE,
@@ -32,17 +32,17 @@ namespace NEONengine
      *
      * @see eMousePointer
      */
-    void mousePointerSwitch(MousePointer newPointer);
+    void mousePointerSwitch(mouse_pointer newPointer);
 
     /**
      * @brief Updates the position of the mouse, must be called once per frame.
      */
-    void mousePointerUpdate(void);
+    void mousePointerUpdate();
 
     /**
      * @brief Destroys and deallocates the memory used by this module.
      */
-    void mousePointerDestroy(void);
-}
+    void mousePointerDestroy();
+}  // namespace NEONengine
 
-#endif // __MOUSE_POINTER_H__INCLUDED__
+#endif  // __MOUSE_POINTER_H__INCLUDED__

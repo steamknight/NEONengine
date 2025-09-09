@@ -1,25 +1,26 @@
 #include "mouse_pointer.h"
 
-#include <ace/managers/sprite.h>
+#include "neonengine.h"
+
 #include <ace/managers/blit.h>
-#include <ace/managers/viewport/simplebuffer.h>
-#include <ace/managers/system.h>
 #include <ace/managers/mouse.h>
+#include <ace/managers/sprite.h>
+#include <ace/managers/system.h>
+#include <ace/managers/viewport/simplebuffer.h>
 
 #include "core/screen.h"
-#include "neonengine.h"
 
 namespace NEONengine
 {
     static tBitMap *s_pPointersLo[MOUSE_MAX_COUNT];
     static tBitMap *s_pPointersHi[MOUSE_MAX_COUNT];
     static tSprite *s_pCurrentPointer0;
-    static tSprite *s_pCurrentPointer1; // attached sprite.
+    static tSprite *s_pCurrentPointer1;  // attached sprite.
 
-    #define POINTER_WIDTH 16
-    #define POINTER_HEIGHT 16
-    #define POINTER_BPP 4
-    #define SPRITE_BPP 2
+#define POINTER_WIDTH  16
+#define POINTER_HEIGHT 16
+#define POINTER_BPP    4
+#define SPRITE_BPP     2
 
     void mousePointerCreate(char const *szFilePath)
     {
@@ -32,21 +33,16 @@ namespace NEONengine
         {
             // Sprites need to have one extra line above and below the image.
             tBitMap *pPointer = bitmapCreate(
-                POINTER_WIDTH, POINTER_HEIGHT + 2,
-                POINTER_BPP, BMF_CLEAR | BMF_INTERLEAVED);
+                POINTER_WIDTH, POINTER_HEIGHT + 2, POINTER_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
             s_pPointersHi[idx] = bitmapCreate(
-                POINTER_WIDTH, POINTER_HEIGHT + 2,
-                SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
+                POINTER_WIDTH, POINTER_HEIGHT + 2, SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
             s_pPointersLo[idx] = bitmapCreate(
-                POINTER_WIDTH, POINTER_HEIGHT + 2,
-                SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
+                POINTER_WIDTH, POINTER_HEIGHT + 2, SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
             blitCopyAligned(
-                pAtlas, idx * POINTER_WIDTH, 0,
-                pPointer, 0, 1,
-                POINTER_WIDTH, POINTER_HEIGHT);
+                pAtlas, idx * POINTER_WIDTH, 0, pPointer, 0, 1, POINTER_WIDTH, POINTER_HEIGHT);
 
             // Convert the 4bpp bitmap to 2bpp.
             uwSourceWidth = bitmapGetByteWidth(pPointer);
@@ -54,10 +50,18 @@ namespace NEONengine
             {
                 UWORD uwOffsetSrc = r * pPointer->BytesPerRow;
                 UWORD uwOffsetDst = r * s_pPointersLo[idx]->BytesPerRow;
-                memcpy(s_pPointersLo[idx]->Planes[0] + uwOffsetDst, pPointer->Planes[0] + uwOffsetSrc, uwSourceWidth);
-                memcpy(s_pPointersLo[idx]->Planes[1] + uwOffsetDst, pPointer->Planes[1] + uwOffsetSrc, uwSourceWidth);
-                memcpy(s_pPointersHi[idx]->Planes[0] + uwOffsetDst, pPointer->Planes[2] + uwOffsetSrc, uwSourceWidth);
-                memcpy(s_pPointersHi[idx]->Planes[1] + uwOffsetDst, pPointer->Planes[3] + uwOffsetSrc, uwSourceWidth);
+                memcpy(s_pPointersLo[idx]->Planes[0] + uwOffsetDst,
+                       pPointer->Planes[0] + uwOffsetSrc,
+                       uwSourceWidth);
+                memcpy(s_pPointersLo[idx]->Planes[1] + uwOffsetDst,
+                       pPointer->Planes[1] + uwOffsetSrc,
+                       uwSourceWidth);
+                memcpy(s_pPointersHi[idx]->Planes[0] + uwOffsetDst,
+                       pPointer->Planes[2] + uwOffsetSrc,
+                       uwSourceWidth);
+                memcpy(s_pPointersHi[idx]->Planes[1] + uwOffsetDst,
+                       pPointer->Planes[3] + uwOffsetSrc,
+                       uwSourceWidth);
             }
 
             bitmapDestroy(pPointer);
@@ -68,17 +72,17 @@ namespace NEONengine
         spriteManagerCreate(screenGetView(g_mainScreen), 0, NULL);
         systemSetDmaBit(DMAB_SPRITE, 1);
 
-        s_pCurrentPointer0 = spriteAdd(0, s_pPointersLo[(int)MousePointer::POINTER]);
+        s_pCurrentPointer0 = spriteAdd(0, s_pPointersLo[(int)mouse_pointer::POINTER]);
         spriteSetEnabled(s_pCurrentPointer0, 1);
 
-        s_pCurrentPointer1 = spriteAdd(1, s_pPointersHi[(int)MousePointer::POINTER]);
+        s_pCurrentPointer1 = spriteAdd(1, s_pPointersHi[(int)mouse_pointer::POINTER]);
         spriteSetEnabled(s_pCurrentPointer1, 1);
         spriteSetAttached(s_pCurrentPointer1, 1);
 
         systemUnuse();
     }
 
-    void mousePointerSwitch(MousePointer newPointer)
+    void mousePointerSwitch(mouse_pointer newPointer)
     {
         spriteSetBitmap(s_pCurrentPointer0, s_pPointersLo[(int)newPointer]);
         spriteSetBitmap(s_pCurrentPointer1, s_pPointersHi[(int)newPointer]);
@@ -113,4 +117,4 @@ namespace NEONengine
         systemSetDmaBit(DMAB_SPRITE, 0);
         spriteManagerDestroy();
     }
-}
+}  // namespace NEONengine

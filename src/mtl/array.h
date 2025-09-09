@@ -40,7 +40,7 @@ namespace mtl
     template<class T, size_t Size>
     class array
     {
-        public:
+        public:  ///////////////////////////////////////////////////////////////////////////////////
         /*
          *  _____                 _                   _
          * / ____|               | |                 | |
@@ -69,10 +69,7 @@ namespace mtl
          */
         constexpr array(T const (&initializer)[Size])
         {
-            for (size_t index = 0; index < Size; ++index)
-            {
-                _data[index] = initializer[index];
-            }
+            for (size_t index = 0; index < Size; ++index) { _data[index] = initializer[index]; }
         }
 
         /**
@@ -81,10 +78,7 @@ namespace mtl
          * @param initial_value The value to initialize all elements of the
          * array with
          */
-        constexpr array(T const& initial_value) : array()
-        {
-            fill(initial_value);
-        }
+        constexpr array(T const& initial_value) : array() { fill(initial_value); }
 
         /*
          *     /\
@@ -113,10 +107,7 @@ namespace mtl
          *
          * @warning No bounds checking is performed. Use at() for safe access.
          */
-        constexpr T const& operator[](size_t index) const
-        {
-            return _data[index];
-        }
+        constexpr T const& operator[](size_t index) const { return _data[index]; }
 
         /**
          * @brief Access element with bounds checking
@@ -223,10 +214,7 @@ namespace mtl
          */
         constexpr void fill(T const& value) noexcept
         {
-            for (size_t index = 0; index < Size; ++index)
-            {
-                _data[index] = value;
-            }
+            for (size_t index = 0; index < Size; ++index) { _data[index] = value; }
         }
 
         /**
@@ -283,7 +271,7 @@ namespace mtl
             return true;
         }
 
-        private:
+        private:  //////////////////////////////////////////////////////////////////////////////////
         T _data[Size];  ///< Internal storage for array elements
     };
 }  // namespace mtl

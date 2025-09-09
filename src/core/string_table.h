@@ -36,7 +36,8 @@ namespace NEONengine
 
     class string_table
     {
-        public:
+        public
+            :  ////////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief Error codes for string_table operations.
          */
@@ -53,15 +54,15 @@ namespace NEONengine
          */
         enum class supported_languages
         {
-            EN,            ///< English
-            IT,            ///< Italian
-            DE,            ///< German
-            LAST_LANGUAGE  ///< Sentinel value
+            EN,
+            IT,
+            DE,
+            LAST_LANGUAGE
         };
 
         using result = mtl::expected<string_table_ptr, string_table::error_code>;
 
-        public:
+        public:  ///////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief Default constructor.
          */
@@ -93,7 +94,7 @@ namespace NEONengine
          */
         static result create_from_fd(tFile* pFile);
 
-        private:
+        private:  //////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief Offsets to each string in the data block.
          */

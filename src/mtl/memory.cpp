@@ -23,12 +23,14 @@
  *  - Large allocations (> 4 GiB) are not supported (size stored in 32 bits).
  *  - Canary only detects simple buffer overruns (not underruns or use‑after‑free).
  */
+#include "memory.h"
+
 #include <ace/managers/log.h>
 
-#include "memory.h"
 #include "utility.h"
 
-extern "C" {
+extern "C"
+{
 #include <stddef.h>
 }
 
@@ -57,8 +59,9 @@ using namespace mtl;
  * @endcode
  */
 static constexpr size_t RAW_SIZE_FIELD_SIZE = sizeof(uint32_t);
-static constexpr size_t ALIGNMENT = alignof(max_align_t);
-static constexpr size_t HEADER_SIZE = (RAW_SIZE_FIELD_SIZE + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1); // rounded up
+static constexpr size_t ALIGNMENT           = alignof(max_align_t);
+static constexpr size_t HEADER_SIZE
+    = (RAW_SIZE_FIELD_SIZE + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);  // rounded up
 
 #ifdef MTL_DEBUG_CANARY
 static constexpr uint32_t CANARY_VALUE = 0xDEADBEEF;
@@ -72,14 +75,16 @@ static constexpr uint32_t CANARY_VALUE = 0xDEADBEEF;
  * @param errorMsg  Message to log upon allocation failure.
  * @return Pointer to usable memory (or nullptr on failure).
  */
-static void* allocWithSizeTracking(size_t size, ULONG memFlags, const char* errorMsg) {
+static void* allocWithSizeTracking(size_t size, ULONG memFlags, char const* errorMsg)
+{
     size_t totalSize = HEADER_SIZE + size;
 #ifdef MTL_DEBUG_CANARY
-    totalSize += sizeof(uint32_t); // space for trailing canary
+    totalSize += sizeof(uint32_t);  // space for trailing canary
 #endif
 
     uint8_t* raw = static_cast<uint8_t*>(memAlloc(totalSize, memFlags));
-    if (!raw) {
+    if (!raw)
+    {
         logWrite("%s", errorMsg);
         return nullptr;
     }
@@ -106,16 +111,20 @@ static void* allocWithSizeTracking(size_t size, ULONG memFlags, const char* erro
  *
  * @param ptr User pointer returned from operator new / allocWithSizeTracking.
  */
-static void deallocWithSizeTracking(void* ptr) {
+static void deallocWithSizeTracking(void* ptr)
+{
     if (!ptr) return;
-    uint8_t* userPtr = static_cast<uint8_t*>(ptr);
-    uint8_t* raw = userPtr - HEADER_SIZE;
+    uint8_t* userPtr    = static_cast<uint8_t*>(ptr);
+    uint8_t* raw        = userPtr - HEADER_SIZE;
     uint32_t storedSize = *reinterpret_cast<uint32_t*>(raw);
 
 #ifdef MTL_DEBUG_CANARY
     uint32_t* canary = reinterpret_cast<uint32_t*>(userPtr + storedSize);
-    if (*canary != CANARY_VALUE) {
-        logWrite("Memory corruption detected (canary mismatch) for block %p size %lu", ptr, static_cast<unsigned long>(storedSize));
+    if (*canary != CANARY_VALUE)
+    {
+        logWrite("Memory corruption detected (canary mismatch) for block %p size %lu",
+                 ptr,
+                 static_cast<unsigned long>(storedSize));
     }
 #endif
 
@@ -130,28 +139,32 @@ static void deallocWithSizeTracking(void* ptr) {
  * @brief Global operator new override (FAST/CHIP decided at compile config).
  * @param size Number of bytes requested.
  */
-void* operator new(decltype(sizeof(int)) size) noexcept {
+void* operator new(decltype(sizeof(int)) size) noexcept
+{
     return allocWithSizeTracking(size, GLOBAL_MEM_FLAGS, "Global new failed: out of memory");
 }
 
 /**
  * @brief Global operator delete override (size recovered from header).
  */
-void operator delete(void* ptr) noexcept {
+void operator delete(void* ptr) noexcept
+{
     deallocWithSizeTracking(ptr);
 }
 
 /**
  * @brief Global array new override.
  */
-void* operator new[](decltype(sizeof(int)) size) noexcept {
+void* operator new[](decltype(sizeof(int)) size) noexcept
+{
     return allocWithSizeTracking(size, GLOBAL_MEM_FLAGS, "Global new[] failed: out of memory");
 }
 
 /**
  * @brief Global array delete override.
  */
-void operator delete[](void* ptr) noexcept {
+void operator delete[](void* ptr) noexcept
+{
     deallocWithSizeTracking(ptr);
 }
 
@@ -160,8 +173,14 @@ void operator delete[](void* ptr) noexcept {
  * Sized variants ignore the provided size parameter since the stored size
  * header is authoritative.
  * @{ */
-void operator delete(void* ptr, decltype(sizeof(int)) /*size*/) noexcept { operator delete(ptr); }
-void operator delete[](void* ptr, decltype(sizeof(int)) /*size*/) noexcept { operator delete[](ptr); }
+void operator delete(void* ptr, decltype(sizeof(int)) /*size*/) noexcept
+{
+    operator delete(ptr);
+}
+void operator delete[](void* ptr, decltype(sizeof(int)) /*size*/) noexcept
+{
+    operator delete[](ptr);
+}
 /** @} */
 
 /**
@@ -169,15 +188,29 @@ void operator delete[](void* ptr, decltype(sizeof(int)) /*size*/) noexcept { ope
  * @param size     Number of bytes requested.
  * @param memFlags Desired memory pool.
  */
-void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept { return allocWithSizeTracking(size, static_cast<ULONG>(memFlags), "Placement new failed: out of memory"); }
+void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
+{
+    return allocWithSizeTracking(
+        size, static_cast<ULONG>(memFlags), "Placement new failed: out of memory");
+}
 
 /**
  * @brief Placement array new with explicit memory flags.
  */
-void* operator new[](decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept { return allocWithSizeTracking(size, static_cast<ULONG>(memFlags), "Placement new[] failed: out of memory"); }
+void* operator new[](decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
+{
+    return allocWithSizeTracking(
+        size, static_cast<ULONG>(memFlags), "Placement new[] failed: out of memory");
+}
 
 /**
  * @brief Placement delete (only called if constructor throws – kept for completeness).
  */
-void operator delete(void* ptr, mtl::MemF /*memFlags*/) noexcept { operator delete(ptr); }
-void operator delete[](void* ptr, mtl::MemF /*memFlags*/) noexcept { operator delete[](ptr); }
+void operator delete(void* ptr, mtl::MemF /*memFlags*/) noexcept
+{
+    operator delete(ptr);
+}
+void operator delete[](void* ptr, mtl::MemF /*memFlags*/) noexcept
+{
+    operator delete[](ptr);
+}
