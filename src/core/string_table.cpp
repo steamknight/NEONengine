@@ -7,6 +7,7 @@
 #include <ace++/log.h>
 
 #include <mtl/utility.h>
+#include <mtl/expected.h>
 
 namespace NEONengine
 {
@@ -101,8 +102,7 @@ namespace NEONengine
                    to<char>((string_header.chunkName >> 8) & 0xFF),
                    to<char>((string_header.chunkName >> 0) & 0xFF));
 
-            return mtl::make_error<string_table_ptr, string_table::error_code>(
-                string_table::error_code::MISSING_STRING_HEADER);
+            return mtl::unexpected(string_table::error_code::MISSING_STRING_HEADER);
         }
 
         pTable->_offsets.reserve(string_header.stringCount);
@@ -118,7 +118,7 @@ namespace NEONengine
             pCurrent += (sizeof(uint32_t) + string.length());
         }
 
-        return mtl::make_success<string_table_ptr, error_code>(mtl::move(pTable));
+        return mtl::move(pTable);
     }
 
 }  // namespace NEONengine

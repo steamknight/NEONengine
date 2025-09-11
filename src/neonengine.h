@@ -50,7 +50,10 @@ namespace NEONengine
         g_stateLangTest;
 
 #ifdef ACE_TEST_RUNNER
-    extern tState g_stateTestRunner;
+    namespace tests
+    {
+        extern tState g_stateTestRunner;
+    }
 #endif
 
     extern Screen* g_mainScreen;

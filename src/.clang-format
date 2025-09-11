@@ -1,103 +1,144 @@
 ﻿---
+# Base style configuration - uses Google Chromium's coding style as foundation
 BasedOnStyle: Chromium
-AccessModifierOffset: 0
-IndentAccessModifiers: 'false'
-AlignAfterOpenBracket: Align
-AlignConsecutiveMacros: 'true'
-AlignConsecutiveAssignments: 'true'
-AlignConsecutiveDeclarations: 'false'
-AlignEscapedNewlines: Left
-AlignOperands: 'true'
-AlignTrailingComments: 'true'
-AllowAllArgumentsOnNextLine: 'true'
-AllowAllConstructorInitializersOnNextLine: 'false'
-AllowAllParametersOfDeclarationOnNextLine: 'false'
-AllowShortBlocksOnASingleLine: 'true'
-AllowShortCaseLabelsOnASingleLine: 'true'
-AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: WithoutElse
-AllowShortLambdasOnASingleLine: All
-AllowShortLoopsOnASingleLine: 'true'
-AlwaysBreakAfterReturnType: None
-AlwaysBreakBeforeMultilineStrings: 'true'
-AlwaysBreakTemplateDeclarations: 'Yes'
-BinPackArguments: 'false'
-BinPackParameters: 'false'
-BreakAfterJavaFieldAnnotations: 'true'
-BreakBeforeBinaryOperators: All
+
+# Access modifier indentation (public:, private:, protected:)
+AccessModifierOffset: 0          # No extra indentation for access modifiers
+IndentAccessModifiers: 'false'   # Don't indent access modifiers themselves
+
+# Alignment settings
+AlignAfterOpenBracket: Align              # Align function parameters under opening parenthesis
+AlignConsecutiveMacros: 'true'            # Align #define statements vertically
+AlignConsecutiveAssignments: 'true'       # Align = operators in consecutive lines
+AlignConsecutiveDeclarations: 'false'     # Don't align variable declarations
+AlignEscapedNewlines: Left                # Align backslashes in macros to the left
+AlignOperands: 'true'                     # Align operands in expressions
+AlignTrailingComments: 'true'             # Align // comments at end of lines
+
+# Function and parameter formatting
+AllowAllArgumentsOnNextLine: 'true'                    # Allow all function args on next line
+AllowAllConstructorInitializersOnNextLine: 'false'    # Force constructor initializers to break
+AllowAllParametersOfDeclarationOnNextLine: 'false'    # Force function parameters to break
+
+# Single-line statement controls
+AllowShortBlocksOnASingleLine: 'false'           # Allow { return; } on one line
+AllowShortCaseLabelsOnASingleLine: 'true'       # Allow case 1: break; on one line
+AllowShortFunctionsOnASingleLine: Inline        # Only inline functions can be single-line
+AllowShortIfStatementsOnASingleLine: WithoutElse # Allow if (x) return; but not with else
+AllowShortLambdasOnASingleLine: All             # Allow lambdas on single line
+AllowShortLoopsOnASingleLine: 'true'            # Allow for (;;) continue; on one line
+
+# Line breaking behavior
+AlwaysBreakAfterReturnType: None              # Don't break after return type
+AlwaysBreakBeforeMultilineStrings: 'true'     # Break before multiline strings
+AlwaysBreakTemplateDeclarations: 'Yes'        # Always break after template declarations
+
+# Parameter and argument packing
+BinPackArguments: 'false'    # Each function argument goes on separate line
+BinPackParameters: 'false'   # Each function parameter goes on separate line
+
+# Miscellaneous breaking rules
+BreakAfterJavaFieldAnnotations: 'true'  # Java-specific (not relevant for C++)
+BreakBeforeBinaryOperators: All          # Break before +, -, *, etc.
+
+# Brace placement - Custom style with all braces on new lines
 BreakBeforeBraces: Custom
 BraceWrapping:
-  AfterCaseLabel: 'true'
-  AfterClass: 'true'
-  AfterControlStatement: 'true'
-  AfterEnum: 'true'
-  AfterFunction: 'true'
-  AfterNamespace: 'true'
-  AfterObjCDeclaration: 'true'
-  AfterStruct: 'true'
-  AfterUnion: 'true'
-  AfterExternBlock: 'true'
-  BeforeCatch: 'true'
-  BeforeElse: 'true'
-  IndentBraces: 'false'
-  SplitEmptyFunction: 'false'
-  SplitEmptyRecord: 'false'
-  SplitEmptyNamespace: 'false'
-BreakBeforeTernaryOperators: 'true'
-BreakConstructorInitializers: BeforeComma
-BreakInheritanceList: BeforeComma
-BreakStringLiterals: 'true'
-ColumnLimit: '100'
-CompactNamespaces: 'true'
-Cpp11BracedListStyle: 'false'
-DerivePointerAlignment: 'true'
-FixNamespaceComments: 'true'
-IncludeBlocks: Regroup
-IndentCaseLabels: 'true'
-IndentWidth: '4'
-IndentWrappedFunctionNames: 'true'
-KeepEmptyLinesAtTheStartOfBlocks: 'false'
-Language: Cpp
-MaxEmptyLinesToKeep: '1'
-NamespaceIndentation: All
-PointerAlignment: Left
-SortIncludes: 'true'
+  AfterCaseLabel: 'true'        # Brace after case label on new line
+  AfterClass: 'true'            # Brace after class on new line
+  AfterControlStatement: 'true' # Brace after if/for/while on new line
+  AfterEnum: 'true'             # Brace after enum on new line
+  AfterFunction: 'true'         # Brace after function on new line
+  AfterNamespace: 'true'        # Brace after namespace on new line
+  AfterObjCDeclaration: 'true'  # Objective-C specific (not relevant)
+  AfterStruct: 'true'           # Brace after struct on new line
+  AfterUnion: 'true'            # Brace after union on new line
+  AfterExternBlock: 'true'      # Brace after extern "C" on new line
+  BeforeCatch: 'true'           # Brace before catch on new line
+  BeforeElse: 'true'            # Brace before else on new line
+  IndentBraces: 'false'         # Don't indent the braces themselves
+  SplitEmptyFunction: 'false'   # Keep empty functions as {}
+  SplitEmptyRecord: 'false'     # Keep empty classes/structs as {}
+  SplitEmptyNamespace: 'false'  # Keep empty namespaces as {}
+
+# More line breaking rules
+BreakBeforeTernaryOperators: 'true'       # Break before ? in ternary operators
+BreakConstructorInitializers: BeforeComma # Break constructor initializers before comma
+BreakInheritanceList: BeforeComma         # Break inheritance list before comma
+BreakStringLiterals: 'true'               # Break long string literals
+
+# Column and formatting limits
+ColumnLimit: '100'           # Wrap lines at 100 characters
+CompactNamespaces: 'true'    # Keep short namespaces on same line
+Cpp11BracedListStyle: 'false' # Use older brace list style {1, 2, 3}
+
+# Pointer and reference alignment
+DerivePointerAlignment: 'false'  # Don't derive pointer alignment from existing code
+PointerAlignment: Left          # int* ptr (not int *ptr)
+
+# Namespace and include handling
+FixNamespaceComments: 'true'    # Add // namespace Name comments
+IncludeBlocks: Regroup          # Regroup includes by category
+
+# Indentation settings
+IndentCaseLabels: 'true'              # Indent case labels
+IndentWidth: '4'                      # Use 4 spaces for indentation
+IndentWrappedFunctionNames: 'true'    # Indent wrapped function names
+
+# Empty line handling
+KeepEmptyLinesAtTheStartOfBlocks: 'false'  # Remove empty lines after {
+MaxEmptyLinesToKeep: '1'                   # Keep at most 1 empty line
+
+# Language and namespace settings
+Language: Cpp                # C++ language
+NamespaceIndentation: All    # Indent everything inside namespaces
+
+# Include sorting and categorization
+SortIncludes: 'true'         # Sort #include statements
 IncludeCategories:
-  - Regex: '^"neonengine\.h"'         # Standard headers (no folder)
+  - Regex: '^"neonengine\.h"'         # Priority 1: Main project header first
     Priority: 1
-  - Regex: '^<[^/]+>'         # Standard headers (no folder)
+  - Regex: '^<[^/]+>'         # Priority 2: Standard C++ headers (no folder)
     Priority: 2
-  - Regex: '^<mini_std/.*>'   # mini_std folder
+  - Regex: '^<mini_std/.*>'   # Priority 3: mini_std folder headers
     Priority: 3
-  - Regex: '^<ace/.*>'    # ace and ace++ folders
+  - Regex: '^<ace/.*>'    # Priority 3: ace folder headers
     Priority: 3
-  - Regex: '^<ace\+\+/.*>'    # ace and ace++ folders
+  - Regex: '^<ace\+\+/.*>'    # Priority 4: ace++ folder headers
     Priority: 4
-  - Regex: '^<mtl/.*>'        # mtl folder
+  - Regex: '^<mtl/.*>'        # Priority 5: mtl folder headers
     Priority: 5
-  - Regex: '^<[^/]+/.+>'      # Other headers with folders
+  - Regex: '^<[^/]+/.+>'      # Priority 7: Other system headers with folders
     Priority: 7
-  - Regex: '^".*"'          # Local project headers
+  - Regex: '^".*"'          # Priority 7: Local project headers
     Priority: 7
-SortUsingDeclarations: 'true'
-SpaceAfterCStyleCast: 'false'
-SpaceAfterLogicalNot: 'false'
-SpaceAfterTemplateKeyword: 'false'
-SpaceBeforeAssignmentOperators: 'true'
-SpaceBeforeCpp11BracedList: 'false'
-SpaceBeforeCtorInitializerColon: 'true'
-SpaceBeforeInheritanceColon: 'true'
-SpaceBeforeParens: ControlStatements
-SpaceBeforeRangeBasedForLoopColon: 'true'
-SpaceInEmptyParentheses: 'false'
-SpacesInAngles: 'false'
-SpacesInCStyleCastParentheses: 'false'
-SpacesInContainerLiterals: 'true'
-SpacesInParentheses: 'false'
-SpacesInSquareBrackets: 'false'
-Standard: Cpp11
-TabWidth: '4'
-UseTab: Never
-QualifierAlignment: Right
+
+# Additional sorting and spacing
+SortUsingDeclarations: 'true'     # Sort using declarations alphabetically
+
+# Spacing around various constructs
+SpaceAfterCStyleCast: 'false'           # No space after (int)x
+SpaceAfterLogicalNot: 'false'           # No space after !condition
+SpaceAfterTemplateKeyword: 'false'      # No space after template keyword
+SpaceBeforeAssignmentOperators: 'true'  # Space before = operator
+SpaceBeforeCpp11BracedList: 'false'     # No space before {1, 2, 3}
+SpaceBeforeCtorInitializerColon: 'true' # Space before : in constructor
+SpaceBeforeInheritanceColon: 'true'     # Space before : in inheritance
+SpaceBeforeParens: ControlStatements    # Space before ( in if/for/while only
+SpaceBeforeRangeBasedForLoopColon: 'true' # Space before : in range-for
+SpaceInEmptyParentheses: 'false'        # No space in ()
+SpacesInAngles: 'false'                 # No space in <template>
+SpacesInCStyleCastParentheses: 'false'  # No space in (int) cast
+SpacesInContainerLiterals: 'true'       # Space in { 1, 2, 3 }
+SpacesInParentheses: 'false'            # No space in (expression)
+SpacesInSquareBrackets: 'false'         # No space in [array]
+
+# Language standard and tab settings
+Standard: Cpp11    # C++11 standard
+TabWidth: '4'      # Tab width is 4 spaces (when tabs are used)
+UseTab: Never      # Always use spaces, never tabs
+
+# Type qualifier alignment (const, volatile)
+QualifierAlignment: Right  # int const (not const int)
 
 ...

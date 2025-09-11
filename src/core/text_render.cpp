@@ -8,6 +8,7 @@
 #include <ace++/log.h>
 
 #include <mtl/utility.h>
+#include <mtl/expected.h>
 
 namespace NEONengine
 {
@@ -104,13 +105,10 @@ namespace NEONengine
         if (!pFont)
         {
             NE_LOG("Text Renderer: Invalid font pointer.");
-
-            return mtl::make_error<text_renderer_ptr, error_code>(
-                text_renderer::error_code::INVALID_FONT_POINTER);
+            return mtl::unexpected(text_renderer::error_code::INVALID_FONT_POINTER);
         }
 
-        return mtl::make_success<text_renderer_ptr, error_code>(
-            text_renderer_ptr(new (MemF::Fast) text_renderer(pFont)));
+        return text_renderer_ptr(new (MemF::Fast) text_renderer(pFont));
     }
 
     ace::text_bitmap_ptr text_renderer::create_text(bstr_view const& text,
@@ -146,7 +144,8 @@ namespace NEONengine
 
         // ... and stitch them all together
         uint16_t height = _pFont->uwHeight * lineCount;
-        auto pResult    = ace::fontCreateTextBitMap(mtl::round_up<16>(maxWidth), mtl::round_up<16>(height));
+        auto pResult
+            = ace::fontCreateTextBitMap(mtl::round_up<16>(maxWidth), mtl::round_up<16>(height));
 
         pResult->uwActualWidth  = maxWidth;
         pResult->uwActualHeight = height;

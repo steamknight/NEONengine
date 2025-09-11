@@ -1,3 +1,4 @@
+#define ACE_TEST_RUNNER
 #include "neonengine.h"
 
 #include <ace/generic/main.h>
@@ -38,7 +39,7 @@ void genericCreate(void)
     screenBindMouse(NEONengine::g_mainScreen);
 
 #ifdef ACE_TEST_RUNNER
-    statePush(g_gameStateManager, &g_stateTestRunner);
+    statePush(g_gameStateManager, &tests::g_stateTestRunner);
 #else
     statePush(g_gameStateManager, &g_stateFontTest);
 #endif

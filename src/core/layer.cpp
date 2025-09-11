@@ -6,349 +6,158 @@
 #include <ace/managers/memory.h>
 #include <ace/managers/mouse.h>
 
+#include <ace++/log.h>
+
+#include <mtl/utility.h>
+
 #include "core/mouse_pointer.h"
 #include "core/screen.h"
-#include "mtl/utility.h"
 
 namespace NEONengine
 {
     using namespace mtl;
 
-    enum class HotspotState
+    void ui_layer::update() noexcept
     {
-        IDLE,
-        HOVERED,
-        PRESSED
-    };
+        ACE_TRACE();
 
-    struct HotspotInternal
-    {
-        HotspotId id;
-        Hotspot hotspot;
-        enum HotspotState state;
-        struct HotspotInternal *pNext;
-    };
-
-    struct Layer
-    {
-        tUwRect bounds;
-        UWORD uwHotspotCount;
-        HotspotId nextHotspotId;
-        HotspotInternal *pFirstHotspot;
-        UBYTE ubIsEnabled;
-        UBYTE ubUpdateOutsideBounds;
-        UWORD uwOffsetY;
-    };
-
-    tUwRect calculateLayerBounds(Layer *pLayer);
-
-    Layer *layerCreate()
-    {
-        logBlockBegin("layerCreate");
-        Layer *pLayer     = (Layer *)memAllocFastClear(sizeof(Layer));
-        pLayer->uwOffsetY = systemIsPal() ? 28 : 0;
-        logBlockEnd("layerCreate");
-
-        return pLayer;
-    }
-
-    void layerUpdate(Layer *pLayer)
-    {
-        // logBlockBegin("layerUpdate");
-        if (!pLayer)
-        {
-            logWrite("layerUpdate: layer cannot be null");
-            return;
-        }
-
-        if (!pLayer->ubIsEnabled
-            || (!pLayer->ubUpdateOutsideBounds && !mouseInRect(MOUSE_PORT_1, pLayer->bounds)))
+        if (!_is_enabled || (!_should_update_outside_bounds && !mouseInRect(MOUSE_PORT_1, _bounds)))
         {
             return;
         }
 
-        HotspotInternal *pCurrent    = pLayer->pFirstHotspot;
-        UBYTE ubMousePressed         = mouseCheck(MOUSE_PORT_1, MOUSE_LMB);
+        UBYTE isMousePressed         = mouseCheck(MOUSE_PORT_1, MOUSE_LMB);
         mouse_pointer mousePointerId = mouse_pointer::POINTER;
-        while (pCurrent)
+
+        for (auto& hotspot : _hotspots)
         {
-            UBYTE ubOverHotspot = mouseInRect(MOUSE_PORT_1, pCurrent->hotspot.bounds);
-            if (ubOverHotspot) { mousePointerId = pCurrent->hotspot.pointer; }
-
-            switch (pCurrent->state)
+            auto isOverHotspot = mouseInRect(MOUSE_PORT_1, hotspot.bounds);
+            if (isOverHotspot)
             {
-                case HotspotState::IDLE:
-                    if (ubOverHotspot)
-                    {
-                        if (ubMousePressed)
+                mousePointerId = hotspot.pointerId;
+            }
+
+            // Simplified state machine using current conditions
+            auto currentState = hotspot.state;
+
+            if (isOverHotspot)
+            {
+                switch (currentState)
+                {
+                    case hotspot_state::IDLE:
+                        if (isMousePressed)
                         {
-                            /*
-                             * If the mouse is pressed while hovering, go straight to
-                             * pressed.
-                             */
-                            pCurrent->state = HotspotState::PRESSED;
-                            SAFE_CB_CALL(pCurrent->hotspot.cbOnPressed, &pCurrent->hotspot);
+                            hotspot.state = hotspot_state::PRESSED;
+                            SAFE_CB_CALL(hotspot.cbOnPressed, &hotspot);
                         }
                         else
                         {
-                            /*
-                             * If hovering without pressing, just go to hovered.
-                             */
-                            pCurrent->state = HotspotState::HOVERED;
-                            SAFE_CB_CALL(pCurrent->hotspot.cbOnHovered, &pCurrent->hotspot);
+                            hotspot.state = hotspot_state::HOVERED;
+                            SAFE_CB_CALL(hotspot.cbOnHovered, &hotspot);
                         }
-                    }
-                    else
-                    {
-                        /*
-                         * If not hovered, keep idling.
-                         */
-                        SAFE_CB_CALL(pCurrent->hotspot.cbOnIdle, &pCurrent->hotspot);
-                    }
-                    break;
+                        break;
 
-                case HotspotState::HOVERED:
-                    if (!ubOverHotspot)
-                    {
-                        /*
-                         * Regardless of mouse state, if we are no longer on the
-                         * hotspot, it should go back to idle. Note that "hot-hovered"
-                         * and "pressed" are not a valid combination for this state.
-                         */
-                        pCurrent->state = HotspotState::IDLE;
-                        SAFE_CB_CALL(pCurrent->hotspot.cbOnUnhovered, &pCurrent->hotspot);
-                    }
-                    else if (ubOverHotspot && ubMousePressed)
-                    {
-                        /*
-                         * If hovering and pressed, then the hotspot was pressed.
-                         */
-                        pCurrent->state = HotspotState::PRESSED;
-                        SAFE_CB_CALL(pCurrent->hotspot.cbOnPressed, &pCurrent->hotspot);
-                    }
-                    break;
-
-                case HotspotState::PRESSED:
-                    if (ubOverHotspot)
-                    {
-                        if (ubMousePressed)
+                    case hotspot_state::HOVERED:
+                        if (isMousePressed)
                         {
-                            /*
-                             * If the mouse is pressed and we're over the hotspot, stop
-                             * processing so we don't keep sending onPressed events.
-                             */
-                            break;
+                            hotspot.state = hotspot_state::PRESSED;
+                            SAFE_CB_CALL(hotspot.cbOnPressed, &hotspot);
                         }
-                        else
+                        // Stay hovered if not pressed
+                        break;
+
+                    case hotspot_state::PRESSED:
+                        if (!isMousePressed)
                         {
-                            /*
-                             * If the mouse is not pressed and we're over the hotspot,
-                             * we must have released.
-                             */
-                            pCurrent->state = HotspotState::HOVERED;
-                            SAFE_CB_CALL(pCurrent->hotspot.cbOnReleased, &pCurrent->hotspot);
+                            hotspot.state = hotspot_state::HOVERED;
+                            SAFE_CB_CALL(hotspot.cbOnReleased, &hotspot);
                         }
-                    }
-                    else
-                    {
-                        /*
-                         * Regardless of the mouse state, if we move off the hotspot
-                         * it should be considered idle. This allows us to "cancel",
-                         * a press on hotspot my moving off of it. If we're no longer
-                         * over the hotspot, we must unhover
-                         */
-                        pCurrent->state = HotspotState::IDLE;
-                        SAFE_CB_CALL(pCurrent->hotspot.cbOnUnhovered, &pCurrent->hotspot);
-                    }
+                        // Stay pressed if still pressing
+                        break;
+                }
+            }
+            else  // Not over hotspot
+            {
+                switch (currentState)
+                {
+                    case hotspot_state::IDLE: SAFE_CB_CALL(hotspot.cbOnIdle, &hotspot); break;
 
-                    break;
-
-                default:
-                    logWrite("layerUpdate: Unknown hotspot state %d", to<int>(pCurrent->state));
-                    break;
-            };
-
-            // Lastly, if the hotspot is either hovered or pressed, changed the mouse
-            // pointer.
-
-            pCurrent = pCurrent->pNext;
+                    case hotspot_state::HOVERED:
+                    case hotspot_state::PRESSED:
+                        hotspot.state = hotspot_state::IDLE;
+                        SAFE_CB_CALL(hotspot.cbOnUnhovered, &hotspot);
+                        break;
+                }
+            }
         }
 
         mousePointerSwitch(mousePointerId);
     }
 
-    void layerDestroy(Layer *pLayer)
+    hotspot_id ui_layer::add_hotspot(hotspot const& value)
     {
-        logBlockBegin("layerDestroy");
-        if (pLayer)
-        {
-            HotspotInternal *pCurrent = pLayer->pFirstHotspot;
-            while (pCurrent)
-            {
-                HotspotInternal *pNext = pCurrent->pNext;
-                memFree(pCurrent, sizeof(HotspotInternal));
+        ACE_TRACE();
 
-                pCurrent = pNext;
-            }
+        _hotspots.push_back(value);
+        _bounds = _calculate_bounds();
 
-            memFree(pLayer, sizeof(Layer));
-        }
-
-        logBlockEnd("layerDestroy");
+        return _hotspots.size() - 1;
     }
 
-    void layerSetEnable(Layer *pLayer, UBYTE ubIsEnabled)
+    hotspot* ui_layer::get_hotspot(hotspot_id id)
     {
-        if (!pLayer)
-        {
-            logWrite("layerSetEnable: layer cannot be null");
-            return;
-        }
-
-        pLayer->ubIsEnabled = ubIsEnabled;
+        ACE_TRACE();
+        return (id < _hotspots.size()) ? &_hotspots[mtl::to<size_t>(id)] : nullptr;
     }
 
-    void layerSetUpdateOutsideBounds(Layer *pLayer, UBYTE ubUpdateOutsideBounds)
+    void ui_layer::remove_hotspot(hotspot_id id)
     {
-        if (!pLayer)
+        ACE_TRACE();
+
+        auto pPrev    = _hotspots.begin();
+        auto pCurrent = _hotspots.begin();
+
+        while (pCurrent != _hotspots.end() && pCurrent->id != id)
         {
-            logWrite("layerSetUpdateOutsideBounds: layer cannot be null");
-            return;
+            pPrev = pCurrent;
+            ++pCurrent;
         }
 
-        pLayer->ubUpdateOutsideBounds = ubUpdateOutsideBounds;
-    }
+        if (pCurrent == _hotspots.end()) return;
 
-    HotspotId layerAddHotspot(Layer *pLayer, Hotspot *pHotspot)
-    {
-        HotspotInternal *pLastHotspot = NULL;
-
-        logBlockBegin("layerAddHotspot");
-        if (!pLayer)
+        if (pCurrent == _hotspots.begin())
         {
-            logWrite("layerAddHotspot: layer cannot be null");
-            return INVALID_REGION;
+            _hotspots.pop_front();
         }
-
-        if (!pHotspot)
-        {
-            logWrite("layerAddHotspot: hotspot cannot be null");
-            return INVALID_REGION;
-        }
-
-        HotspotInternal *pNewHotspot
-            = (HotspotInternal *)memAllocFastClear(sizeof(HotspotInternal));
-        if (!pNewHotspot)
-        {
-            logWrite("layerAddHotspot: Unable to allocate memory for hotspot");
-            return INVALID_REGION;
-        }
-
-        pNewHotspot->id = pLayer->nextHotspotId;
-        pLayer->nextHotspotId++;
-
-        memcpy(&pNewHotspot->hotspot, pHotspot, sizeof(Hotspot));
-        pNewHotspot->pNext = 0;
-        pNewHotspot->hotspot.bounds.uwY += pLayer->uwOffsetY;
-
-        if (!pLayer->pFirstHotspot) { pLayer->pFirstHotspot = pNewHotspot; }
         else
         {
-            pLastHotspot = pLayer->pFirstHotspot;
-            while (pLastHotspot->pNext) { pLastHotspot = pLastHotspot->pNext; }
-
-            pLastHotspot->pNext = pNewHotspot;
+            _hotspots.erase_after(pPrev);
         }
 
-        pLayer->bounds = calculateLayerBounds(pLayer);
-
-        logBlockEnd("layerAddHotspot");
-
-        return pNewHotspot->id;
+        _bounds = _calculate_bounds();
     }
 
-    Hotspot const *layerGetHotspot(Layer *pLayer, HotspotId id)
+    tUwRect ui_layer::_calculate_bounds()
     {
-        if (!pLayer)
+        auto bounds = _hotspots.front().bounds;
+
+        auto minX = bounds.uwX;
+        auto minY = bounds.uwY;
+        auto maxX = minX + bounds.uwWidth;
+        auto maxY = minY + bounds.uwHeight;
+
+        for (auto const& current : _hotspots)
         {
-            logWrite("layerGetHotspot: layer cannot be null");
-            return 0;
+            auto bound = current.bounds;
+            minX       = MIN(minX, bound.uwX);
+            minY       = MIN(minY, bound.uwY);
+            maxX       = MAX(maxX, bound.uwX + bound.uwWidth);
+            maxY       = MAX(maxY, bound.uwY + bound.uwHeight);
         }
 
-        HotspotInternal *pCurrent = pLayer->pFirstHotspot;
-        while (pCurrent && pCurrent->id != id) { pCurrent = pCurrent->pNext; }
-
-        return (pCurrent) ? &pCurrent->hotspot : nullptr;
-    }
-
-    void layerRemoveHotspot(Layer *pLayer, HotspotId id)
-    {
-        logBlockBegin("layerRemoveHotspot");
-        if (!pLayer)
-        {
-            logWrite("layerRemoveHotspot: layer cannot be null");
-            return;
-        }
-
-        HotspotInternal *pPrev, *pCurrent;
-        pCurrent = pLayer->pFirstHotspot;
-
-        if (pCurrent->id == id)
-        {
-            pLayer->pFirstHotspot = pCurrent->pNext;
-            memFree(pCurrent, sizeof(HotspotInternal));
-            return;
-        }
-
-        while (pCurrent != 0 && pCurrent->id != id)
-        {
-            pPrev    = pCurrent;
-            pCurrent = pCurrent->pNext;
-        }
-
-        if (pCurrent == 0)
-        {
-            logWrite("layerRemoveHotspot: no hotspot with id %d", id);
-            return;
-        }
-
-        pPrev->pNext = pCurrent->pNext;
-
-        pLayer->bounds = calculateLayerBounds(pLayer);
-
-        logBlockEnd("layerRemoveHotspot");
-    }
-
-    /*
-     * Internal function.
-     * Assumptions:
-     *   - layer is not null
-     *   - layer hast at least one hotspot
-     */
-    tUwRect calculateLayerBounds(Layer *pLayer)
-    {
-        tUwRect *pBounds = &pLayer->pFirstHotspot->hotspot.bounds;
-
-        UWORD minX = pBounds->uwX;
-        UWORD minY = pBounds->uwY;
-        UWORD maxX = minX + pBounds->uwWidth;
-        UWORD maxY = minY + pBounds->uwHeight;
-
-        HotspotInternal *pLastHotspot = pLayer->pFirstHotspot->pNext;
-        while (pLastHotspot)
-        {
-            pBounds = &pLastHotspot->hotspot.bounds;
-            minX    = MIN(minX, pBounds->uwX);
-            minY    = MIN(minY, pBounds->uwY);
-            maxX    = MAX(maxX, pBounds->uwX + pBounds->uwWidth);
-            maxY    = MAX(maxY, pBounds->uwY + pBounds->uwHeight);
-
-            pLastHotspot = pLastHotspot->pNext;
-        }
-
-        return (tUwRect){ .uwY      = minY,
-                          .uwX      = minX,
-                          .uwWidth  = static_cast<UWORD>(maxX - minX),
-                          .uwHeight = static_cast<UWORD>(maxY - minY) };
+        return { .uwY      = minY,
+                 .uwX      = minX,
+                 .uwWidth  = static_cast<UWORD>(maxX - minX),
+                 .uwHeight = static_cast<UWORD>(maxY - minY) };
     }
 }  // namespace NEONengine

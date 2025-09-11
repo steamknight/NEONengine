@@ -19,10 +19,14 @@ namespace ace
     };
 
 #ifdef ACE_DEBUG
-#define ACE_LOG_BLOCK(blockName)  auto __log_block##__LINE__ = ace::log_block((blockName))
-#define ACE_LOG(domain, fmt, ...) logWrite(domain ": " fmt, ##__VA_ARGS__)
+#define ACE_LOG_BLOCK_IMPL(blockName, line) auto __log_block##line = ace::log_block((blockName))
+#define ACE_LOG_BLOCK(blockName)            ACE_LOG_BLOCK_IMPL(blockName, __LINE__)
+#define ACE_TRACE_IMPL(line)                auto __log_block##line = ace::log_block(const_cast<char*>(__func__))
+#define ACE_TRACE()                         ACE_TRACE_IMPL(__LINE__)
+#define ACE_LOG(domain, fmt, ...)           logWrite(domain ": " fmt, ##__VA_ARGS__)
 #else
 #define ACE_LOG_BLOCK(blockName)
+#define ACE_TRACE()
 #define ACE_LOG(domain, fmt, ...)
 #endif
 

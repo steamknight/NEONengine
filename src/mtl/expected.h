@@ -17,6 +17,43 @@ namespace mtl
      * @endcode
      */
 
+    /**
+     * @brief Wrapper for unexpected values (error results)
+     */
+    template<typename E>
+    struct unexpected_t
+    {
+        E error;
+        constexpr explicit unexpected_t(E const& e) : error(e) {}
+        
+        template<typename U>
+        constexpr explicit unexpected_t(U&& e) : error(static_cast<U&&>(e)) {}
+    };
+
+    /**
+     * @brief Helper to create unexpected values - special case for string literals
+     */
+    template<size_t N>
+    constexpr unexpected_t<char const*> unexpected(char const (&e)[N])
+    {
+        return unexpected_t<char const*>(e);
+    }
+    
+    /**
+     * @brief Helper to create unexpected values - general case
+     */
+    template<typename E>
+    constexpr unexpected_t<E> unexpected(E const& e)
+    {
+        return unexpected_t<E>(e);
+    }
+
+    template<typename E>
+    constexpr unexpected_t<E> unexpected(E&& e)
+    {
+        return unexpected_t<E>(static_cast<E&&>(e));
+    }
+
     template<typename T, typename E>
     class expected
     {
@@ -31,12 +68,8 @@ namespace mtl
         /**
          * @brief Tag type for error construction
          */
-        struct unexpected
-        {};
-        /**
-         * @brief Static tag instance for error construction
-         */
-        static constexpr unexpected unexpect{};
+        struct error_tag {};
+        static constexpr error_tag unexpect{};
 
         public:  ///////////////////////////////////////////////////////////////////////////////////
         /*
@@ -59,11 +92,23 @@ namespace mtl
         /**
          * @brief Construct with an error
          */
-        constexpr expected(unexpected, E const& e) : _error(e), _has(false) {}
+        constexpr expected(error_tag, E const& e) : _error(e), _has(false) {}
         /**
          * @brief Construct with an error (rvalue)
          */
-        constexpr expected(unexpected, E&& e) : _error(static_cast<E&&>(e)), _has(false) {}
+        constexpr expected(error_tag, E&& e) : _error(static_cast<E&&>(e)), _has(false) {}
+
+        /**
+         * @brief Construct from unexpected_t - compatible type conversion
+         */
+        template<typename U>
+        constexpr expected(unexpected_t<U> const& u) : _error(static_cast<E>(u.error)), _has(false) {}
+        
+        /**
+         * @brief Construct from unexpected_t (rvalue) - compatible type conversion
+         */
+        template<typename U>
+        constexpr expected(unexpected_t<U>&& u) : _error(static_cast<E>(u.error)), _has(false) {}
 
         /**
          * @brief Copy constructor
@@ -115,6 +160,45 @@ namespace mtl
             swap(o);
             return *this;
         }
+
+        /**
+         * @brief Assignment from unexpected_t
+         */
+        template<typename U>
+        constexpr expected& operator=(unexpected_t<U> const& u)
+        {
+            if (_has)
+            {
+                _value.~T();
+                new (&_error) E(static_cast<E>(u.error));
+                _has = false;
+            }
+            else
+            {
+                _error = static_cast<E>(u.error);
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Assignment from unexpected_t (rvalue)
+         */
+        template<typename U>
+        constexpr expected& operator=(unexpected_t<U>&& u)
+        {
+            if (_has)
+            {
+                _value.~T();
+                new (&_error) E(static_cast<E>(u.error));
+                _has = false;
+            }
+            else
+            {
+                _error = static_cast<E>(u.error);
+            }
+            return *this;
+        }
+
         /**
          * @brief Swap contents with another expected
          */
@@ -215,7 +299,7 @@ namespace mtl
     template<typename T, typename E>
     constexpr expected<T, E> make_error(E const& e)
     {
-        return expected<T, E>(expected<T, E>::unexpect, e);
+        return expected<T, E>(typename expected<T, E>::error_tag{}, e);
     }
 
     /**
@@ -224,7 +308,7 @@ namespace mtl
     template<typename T, typename E>
     constexpr expected<T, E> make_error(E&& e)
     {
-        return expected<T, E>(expected<T, E>::unexpect, static_cast<E&&>(e));
+        return expected<T, E>(typename expected<T, E>::error_tag{}, static_cast<E&&>(e));
     }
 }  // namespace mtl
 

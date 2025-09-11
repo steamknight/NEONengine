@@ -132,9 +132,9 @@ namespace mtl
     template<typename T>
     constexpr void swap(T& a, T& b)
     {
-        T tmp = to<T&&>(a);
-        a     = to<T&&>(b);
-        b     = to<T&&>(tmp);
+        T tmp = mtl::move(a);
+        a     = mtl::move(b);
+        b     = mtl::move(tmp);
     }
 }  // namespace mtl
 
