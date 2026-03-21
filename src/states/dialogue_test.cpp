@@ -18,8 +18,8 @@
 
 namespace NEONengine
 {
-    ace::font_ptr s_pFont{ nullptr };
-    text_renderer_ptr s_pTextRenderer{ nullptr };
+    // ace::font_ptr s_pFont{ nullptr };
+    // text_renderer_ptr s_pTextRenderer{ nullptr };
 
     void dialogueTestCreate(void)
     {
@@ -35,7 +35,7 @@ namespace NEONengine
         if (!renderer_result)
         {
             NE_LOG("Failed to create text renderer: Error code %d",
-                   mtl::to<int>(renderer_result.error()));
+                mtl::to<int>(renderer_result.error()));
             return;
         }
 
@@ -49,8 +49,8 @@ namespace NEONengine
         uint16_t uwWidth   = 240;
 
         uint32_t ulStartText = timerGetPrec();
-        auto pTextBitmap
-            = s_pTextRenderer->create_text(text, uwWidth - uwMargins * 2, text_justify::LEFT);
+        auto pTextBitmap     = g_pEngine->default_text_renderer()->create_text(
+            text, uwWidth - uwMargins * 2, text_justify::LEFT);
         uint32_t ulEndText = timerGetPrec();
 
         auto patch        = nine_patch(pPatchBitmap, 16, 16, 16, 16);
@@ -72,15 +72,18 @@ namespace NEONengine
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartText, ulEndText));
         snprintf(renderBuffer, sizeof(renderBuffer), "Text created in %s", timerBuffer);
-        auto pTextCreate = s_pTextRenderer->create_text(renderBuffer, 320, text_justify::CENTER);
+        auto pTextCreate = g_pEngine->default_text_renderer()->create_text(
+            (char const*)renderBuffer, 320, text_justify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartPatch, ulEndPatch));
         snprintf(renderBuffer, sizeof(renderBuffer), "Patch created in %s", timerBuffer);
-        auto pPatchCreate = s_pTextRenderer->create_text(renderBuffer, 320, text_justify::CENTER);
+        auto pPatchCreate = g_pEngine->default_text_renderer()->create_text(
+            (char const*)renderBuffer, 320, text_justify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartRender, ulEndRender));
         snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
-        auto pRender = s_pTextRenderer->create_text(renderBuffer, 320, text_justify::CENTER);
+        auto pRender = g_pEngine->default_text_renderer()->create_text(
+            (char const*)renderBuffer, 320, text_justify::CENTER);
 
         screenTextCopy(g_mainScreen, pTextCreate.get(), 0, 180, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pPatchCreate.get(), 0, 191, 1, FONT_COOKIE);
@@ -89,11 +92,7 @@ namespace NEONengine
 
     void dialogueTestProcess(void) {}
 
-    void dialogueTestDestroy(void)
-    {
-        s_pTextRenderer.release();
-        s_pFont.release();
-    }
+    void dialogueTestDestroy(void) {}
 
     tState g_stateDialogueTest = {
         .cbCreate  = dialogueTestCreate,

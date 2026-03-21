@@ -2,12 +2,14 @@
 
 #include <stdint.h>
 
-#include <ace/managers/blit.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/system.h>
-#include <ace/managers/viewport/simplebuffer.h>
 #include <ace/utils/palette.h>
 
+#include <ace++/bitmap.h>
+#include <ace++/log.h>
+
+#include <mtl/memory.h>
 #include <mtl/utility.h>
 
 #include "core/layer.h"
@@ -22,15 +24,18 @@ namespace NEONengine
 #define FLAG_IDLE    1
 #define FLAG_HOVERED 0
 
-#define EN 0
-#define IT 2
-#define DE 4
+    constexpr uint32_t EN = 0;
+    constexpr uint32_t IT = 2;
+    constexpr uint32_t DE = 4;
 
-    constexpr UWORD FLAG_WIDTH  = 40;
-    constexpr UWORD FLAG_HEIGHT = 32;
+    constexpr uint16_t FLAG_WIDTH  = 40;
+    constexpr uint16_t FLAG_HEIGHT = 32;
 
-    static Layer *s_flagsLayer;
-    static tBitMap *s_pFlagsAtlas;
+    using layer_ptr               = mtl::unique_ptr<ui_layer>;
+    static layer_ptr s_flagsLayer = nullptr;
+
+    static ace::bitmap_ptr s_pFlagsAtlas = nullptr;
+
     static tUwCoordYX s_flags[6] = {
         { .uwY = 0, .uwX = 0 },
         {
@@ -49,122 +54,128 @@ namespace NEONengine
         },  // German
     };
 
-    //     Hotspot const *pEnglish = NULL;
-    //     Hotspot const *pItalian = NULL;
+    hotspot const* pEnglish = NULL;
+    hotspot const* pItalian = NULL;
 
-    // #define MAKE_CONTEXT(id, state) (intptr_t)(id) << 8 | (intptr_t)(state)
-    // #define CONTEXT_GET_ID(ctx)     ((intptr_t)(ctx) & 0x0000FF00) >> 8
-    // #define CONTEXT_GET_STATE(ctx)  ((intptr_t)(ctx)) & 0x000000FF
+#define MAKE_CONTEXT(id, state) (intptr_t)(id) << 8 | (intptr_t)(state)
+#define CONTEXT_GET_ID(ctx)     ((intptr_t)(ctx) & 0x0000FF00) >> 8
+#define CONTEXT_GET_STATE(ctx)  ((intptr_t)(ctx)) & 0x000000FF
 
-    //     void cbOnHovered(Hotspot *pHotspot)
-    //     {
-    //         intptr_t ctx      = (intptr_t)pHotspot->context;
-    //         intptr_t id       = CONTEXT_GET_ID(ctx);
-    //         ctx               = MAKE_CONTEXT(id, id + FLAG_HOVERED);
-    //         pHotspot->context = (void *)ctx;
-    //     }
+    void cbOnHovered(hotspot* pHotspot)
+    {
+        intptr_t ctx      = (intptr_t)pHotspot->context;
+        intptr_t id       = CONTEXT_GET_ID(ctx);
+        ctx               = MAKE_CONTEXT(id, id + FLAG_HOVERED);
+        pHotspot->context = (void*)ctx;
+    }
 
-    // void cbOnUnhovered(Hotspot *pHotspot)
-    // {
-    //     intptr_t ctx      = (intptr_t)pHotspot->context;
-    //     intptr_t id       = CONTEXT_GET_ID(ctx);
-    //     ctx               = MAKE_CONTEXT(id, id + FLAG_IDLE);
-    //     pHotspot->context = (void *)ctx;
-    // }
+    void cbOnUnhovered(hotspot* pHotspot)
+    {
+        intptr_t ctx      = (intptr_t)pHotspot->context;
+        intptr_t id       = CONTEXT_GET_ID(ctx);
+        ctx               = MAKE_CONTEXT(id, id + FLAG_IDLE);
+        pHotspot->context = (void*)ctx;
+    }
 
-    // void cbOnPressed(Hotspot *pHotspot)
-    // {
-    //     logWrite("Pressing %d", (UWORD)(ULONG)pHotspot->context);
-    // }
+    void cbOnPressed(hotspot* pHotspot)
+    {
+        logWrite("Pressing %d", (uint16_t)(ULONG)pHotspot->context);
+    }
 
-    // void cbOnReleased(Hotspot *pHotspot)
-    // {
-    //     logWrite("Releasing %d", (UWORD)(ULONG)pHotspot->context);
-    // }
+    void cbOnReleased(hotspot* pHotspot)
+    {
+        logWrite("Releasing %d", (uint16_t)(ULONG)pHotspot->context);
+    }
 
     void langSelectCreate(void)
     {
-        // logBlockBegin(STATE_NAME);
-        // screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
-        // screenClear(g_mainScreen, 0);
+        ACE_TRACE();
 
-        // paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-        // s_pFlagsAtlas = bitmapCreateFromPath("data/core/flags.bm", 0);
+        screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
+        screenClear(g_mainScreen, 0);
 
-        // mousePointerCreate("data/core/pointers.bm");
-        // s_flagsLayer = layerCreate();
+        paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
+        s_pFlagsAtlas = ace::bitmapCreateFromPath("data/core/flags.bm", 0);
 
-        // UWORD uwX = (SCREEN_WIDTH - FLAG_WIDTH) >> 1;
-        // UWORD uwY = (SCREEN_HEIGHT - (FLAG_HEIGHT << 1)) >> 1;
+        mousePointerCreate("data/core/pointers.bm");
+        s_flagsLayer = mtl::make_unique<ui_layer>();
 
-        // ULONG enCtx         = MAKE_CONTEXT(EN, 1);
-        // Hotspot englishFlag = {
-        //     .bounds
-        //     = (tUwRect){ .uwY = uwY, .uwX = uwX, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT
-        //     }, .pointer       = mouse_pointer::USE, .cbOnHovered   = cbOnHovered, .cbOnUnhovered
-        //     = cbOnUnhovered, .cbOnPressed   = cbOnPressed, .cbOnReleased  = cbOnReleased,
-        //     .context       = (void *)enCtx,
-        // };
+        uint16_t uwX = 0;  //(SCREEN_WIDTH - FLAG_WIDTH) >> 1;
+        uint16_t uwY = 0;  //(SCREEN_HEIGHT - (FLAG_HEIGHT << 1)) >> 1;
 
-        // ULONG itCtx         = MAKE_CONTEXT(IT, 1);
-        // Hotspot italianFlag = { .bounds      = (tUwRect){ .uwY      = mtl::to<UWORD>(uwY +
-        // FLAG_HEIGHT),
-        //                                                   .uwX      = uwX,
-        //                                                   .uwWidth  = FLAG_WIDTH,
-        //                                                   .uwHeight = FLAG_HEIGHT },
-        //                         .pointer     = mouse_pointer::USE,
-        //                         .cbOnHovered = cbOnHovered,
-        //                         .cbOnUnhovered = cbOnUnhovered,
-        //                         .cbOnPressed   = cbOnPressed,
-        //                         .cbOnReleased  = cbOnReleased,
-        //                         .context       = (void *)itCtx };
+        ULONG enCtx         = MAKE_CONTEXT(EN, 1);
+        hotspot englishFlag = {
+            .bounds
+            = (tUwRect){ .uwY = uwY, .uwX = uwX, .uwWidth = FLAG_WIDTH, .uwHeight = FLAG_HEIGHT },
+            .pointerId     = mouse_pointer::USE,
+            .cbOnHovered   = cbOnHovered,
+            .cbOnUnhovered = cbOnUnhovered,
+            .cbOnPressed   = cbOnPressed,
+            .cbOnReleased  = cbOnReleased,
+            .context       = (void*)enCtx,
+            .id            = EN
+        };
 
-        // HotspotId en = layerAddHotspot(s_flagsLayer, &englishFlag);
-        // HotspotId it = layerAddHotspot(s_flagsLayer, &italianFlag);
+        ULONG itCtx         = MAKE_CONTEXT(IT, 1);
+        hotspot italianFlag = { //
+            .bounds        = (tUwRect){ .uwY = mtl::to<uint16_t>(uwY + FLAG_HEIGHT),
+                       .uwX                  = uwX,
+                       .uwWidth              = FLAG_WIDTH,
+                       .uwHeight             = FLAG_HEIGHT },
+            .pointerId     = mouse_pointer::USE,
+            .cbOnHovered   = cbOnHovered,
+            .cbOnUnhovered = cbOnUnhovered,
+            .cbOnPressed   = cbOnPressed,
+            .cbOnReleased  = cbOnReleased,
+            .context       = (void*)itCtx,
+            .id            = IT
+        };
 
-        // pEnglish = layerGetHotspot(s_flagsLayer, en);
-        // pItalian = layerGetHotspot(s_flagsLayer, it);
+        s_flagsLayer = mtl::make_unique<ui_layer>();
+        pEnglish     = s_flagsLayer->add_hotspot(englishFlag);
+        pItalian     = s_flagsLayer->add_hotspot(italianFlag);
 
-        // layerSetEnable(s_flagsLayer, 1);
-        // layerSetUpdateOutsideBounds(s_flagsLayer, 1);
+        s_flagsLayer->set_enabled(true);
+        s_flagsLayer->set_update_outside_bounds(true);
     }
 
     void langSelectProcess(void)
     {
-        // mousePointerUpdate();
-        // layerUpdate(s_flagsLayer);
+        mousePointerUpdate();
 
-        // ULONG enState = CONTEXT_GET_STATE((UWORD)(ULONG)pEnglish->context);
-        // blitCopy(s_pFlagsAtlas,
-        //          s_flags[enState].uwX,
-        //          s_flags[enState].uwY,
-        //          screenGetBackBuffer(g_mainScreen),
-        //          pEnglish->bounds.uwX,
-        //          pEnglish->bounds.uwY,
-        //          FLAG_WIDTH,
-        //          FLAG_HEIGHT,
-        //          MINTERM_COOKIE);
+        s_flagsLayer->update();
 
-        // ULONG itState = CONTEXT_GET_STATE((UWORD)(ULONG)pItalian->context);
-        // blitCopy(s_pFlagsAtlas,
-        //          s_flags[itState].uwX,
-        //          s_flags[itState].uwY,
-        //          screenGetBackBuffer(g_mainScreen),
-        //          pItalian->bounds.uwX,
-        //          pItalian->bounds.uwY,
-        //          FLAG_WIDTH,
-        //          FLAG_HEIGHT,
-        //          MINTERM_COOKIE);
+        ULONG enState = CONTEXT_GET_STATE((uint16_t)(ULONG)pEnglish->context);
+        screenBlitCopy(g_mainScreen,
+            s_pFlagsAtlas.get(),
+            s_flags[enState].uwX,
+            s_flags[enState].uwY,
+            pEnglish->bounds.uwX,
+            pEnglish->bounds.uwY,
+            FLAG_WIDTH,
+            FLAG_HEIGHT,
+            MINTERM_COOKIE);
+
+        ULONG itState = CONTEXT_GET_STATE((uint16_t)(ULONG)pItalian->context);
+        screenBlitCopy(g_mainScreen,
+            s_pFlagsAtlas.get(),
+            s_flags[itState].uwX,
+            s_flags[itState].uwY,
+            pItalian->bounds.uwX,
+            pItalian->bounds.uwY,
+            FLAG_WIDTH,
+            FLAG_HEIGHT,
+            MINTERM_COOKIE);
     }
 
     void langSelectDestroy(void)
     {
-        // logBlockEnd(STATE_NAME);
+        ACE_TRACE();
 
-        // bitmapDestroy(s_pFlagsAtlas);
+        s_flagsLayer.release();
+        s_pFlagsAtlas.release();
 
-        // mousePointerDestroy();
-        // layerDestroy(s_flagsLayer);
+        mousePointerDestroy();
     }
 
     tState g_stateLangSelect = {

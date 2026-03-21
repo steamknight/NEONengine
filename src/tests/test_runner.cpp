@@ -12,10 +12,23 @@
 #include "core/screen.h"
 #include "tests/bstr_view_tests.h"
 #include "tests/mtl_array_tests.h"
+#include "tests/mtl_expected_tests.h"
 #include "tests/mtl_list_tests.h"
 #include "tests/mtl_vector_tests.h"
-#include "tests/mtl_expected_tests.h"
-
+#include "tests/noir_vm_arithmetic_tests.h"
+#include "tests/noir_vm_control_flow_tests.h"
+#include "tests/noir_vm_data_move_tests.h"
+#include "tests/noir_vm_dialogue_tests.h"
+#include "tests/noir_vm_flag_ops_tests.h"
+#include "tests/noir_vm_inventory_tests.h"
+#include "tests/noir_vm_menu_tests.h"
+#include "tests/noir_vm_debug_tests.h"
+#include "tests/noir_vm_logic_tests.h"
+#include "tests/noir_vm_reentry_tests.h"
+#include "tests/noir_vm_scene_tests.h"
+#include "tests/noir_vm_tests.h"
+#include "tests/noir_vm_timeline_tests.h"
+#include "tests/noir_vm_value_ops_tests.h"
 
 namespace NEONengine::tests
 {
@@ -38,6 +51,20 @@ namespace NEONengine::tests
         RUN_SUITE(mtl_list);
         RUN_SUITE(mtl_vector);
         RUN_SUITE(mtl_expected);
+        RUN_SUITE(noir_vm);
+        RUN_SUITE(noir_vm_data_move);
+        RUN_SUITE(noir_vm_arithmetic);
+        RUN_SUITE(noir_vm_control_flow);
+        RUN_SUITE(noir_vm_logic);
+        RUN_SUITE(noir_vm_flag_ops);
+        RUN_SUITE(noir_vm_value_ops);
+        RUN_SUITE(noir_vm_inventory);
+        RUN_SUITE(noir_vm_timeline);
+        RUN_SUITE(noir_vm_scene);
+        RUN_SUITE(noir_vm_dialogue);
+        RUN_SUITE(noir_vm_menu);
+        RUN_SUITE(noir_vm_debug);
+        RUN_SUITE(noir_vm_reentry);
     }
 
     void runTestSuite(char const* szSuiteName, Test tests[], uint32_t testCount)
@@ -65,7 +92,10 @@ namespace NEONengine::tests
 
                 // return;
             }
-            else { ++passedTests; }
+            else
+            {
+                ++passedTests;
+            }
         }
 
         snprintf(buffer, sizeof(buffer), "Passed %ld/%ld tests.", passedTests, testCount);

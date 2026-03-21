@@ -1,0 +1,1634 @@
+#ifndef __NOIR_VM_DIALOGUE_TESTS_H__INCLUDED__
+#define __NOIR_VM_DIALOGUE_TESTS_H__INCLUDED__
+
+#ifdef ACE_TEST_RUNNER
+
+#include "tests/noir_vm_test_utils.h"
+
+namespace NEONengine
+{
+    // ═════════════════════════════════════════════════════════════════════════════
+    // Game Calls — Dialogue / Audio opcodes (0xB0–0xBF)
+    //   SAY, SHOW_DIALOG, SHOW_TEXT, CLEAR_TEXT, PLAY_MUSIC, STOP_MUSIC, PLAY_SFX
+    //
+    // All dialogue/audio opcodes are 1-byte (opcode only). Arguments in D0–D2.
+    // Bridge function pointers are called.
+    //
+    // SAY         (0xB0): D0=string_id, D1=speaker_id → bridge->say(D0,D1) — blocking
+    // SHOW_DIALOG (0xB1): D0=dialogue_id → bridge->show_dialog(D0)         — blocking
+    // SHOW_TEXT   (0xB2): D0=string_id, D1=x, D2=y → bridge->show_text     — non-blocking
+    // CLEAR_TEXT  (0xB3): bridge->clear_text()                              — non-blocking
+    // PLAY_MUSIC  (0xB4): D0=music_id → bridge->play_music(D0)             — non-blocking
+    // STOP_MUSIC  (0xB5): bridge->stop_music()                              — non-blocking
+    // PLAY_SFX    (0xB6): D0=sfx_id → bridge->play_sfx(D0)                 — non-blocking
+    // 0xB7–0xBF: Reserved → err_invalid_opcode
+    //
+    // SR: All dialogue/audio opcodes leave SR unchanged.
+    // Registers: D0–D3 preserved (no opcode writes to registers).
+    // ═════════════════════════════════════════════════════════════════════════════
+
+    // ── SAY ─────────────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_say_basic)
+    {
+        // SAY with D0=10 (string), D1=3 (speaker)
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(3);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(g_mock_log.say_called, "say bridge called");
+        TEST_ASSERT(g_mock_log.say_string_id == 10, "say received string_id 10");
+        TEST_ASSERT(g_mock_log.say_speaker_id == 3, "say received speaker_id 3");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_blocks_vm)
+    {
+        // SAY is a blocking opcode — VM should be blocked after SAY
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(2);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        auto status = vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
+        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_stays_blocked)
+    {
+        // VM stays blocked across multiple update() calls until unblocked
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        auto s1 = vm.update();
+        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
+        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
+
+        auto s2 = vm.update();
+        TEST_ASSERT(s2 == noir_status::yielded, "still yielded after 3rd update");
+        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 3rd update");
+
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_resumes_after_unblock)
+    {
+        // After decrement_blocking(), VM resumes and completes
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(20);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(4);
+
+        bc.emit(noir_op::SAY);
+
+        // Code after unblock
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(999);
+
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after SAY");
+
+        vm.decrement_blocking();
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(vm.exit_code() == 999, "code after SAY executed");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_preserves_d0_d1)
+    {
+        // D0 and D1 should be preserved across the blocking period
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(42);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(7);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.decrement_blocking();
+        vm.update();
+
+        TEST_ASSERT(vm.reg_d(0) == 42, "D0 preserved across SAY block");
+        TEST_ASSERT(vm.reg_d(1) == 7, "D1 preserved across SAY block");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_preserves_all_regs)
+    {
+        // All data registers preserved across SAY
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(11);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(22);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(33);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(44);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.decrement_blocking();
+        vm.update();
+
+        TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
+        TEST_ASSERT(vm.reg_d(1) == 22, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 33, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 44, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_preserves_sr)
+    {
+        // SR preserved across SAY
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);  // 0 - 1 = -1, sets N
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.decrement_blocking();
+        vm.update();
+
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across SAY block");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_zero_args)
+    {
+        // SAY with D0=0, D1=0
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::REG_D1);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(g_mock_log.say_called, "say called");
+        TEST_ASSERT(g_mock_log.say_string_id == 0, "say received string_id 0");
+        TEST_ASSERT(g_mock_log.say_speaker_id == 0, "say received speaker_id 0");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_max_args)
+    {
+        // SAY with D0=0xFFFF, D1=0xFFFF
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(0xFFFF);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(0xFFFF);
+
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(g_mock_log.say_called, "say called");
+        TEST_ASSERT(g_mock_log.say_string_id == 0xFFFF, "say received max string_id");
+        TEST_ASSERT(g_mock_log.say_speaker_id == 0xFFFF, "say received max speaker_id");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_inside_call)
+    {
+        // SAY inside a called function blocks, then returns correctly
+        bytecode_builder bc;
+
+        // fn0: main — calls fn1
+        uint16_t fn0 = bc.begin_func();
+        bc.emit(noir_op::CALL);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::RET);
+
+        // fn1: does SAY then sets D0=77
+        uint16_t fn1 = bc.begin_func();
+        (void)fn1;
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(100);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(2);
+
+        bc.emit(noir_op::SAY);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(77);
+
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn0);
+        vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked inside fn1");
+        TEST_ASSERT(g_mock_log.say_string_id == 100, "say string_id 100");
+        TEST_ASSERT(g_mock_log.say_speaker_id == 2, "say speaker_id 2");
+
+        vm.decrement_blocking();
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(vm.exit_code() == 77, "D0=77 returned from fn1");
+        TEST_SUCCESS;
+    }
+
+    // ── SHOW_DIALOG ─────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_show_dialog_basic)
+    {
+        // SHOW_DIALOG with D0=5
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(g_mock_log.show_dialog_called, "show_dialog bridge called");
+        TEST_ASSERT(g_mock_log.show_dialog_id == 5, "show_dialog received id 5");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_blocks_vm)
+    {
+        // SHOW_DIALOG is a blocking opcode
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        auto status = vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
+        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_stays_blocked)
+    {
+        // VM stays blocked until unblocked
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        auto s1 = vm.update();
+        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
+        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
+
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_resumes_after_unblock)
+    {
+        // After decrement_blocking(), VM resumes and completes
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(888);
+
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after SHOW_DIALOG");
+
+        vm.decrement_blocking();
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(vm.exit_code() == 888, "code after SHOW_DIALOG executed");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_preserves_all_regs)
+    {
+        // All data registers preserved across SHOW_DIALOG
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(11);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(22);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(33);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(44);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.decrement_blocking();
+        vm.update();
+
+        TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
+        TEST_ASSERT(vm.reg_d(1) == 22, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 33, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 44, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_preserves_sr)
+    {
+        // SR preserved across SHOW_DIALOG
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);  // sets N
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.decrement_blocking();
+        vm.update();
+
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_zero_id)
+    {
+        // SHOW_DIALOG with D0=0
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(g_mock_log.show_dialog_called, "show_dialog called");
+        TEST_ASSERT(g_mock_log.show_dialog_id == 0, "show_dialog received id 0");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_dialog_max_id)
+    {
+        // SHOW_DIALOG with D0=0xFFFF
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(0xFFFF);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(g_mock_log.show_dialog_called, "show_dialog called");
+        TEST_ASSERT(g_mock_log.show_dialog_id == 0xFFFF, "show_dialog received max id");
+        TEST_SUCCESS;
+    }
+
+    // ── SHOW_TEXT ────────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_show_text_basic)
+    {
+        // SHOW_TEXT with D0=string, D1=x, D2=y
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(100);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(50);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(75);
+
+        bc.emit(noir_op::SHOW_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.show_text_id == 100, "show_text received string 100");
+        TEST_ASSERT(g_mock_log.show_text_x == 50, "show_text received x 50");
+        TEST_ASSERT(g_mock_log.show_text_y == 75, "show_text received y 75");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_text_does_not_block)
+    {
+        // SHOW_TEXT is non-blocking
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(20);
+
+        bc.emit(noir_op::SHOW_TEXT);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(555);
+
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
+        TEST_ASSERT(vm.exit_code() == 555, "execution continued past SHOW_TEXT");
+        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_text_preserves_regs)
+    {
+        // All data registers preserved after SHOW_TEXT
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(2);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(3);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(4);
+
+        bc.emit(noir_op::SHOW_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.reg_d(0) == 1, "D0 preserved");
+        TEST_ASSERT(vm.reg_d(1) == 2, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 3, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 4, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_text_preserves_sr)
+    {
+        // SR unchanged after SHOW_TEXT
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);  // sets N
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(20);
+
+        bc.emit(noir_op::SHOW_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_show_text_zero_coords)
+    {
+        // SHOW_TEXT at 0,0
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(42);
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::REG_D1);
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::REG_D2);
+
+        bc.emit(noir_op::SHOW_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.show_text_id == 42, "show_text string 42");
+        TEST_ASSERT(g_mock_log.show_text_x == 0, "show_text x=0");
+        TEST_ASSERT(g_mock_log.show_text_y == 0, "show_text y=0");
+        TEST_SUCCESS;
+    }
+
+    // ── CLEAR_TEXT ───────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_clear_text_basic)
+    {
+        // CLEAR_TEXT calls bridge->clear_text()
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLEAR_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.clear_text_called, "clear_text bridge called");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_clear_text_does_not_block)
+    {
+        // CLEAR_TEXT is non-blocking
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLEAR_TEXT);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(444);
+
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 444, "code continued past CLEAR_TEXT");
+        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_clear_text_preserves_regs)
+    {
+        // All data registers preserved after CLEAR_TEXT
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(20);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(30);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(40);
+
+        bc.emit(noir_op::CLEAR_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.reg_d(0) == 10, "D0 preserved");
+        TEST_ASSERT(vm.reg_d(1) == 20, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 30, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 40, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_clear_text_preserves_sr)
+    {
+        // SR unchanged after CLEAR_TEXT
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);  // sets N
+
+        bc.emit(noir_op::CLEAR_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
+        TEST_SUCCESS;
+    }
+
+    // ── PLAY_MUSIC ──────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_play_music_basic)
+    {
+        // PLAY_MUSIC with D0=3
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(3);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.play_music_id == 3, "play_music received id 3");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_does_not_block)
+    {
+        // PLAY_MUSIC is non-blocking
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(777);
+
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 777, "code continued past PLAY_MUSIC");
+        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_preserves_d0)
+    {
+        // D0 preserved after PLAY_MUSIC
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(42);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 42, "D0 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_preserves_other_regs)
+    {
+        // D1–D3 preserved after PLAY_MUSIC
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(100);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(200);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(300);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.reg_d(1) == 100, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 200, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 300, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_preserves_sr)
+    {
+        // SR unchanged after PLAY_MUSIC
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(7);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_zero_id)
+    {
+        // PLAY_MUSIC with D0=0
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.play_music_id == 0, "play_music received id 0");
+        TEST_SUCCESS;
+    }
+
+    // ── STOP_MUSIC ──────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_stop_music_basic)
+    {
+        // STOP_MUSIC calls bridge->stop_music()
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::STOP_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.stop_music_called, "stop_music bridge called");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_stop_music_does_not_block)
+    {
+        // STOP_MUSIC is non-blocking
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::STOP_MUSIC);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(333);
+
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 333, "code continued past STOP_MUSIC");
+        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_stop_music_preserves_regs)
+    {
+        // All data registers preserved after STOP_MUSIC
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(20);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(30);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(40);
+
+        bc.emit(noir_op::STOP_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.reg_d(0) == 10, "D0 preserved");
+        TEST_ASSERT(vm.reg_d(1) == 20, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 30, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 40, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_stop_music_preserves_sr)
+    {
+        // SR unchanged after STOP_MUSIC
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::STOP_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
+        TEST_SUCCESS;
+    }
+
+    // ── PLAY_SFX ────────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_play_sfx_basic)
+    {
+        // PLAY_SFX with D0=8
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(8);
+
+        bc.emit(noir_op::PLAY_SFX);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.play_sfx_id == 8, "play_sfx received id 8");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_sfx_does_not_block)
+    {
+        // PLAY_SFX is non-blocking
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::PLAY_SFX);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(222);
+
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 222, "code continued past PLAY_SFX");
+        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_sfx_preserves_d0)
+    {
+        // D0 preserved after PLAY_SFX
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(55);
+
+        bc.emit(noir_op::PLAY_SFX);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 55, "D0 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_sfx_preserves_other_regs)
+    {
+        // D1–D3 preserved after PLAY_SFX
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(111);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(222);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(333);
+
+        bc.emit(noir_op::PLAY_SFX);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(vm.reg_d(1) == 111, "D1 preserved");
+        TEST_ASSERT(vm.reg_d(2) == 222, "D2 preserved");
+        TEST_ASSERT(vm.reg_d(3) == 333, "D3 preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_sfx_preserves_sr)
+    {
+        // SR unchanged after PLAY_SFX
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(2);
+
+        bc.emit(noir_op::PLAY_SFX);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_sfx_zero_id)
+    {
+        // PLAY_SFX with D0=0
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
+
+        bc.emit(noir_op::PLAY_SFX);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.play_sfx_id == 0, "play_sfx received id 0");
+        TEST_SUCCESS;
+    }
+
+    // ── Combined patterns ───────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_show_text_then_clear)
+    {
+        // Common pattern: show text then clear it
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(50);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(10);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(20);
+
+        bc.emit(noir_op::SHOW_TEXT);
+        bc.emit(noir_op::CLEAR_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.show_text_id == 50, "show_text received string 50");
+        TEST_ASSERT(g_mock_log.clear_text_called, "clear_text called after show_text");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_then_sfx)
+    {
+        // Start music then play a sound effect
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(7);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(15);
+
+        bc.emit(noir_op::PLAY_SFX);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.play_music_id == 7, "play_music(7)");
+        TEST_ASSERT(g_mock_log.play_sfx_id == 15, "play_sfx(15)");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_play_music_then_stop)
+    {
+        // Start music then stop it
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(4);
+
+        bc.emit(noir_op::PLAY_MUSIC);
+        bc.emit(noir_op::STOP_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(g_mock_log.play_music_id == 4, "play_music(4)");
+        TEST_ASSERT(g_mock_log.stop_music_called, "stop_music called");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_say_then_show_text)
+    {
+        // SAY blocks, after unblock SHOW_TEXT executes
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(2);
+
+        bc.emit(noir_op::SAY);
+
+        // After unblock: show text at (30, 40)
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(99);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(30);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(40);
+
+        bc.emit(noir_op::SHOW_TEXT);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SAY");
+        TEST_ASSERT(g_mock_log.say_called, "say called");
+
+        vm.decrement_blocking();
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(g_mock_log.show_text_id == 99, "show_text string 99");
+        TEST_ASSERT(g_mock_log.show_text_x == 30, "show_text x=30");
+        TEST_ASSERT(g_mock_log.show_text_y == 40, "show_text y=40");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_sequential_say_then_show_dialog)
+    {
+        // Two blocking opcodes in sequence: SAY then SHOW_DIALOG
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(2);
+
+        bc.emit(noir_op::SAY);
+
+        // After SAY unblocks, load dialog id and SHOW_DIALOG
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(50);
+
+        bc.emit(noir_op::SHOW_DIALOG);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(666);
+
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SAY");
+        TEST_ASSERT(g_mock_log.say_called, "say called");
+
+        // Unblock SAY — should then block on SHOW_DIALOG
+        vm.decrement_blocking();
+        vm.update();
+
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SHOW_DIALOG");
+        TEST_ASSERT(g_mock_log.show_dialog_called, "show_dialog called");
+        TEST_ASSERT(g_mock_log.show_dialog_id == 50, "show_dialog(50)");
+
+        // Unblock SHOW_DIALOG — should complete
+        vm.decrement_blocking();
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_status::completed, "completes after both unblocked");
+        TEST_ASSERT(vm.exit_code() == 666, "final D0=666");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_full_dialogue_sequence)
+    {
+        // Full cutscene pattern: play_music → say → show_text → clear_text → stop_music
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        // Start music
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(3);
+        bc.emit(noir_op::PLAY_MUSIC);
+
+        // Play SFX
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(12);
+        bc.emit(noir_op::PLAY_SFX);
+
+        // SAY (blocking)
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(100);
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(5);
+        bc.emit(noir_op::SAY);
+
+        // After SAY: show_text
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(200);
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
+        bc.emit_u16(10);
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
+        bc.emit_u16(20);
+        bc.emit(noir_op::SHOW_TEXT);
+
+        // clear_text + stop_music
+        bc.emit(noir_op::CLEAR_TEXT);
+        bc.emit(noir_op::STOP_MUSIC);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        // Should be blocked on SAY
+        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SAY");
+        TEST_ASSERT(g_mock_log.play_music_id == 3, "play_music(3) called before SAY");
+        TEST_ASSERT(g_mock_log.play_sfx_id == 12, "play_sfx(12) called before SAY");
+        TEST_ASSERT(g_mock_log.say_called, "say called");
+
+        // Unblock SAY — rest should run to completion
+        vm.decrement_blocking();
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_status::completed, "completes after SAY unblocked");
+        TEST_ASSERT(g_mock_log.show_text_id == 200, "show_text(200)");
+        TEST_ASSERT(g_mock_log.clear_text_called, "clear_text called");
+        TEST_ASSERT(g_mock_log.stop_music_called, "stop_music called");
+        TEST_SUCCESS;
+    }
+
+    // ── Invalid opcodes ─────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_noir_dialogue_invalid_0xB7)
+    {
+        // 0xB7 is not a valid dialogue/audio opcode
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(0xB7);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xB7 is invalid");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_dialogue_invalid_0xBF)
+    {
+        // 0xBF is not a valid dialogue/audio opcode
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(0xBF);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xBF is invalid");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_dialogue_invalid_0xBA)
+    {
+        // mid-range invalid opcode
+        bytecode_builder bc;
+        uint16_t fn = bc.begin_func();
+
+        bc.emit(0xBA);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xBA is invalid");
+        TEST_SUCCESS;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Test suite registration
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    constexpr char const* noir_vm_dialogue_name = "NoirVM Dialogue/Audio (0xB_)";
+
+    Test noir_vm_dialogue_tests[] = {
+        // SAY
+        { "say basic", test_noir_say_basic },
+        { "say blocks VM", test_noir_say_blocks_vm },
+        { "say stays blocked", test_noir_say_stays_blocked },
+        { "say resumes", test_noir_say_resumes_after_unblock },
+        { "say preserves D0,D1", test_noir_say_preserves_d0_d1 },
+        { "say preserves all regs", test_noir_say_preserves_all_regs },
+        { "say preserves SR", test_noir_say_preserves_sr },
+        { "say zero args", test_noir_say_zero_args },
+        { "say max args", test_noir_say_max_args },
+        { "say inside CALL", test_noir_say_inside_call },
+
+        // SHOW_DIALOG
+        { "show_dialog basic", test_noir_show_dialog_basic },
+        { "show_dialog blocks VM", test_noir_show_dialog_blocks_vm },
+        { "show_dialog stays blocked", test_noir_show_dialog_stays_blocked },
+        { "show_dialog resumes", test_noir_show_dialog_resumes_after_unblock },
+        { "show_dialog preserves regs", test_noir_show_dialog_preserves_all_regs },
+        { "show_dialog preserves SR", test_noir_show_dialog_preserves_sr },
+        { "show_dialog zero id", test_noir_show_dialog_zero_id },
+        { "show_dialog max id", test_noir_show_dialog_max_id },
+
+        // SHOW_TEXT
+        { "show_text basic", test_noir_show_text_basic },
+        { "show_text does not block", test_noir_show_text_does_not_block },
+        { "show_text preserves regs", test_noir_show_text_preserves_regs },
+        { "show_text preserves SR", test_noir_show_text_preserves_sr },
+        { "show_text zero coords", test_noir_show_text_zero_coords },
+
+        // CLEAR_TEXT
+        { "clear_text basic", test_noir_clear_text_basic },
+        { "clear_text does not block", test_noir_clear_text_does_not_block },
+        { "clear_text preserves regs", test_noir_clear_text_preserves_regs },
+        { "clear_text preserves SR", test_noir_clear_text_preserves_sr },
+
+        // PLAY_MUSIC
+        { "play_music basic", test_noir_play_music_basic },
+        { "play_music does not block", test_noir_play_music_does_not_block },
+        { "play_music preserves D0", test_noir_play_music_preserves_d0 },
+        { "play_music preserves regs", test_noir_play_music_preserves_other_regs },
+        { "play_music preserves SR", test_noir_play_music_preserves_sr },
+        { "play_music zero id", test_noir_play_music_zero_id },
+
+        // STOP_MUSIC
+        { "stop_music basic", test_noir_stop_music_basic },
+        { "stop_music does not block", test_noir_stop_music_does_not_block },
+        { "stop_music preserves regs", test_noir_stop_music_preserves_regs },
+        { "stop_music preserves SR", test_noir_stop_music_preserves_sr },
+
+        // PLAY_SFX
+        { "play_sfx basic", test_noir_play_sfx_basic },
+        { "play_sfx does not block", test_noir_play_sfx_does_not_block },
+        { "play_sfx preserves D0", test_noir_play_sfx_preserves_d0 },
+        { "play_sfx preserves regs", test_noir_play_sfx_preserves_other_regs },
+        { "play_sfx preserves SR", test_noir_play_sfx_preserves_sr },
+        { "play_sfx zero id", test_noir_play_sfx_zero_id },
+
+        // Combined patterns
+        { "show_text then clear", test_noir_show_text_then_clear },
+        { "play_music then sfx", test_noir_play_music_then_sfx },
+        { "play_music then stop", test_noir_play_music_then_stop },
+        { "say then show_text", test_noir_say_then_show_text },
+        { "say then show_dialog", test_noir_sequential_say_then_show_dialog },
+        { "full dialogue sequence", test_noir_full_dialogue_sequence },
+
+        // Invalid opcodes
+        { "invalid 0xB7", test_noir_dialogue_invalid_0xB7 },
+        { "invalid 0xBF", test_noir_dialogue_invalid_0xBF },
+        { "invalid 0xBA", test_noir_dialogue_invalid_0xBA },
+    };
+
+}  // namespace NEONengine
+
+#endif  // ACE_TEST_RUNNER
+#endif  // __NOIR_VM_DIALOGUE_TESTS_H__INCLUDED__

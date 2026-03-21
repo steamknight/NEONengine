@@ -41,7 +41,7 @@ void genericCreate(void)
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &tests::g_stateTestRunner);
 #else
-    statePush(g_gameStateManager, &g_stateFontTest);
+    statePush(g_gameStateManager, &g_stateDialogueTest);
 #endif
 }
 
@@ -55,8 +55,14 @@ void genericProcess(void)
 
     if (keyUse(KEY_F1))
     {
-        if (ubDebugToggle) { statePush(g_gameStateManager, &g_stateDebugView); }
-        else { statePop(g_gameStateManager); }
+        if (ubDebugToggle)
+        {
+            statePush(g_gameStateManager, &g_stateDebugView);
+        }
+        else
+        {
+            statePop(g_gameStateManager);
+        }
 
         ubDebugToggle = 1 - ubDebugToggle;
     }

@@ -57,6 +57,12 @@ namespace mtl
         return static_cast<MemF>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
     }
 
+    template<class T>
+    inline void default_delete_func(T* p)
+    {
+        delete p;
+    }
+
     /**
      * Manages the lifetime of a raw pointer. Can have a function or lambda as
      * a custom deleter for that type allowing easy deletion of pointers created
@@ -66,7 +72,7 @@ namespace mtl
      * using bitmap_ptr = unique_ptr<tBitMap, bitmapDestroy>;
      * auto pBitmap = bitmap_ptr(bitmapCreate(...));
      */
-    template<class T, auto Deleter = [](T*) {}>
+    template<class T, void (*Deleter)(T*) = default_delete_func<T>>
     class unique_ptr
     {
         public:
@@ -111,7 +117,10 @@ namespace mtl
          */
         ~unique_ptr() noexcept
         {
-            if (_pointer) { Deleter(_pointer); }
+            if (_pointer)
+            {
+                Deleter(_pointer);
+            }
         }
 
         /**
@@ -124,7 +133,10 @@ namespace mtl
         {
             if (_pointer != new_pointer)
             {
-                if (_pointer) { Deleter(_pointer); }
+                if (_pointer)
+                {
+                    Deleter(_pointer);
+                }
                 _pointer = new_pointer;
             }
         }

@@ -68,7 +68,7 @@ namespace NEONengine
 #ifdef ACE_DEBUG
 #define NE_LOG(fmt, ...) logWrite("NEONengine: " fmt, ##__VA_ARGS__)
 #else
-#define NE_LOG(domain, fmt, ...)
+#define NE_LOG(fmt, ...)
 #endif
 
 }  // namespace NEONengine

@@ -57,7 +57,7 @@ namespace NEONengine
          *
          * @param enable 1 to enable, 0 to disable.
          */
-        void set_enabled(bool enable) const noexcept;
+        void set_enabled(bool enable) noexcept { _is_enabled = enable; };
 
         bool updates_outside_bounds() const noexcept { return _should_update_outside_bounds; };
 
@@ -71,7 +71,10 @@ namespace NEONengine
          *
          * @param update true for update outside of hotspot
          */
-        void set_update_outside_bounds(bool update) const noexcept;
+        void set_update_outside_bounds(bool update) noexcept
+        {
+            _should_update_outside_bounds = update;
+        };
 
         /**
          * @brief Adds a new hotspot to the layer.
@@ -91,7 +94,7 @@ namespace NEONengine
          * @see get_hotspot()
          * @see remove_hotspot()
          */
-        hotspot_id add_hotspot(hotspot const& value);
+        hotspot* add_hotspot(hotspot const& value);
 
         /**
          * @brief Gets a hotspot based on its hotspot id
@@ -120,9 +123,9 @@ namespace NEONengine
         private:  //////////////////////////////////////////////////////////////////////////////////
         mtl::forward_list<hotspot> _hotspots;
         tUwRect _bounds{};
-        bool _is_enabled;
-        bool _should_update_outside_bounds;
-        uint16_t _offsetY;
+        bool _is_enabled{ false };
+        bool _should_update_outside_bounds{ false };
+        uint16_t _offsetY{ 28 };
     };
 
     using ui_layer_ptr = mtl::unique_ptr<ui_layer>;

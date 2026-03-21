@@ -2,6 +2,7 @@
 
 #include "neonengine.h"
 
+#include <ace/managers/blit.h>
 #include <ace/managers/log.h>
 #include <ace/managers/memory.h>
 #include <ace/managers/mouse.h>
@@ -19,8 +20,6 @@ namespace NEONengine
 
     void ui_layer::update() noexcept
     {
-        ACE_TRACE();
-
         if (!_is_enabled || (!_should_update_outside_bounds && !mouseInRect(MOUSE_PORT_1, _bounds)))
         {
             return;
@@ -29,8 +28,23 @@ namespace NEONengine
         UBYTE isMousePressed         = mouseCheck(MOUSE_PORT_1, MOUSE_LMB);
         mouse_pointer mousePointerId = mouse_pointer::POINTER;
 
+        blitRect(screenGetBackBuffer(g_mainScreen),
+            _bounds.uwX + 20,
+            _bounds.uwY,
+            _bounds.uwWidth,
+            _bounds.uwHeight,
+            1);
+
+        // auto color = 1;
         for (auto& hotspot : _hotspots)
         {
+            // blitRect(screenGetBackBuffer(g_mainScreen),
+            //     hotspot.bounds.uwX + 20,
+            //     hotspot.bounds.uwY + _offsetY,
+            //     hotspot.bounds.uwWidth,
+            //     hotspot.bounds.uwHeight,
+            //     color++);
+
             auto isOverHotspot = mouseInRect(MOUSE_PORT_1, hotspot.bounds);
             if (isOverHotspot)
             {
@@ -94,14 +108,15 @@ namespace NEONengine
         mousePointerSwitch(mousePointerId);
     }
 
-    hotspot_id ui_layer::add_hotspot(hotspot const& value)
+    hotspot* ui_layer::add_hotspot(hotspot const& value)
     {
         ACE_TRACE();
 
         _hotspots.push_back(value);
+        _hotspots.back().bounds.uwY += _offsetY;
         _bounds = _calculate_bounds();
 
-        return _hotspots.size() - 1;
+        return &_hotspots.back();
     }
 
     hotspot* ui_layer::get_hotspot(hotspot_id id)
@@ -155,9 +170,9 @@ namespace NEONengine
             maxY       = MAX(maxY, bound.uwY + bound.uwHeight);
         }
 
-        return { .uwY      = minY,
-                 .uwX      = minX,
-                 .uwWidth  = static_cast<UWORD>(maxX - minX),
-                 .uwHeight = static_cast<UWORD>(maxY - minY) };
+        return { .uwY = mtl::to<UWORD>(minY),
+            .uwX      = minX,
+            .uwWidth  = mtl::to<UWORD>(maxX - minX),
+            .uwHeight = mtl::to<UWORD>(maxY - minY) };
     }
 }  // namespace NEONengine
