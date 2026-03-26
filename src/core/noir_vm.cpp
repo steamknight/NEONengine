@@ -1157,10 +1157,25 @@ namespace NEONengine
             case VALUE_IMM:
             {
                 uint16_t idx = read_u16();
+                if (!validate_value_index(idx))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    return 0;
+                }
                 return _values[idx];
             }
 
-            case VALUE_D0: return _values[_d[0]];
+            case VALUE_D0:
+            {
+                if (!validate_value_index(_d[0]))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    return 0;
+                }
+                return _values[_d[0]];
+            }
 
             default: return 0;
         }
@@ -1187,11 +1202,27 @@ namespace NEONengine
             case VALUE_IMM:
             {
                 uint16_t idx = read_u16();
+                if (!validate_value_index(idx))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    break;
+                }
                 _values[idx] = value;
                 break;
             }
 
-            case VALUE_D0: _values[_d[0]] = value; break;
+            case VALUE_D0:
+            {
+                if (!validate_value_index(_d[0]))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    break;
+                }
+                _values[_d[0]] = value;
+                break;
+            }
 
             default: break;
         }
@@ -1230,10 +1261,25 @@ namespace NEONengine
             {
                 uint16_t idx      = read_u16();
                 _cached_dst_param = idx;
+                if (!validate_value_index(idx))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    return 0;
+                }
                 return _values[idx];
             }
 
-            case VALUE_D0: return _values[_d[0]];
+            case VALUE_D0:
+            {
+                if (!validate_value_index(_d[0]))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    return 0;
+                }
+                return _values[_d[0]];
+            }
 
             default: return 0;
         }
@@ -1259,11 +1305,27 @@ namespace NEONengine
 
             case VALUE_IMM:
             {
+                if (!validate_value_index(_cached_dst_param))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    break;
+                }
                 _values[_cached_dst_param] = value;
                 break;
             }
 
-            case VALUE_D0: _values[_d[0]] = value; break;
+            case VALUE_D0:
+            {
+                if (!validate_value_index(_d[0]))
+                {
+                    _last_error = noir_status::err_value_oob;
+                    _state      = noir_state::halted;
+                    break;
+                }
+                _values[_d[0]] = value;
+                break;
+            }
 
             default: break;
         }

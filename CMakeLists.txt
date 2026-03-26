@@ -3,6 +3,8 @@ project(NEONengine VERSION 1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
+set(M68K_CPU "68020" CACHE STRING "Target CPU model" FORCE)
+
 # Lowercase project name for binaries and packaging
 string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
 
@@ -52,6 +54,10 @@ else()
     add_executable(${GAME_LINKED} ${SOURCES} ${HEADERS})
 endif()
 
+# CRITICAL: Disable aggressive optimizations for 68020+ - known to cause crashes
+# -fno-optimize-sibling-calls: Prevents tail-call optimization that generates invalid branches
+target_compile_options(${GAME_LINKED} PRIVATE -fno-optimize-sibling-calls)
+target_compile_options(ace PRIVATE -fno-optimize-sibling-calls)
 add_custom_command(
     TARGET ${GAME_LINKED}
     PRE_BUILD

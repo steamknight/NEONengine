@@ -7,7 +7,7 @@ AccessModifierOffset: 0          # No extra indentation for access modifiers
 IndentAccessModifiers: 'false'   # Don't indent access modifiers themselves
 
 # Alignment settings
-AlignAfterOpenBracket: Align              # Align function parameters under opening parenthesis
+AlignAfterOpenBracket: DontAlign          # Don't align function parameters under opening parenthesis
 AlignConsecutiveMacros: 'true'            # Align #define statements vertically
 AlignConsecutiveAssignments: 'true'       # Align = operators in consecutive lines
 AlignConsecutiveDeclarations: 'false'     # Don't align variable declarations

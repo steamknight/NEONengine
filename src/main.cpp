@@ -1,4 +1,4 @@
-#define ACE_TEST_RUNNER
+// #define ACE_TEST_RUNNER
 #include "neonengine.h"
 
 #include <ace/generic/main.h>

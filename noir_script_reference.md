@@ -141,6 +141,8 @@ Two 4-bit fields packed into one byte: `[dst_mode:4][src_mode:4]`
 | 0x8 | value[D0] | 0 | VALUES array indexed by D0 |
 | 0x9–0xF | — | — | Reserved |
 
+**Bounds check:** Value modes (0x7 and 0x8) validate the index at runtime. If `value_index >= values_count`, the VM halts with `ValueIndexOOB`. This applies to all opcodes that use the general mode byte system, not only the dedicated value shortcut opcodes.
+
 ### Single-Operand Convention
 
 Opcodes that use only one half of the mode byte set the unused nibble to `0000`:
@@ -215,6 +217,8 @@ No mode byte — fixed or implicit operands.
 | 0x08 | RETC | — | Return if C=1 |
 | 0x09–0x0F | — | — | Reserved |
 
+**LOCALS** operand `n` must be even (16-bit aligned). If `n` is odd, the VM halts with an error. The assembler always emits an even value (local count × 2), so this check guards against hand-crafted or corrupt bytecode.
+
 **WAIT** increments `wait_counter += frames` (additive — multiple WAITs accumulate). The VM enters `State::Waiting` and decrements the counter once per `update()` call. Execution resumes when the counter reaches 0.
 
 **CALL** looks up `func_id` in the function TOC, pushes return PC and FP, sets FP=SP, then jumps to the target. See [Calling Convention](#calling-convention).
@@ -269,6 +273,8 @@ All operations are **signed 16-bit**.
 | 0x27 | INC | NZCV | dst = dst + 1 |
 | 0x28 | DEC | NZCV | dst = dst − 1 |
 | 0x29–0x2F | — | — | Reserved |
+
+**Carry flag convention:** For SUB and CMP, the carry flag (C) is set when an unsigned borrow occurs (`a < b` as unsigned). This differs from the Motorola 68K convention where C=0 indicates borrow. The signed comparison branches (BLT, BGE, BGT, BLE) use N⊕V and are unaffected; unsigned branches BCS/BCC are defined against this convention: `BCS` = "borrow occurred" = unsigned less-than, `BCC` = "no borrow" = unsigned greater-or-equal.
 
 ### Valid Modes
 
