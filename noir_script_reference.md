@@ -386,7 +386,9 @@ FLAGS is a borrowed bitfield array. Each flag is a single bit, addressed by a 16
 
 **TSTF** sets Z to the inverse of the flag value (Z=1 when flag=0), matching CMP/TST convention: `BNE` = "flag is set", `BEQ` = "flag is clear".
 
-**Bounds check:** If `flag_index >= flags_size * 8` → HALT with `FlagIndexOOB`.
+FLAGS remain a packed bitfield, but the VM stores the exact logical catalog
+count separately from its byte capacity. If `flag_index >= flag_count`, the VM
+halts with `FlagIndexOOB`; padding bits in the final byte are never addressable.
 
 ### Encoding Examples
 
@@ -606,7 +608,7 @@ On re-entry (`reentry_level > 1`), the VM pushes all registers (22 bytes), then 
 
 ```cpp
 auto vm = NoirVM::create(
-    flags, flags_size,
+    flags, flag_count,
     values, values_count,
     bytecode, bytecode_size,
     func_toc, func_count,
@@ -654,7 +656,7 @@ All errors are returned as `VMStatus` codes from `update()`:
 | DivisionByZero | DIV or MOD with src = 0 |
 | InvalidAddress | PC out of bytecode bounds |
 | ValueIndexOOB | Value index ≥ values_count |
-| FlagIndexOOB | Flag index ≥ flags_size × 8 |
+| FlagIndexOOB | Flag index ≥ logical `flag_count` |
 
 ---
 

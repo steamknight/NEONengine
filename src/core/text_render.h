@@ -84,6 +84,8 @@ namespace NEONengine
         static result create(tFont* pFont);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
+        static constexpr size_t MAX_LINES = 16;
+
         struct line_data
         {
             uint16_t start;
@@ -93,7 +95,7 @@ namespace NEONengine
              * @brief Get the length of the line.
              * @return Number of characters in the line.
              */
-            size_t length() { return end - start; }
+            size_t length() const { return end - start; }
         };
 
         /**
@@ -107,10 +109,14 @@ namespace NEONengine
                                    uint32_t maxWidth,
                                    line_data* pOutData);
 
+        void ensure_line_bitmap(uint16_t width);
+
         private:  //////////////////////////////////////////////////////////////////////////////////
         tFont* _pFont;
         mtl::vector<char> _scratchArea;
         mtl::array<uint16_t, 256> _glyphCache;
+        ace::text_bitmap_ptr _pLineBitmap;
+        uint16_t _lineBitmapWidth;
     };
 
 }  // namespace NEONengine

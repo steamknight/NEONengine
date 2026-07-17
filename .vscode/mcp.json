@@ -1,0 +1,11 @@
+{
+    "servers": {
+        "amiga-debug": {
+            "type": "stdio",
+            "command": "node",
+            "args": [
+                "c:/Users/mass/source/amiga-debug-mcp/dist/index.js"
+            ]
+        }
+    }
+}

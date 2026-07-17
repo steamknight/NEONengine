@@ -6,14 +6,16 @@
 
 ## 1. Overview
 
-NNASM is the assembly language that compiles to NoirScript bytecode. It provides symbolic names for flags, values, strings, and constants, scoped script definitions, named local variables, parameterized macros, conditional assembly, and file includes. The assembler is part of a tool pipeline — it produces structured output (bytecode, data sections, debug map) consumed by the host program.
+NNASM is the assembly language that compiles to NoirScript bytecode. It provides symbolic names for flags, values, strings, and constants, scoped script definitions, named local variables, parameterized macros, and conditional assembly. The assembler is part of a tool pipeline — it produces structured output (bytecode, data sections, debug map) consumed by the host program.
 
 ---
 
 ## 2. Source Files
 
 - **Extension:** `.nnasm`
-- **Encoding:** ASCII. String literals may contain extended characters per the target platform's character set.
+- **Encoding:** UTF-8 without BOM. Syntax tokens and identifiers are ASCII;
+  comments and string literals may contain Unicode. Localization literals
+  emitted to `.noir` must be ISO-8859-1 encodable.
 - **Case sensitivity:** Insensitive for mnemonics, directives, and register names. Case-preserving for user-defined identifiers (compared case-insensitively).
 - **Line ending:** CR, LF, or CRLF.
 
@@ -39,7 +41,7 @@ Start with a letter or underscore. Contain letters, digits, and underscores. Res
 Prefixed with `#` in operand position:
 
 | Format | Syntax | Example |
-|--------|--------|---------|
+| -------- | -------- | --------- |
 | Decimal | digits | `#42` |
 | Hexadecimal | `0x` + hex digits | `#0xFF`, `#0x100` |
 | Binary | `0b` + binary digits | `#0b1001`, `#0b0` |
@@ -59,7 +61,7 @@ Escapes: `\"`, `\\`, `\n`, `\t`.
 ### 3.5 Registers
 
 | Register | Purpose |
-|----------|---------|
+| ---------- | --------- |
 | `D0` | General / return value / arg 1 |
 | `D1` | General / arg 2 |
 | `D2` | General / arg 3 |
@@ -68,11 +70,11 @@ Escapes: `\"`, `\\`, `\n`, `\t`.
 ### 3.6 Sigils
 
 | Sigil | Namespace | Example | Resolves to | Valid in |
-|-------|-----------|---------|-------------|----------|
+| ------- | ----------- | --------- | ------------- | ---------- |
 | `#` | Constant / literal | `#42`, `#ITEM_KEY` | Immediate value | Any operand accepting immediates |
 | `$` | String | `$greeting` | String index (immediate) | Any operand accepting immediates |
-| `@` | Flag | `@talked_to_guard` | Flag index | Flag opcodes only |
-| `%` | Value | `%money`, `%[D0]` | Value addressing mode | Any operand accepting value modes |
+| `@` | External flag | `@talked_to_guard` | Project flag index | Flag opcodes only |
+| `%` | External value | `%money`, `%[D0]` | Project value addressing mode | Any operand accepting value modes |
 | `!` | Macro | `!say_line` | Macro expansion | Standalone instruction position |
 | `#@` | Flag as immediate | `#@talked_to_guard` | Flag index as immediate | Any operand accepting immediates |
 
@@ -80,11 +82,16 @@ Escapes: `\"`, `\\`, `\n`, `\t`.
 
 > **Warning:** `#@name` resolves to the flag's numeric **index**, not its boolean value. To read a flag's value into a register, use `LDFR Dn, @name`. Do not confuse `#@flag` (loads index) with `@flag` (operates on the flag directly).
 
+Flags and values are declared in the NEONedit project, not in NNASM. The host
+supplies their names and ordered indexes as part of the assembly environment.
+
 ---
 
 ## 4. Data Sections
 
-Data sections may appear anywhere in the file, any number of times. All instances are merged in declaration order. Names must be unique **within each namespace** — the same name may appear in different namespaces (e.g., a flag named `door` and a value named `door` are permitted, since `@door` and `%door` are unambiguous). Redefinition of a name within the same namespace in the same file is an error; redefinition via `.include` is also an error.
+Source-defined data sections may appear anywhere in the file, any number of
+times. All instances are merged in declaration order. Flags and values are
+external project catalogs and are not source-defined data sections.
 
 ### 4.1 .consts
 
@@ -98,37 +105,41 @@ MAX_ITEMS         20
 ITEM_SLOTS        (MAX_ITEMS * 2)
 ```
 
-### 4.2 .flags
+### 4.2 External flags
 
-Named boolean flags. Assigned indices in declaration order starting from 0.
+NEONedit supplies an ordered catalog of named boolean flags. `@name` and
+`#@name` resolve against that catalog. Project order defines each `uint16`
+index; initial values are written to FLGS by the game-data compiler.
 
-```asm
-.flags
-talked_to_guard   false    ; index 0
-door_unlocked     false    ; index 1
-has_map           true     ; index 2
-```
+NNASM source containing `.flags` is an error.
 
-### 4.3 .values
+### 4.3 External values
 
-Named 16-bit signed integers (`int16_t`). Assigned indices in declaration order starting from 0. Valid range: −32768 to 32767; values outside this range produce an error.
+NEONedit supplies an ordered catalog of named signed 16-bit values. `%name`
+resolves against that catalog. Project order defines each `uint16` index;
+initial values are written to VALS by the game-data compiler.
 
-```asm
-.values
-money             100      ; index 0
-health            50       ; index 1
-scenes_visited    0        ; index 2
-```
+NNASM source containing `.values` is an error.
 
 ### 4.4 .strings
 
-Named string entries. Assigned indices in declaration order starting from 0.
+Named localizable strings. The declaration name is the stable string ID and the
+literal is its authoritative English text.
 
 ```asm
 .strings
 greeting          "Hello, traveler."
 guard_warning     "You shall not pass!"
 ```
+
+NEONedit supplies editor-authored strings before collecting source declarations,
+so NNASM strings follow that host catalog and are indexed in declaration order.
+Without a host catalog, indexing starts at 0. A declaration that duplicates a
+host string ID is an error.
+
+NNASM-owned IDs and English text remain in source and are not copied into
+`en.yaml`. NEONedit may read an exact-ID entry from an optional language YAML
+file as a translation overlay; assembly and builds do not rewrite either source.
 
 ---
 
@@ -147,6 +158,9 @@ Scripts are the top-level code units, each compiled as a function in the bytecod
 
 - Scripts cannot be nested.
 - Forward references to other scripts via `CALL` are allowed.
+- After conditional assembly and macro expansion, the final emitted instruction
+  in every script must be an unconditional `RET`. The assembler does not insert
+  one automatically.
 
 ### 5.2 Labels
 
@@ -188,7 +202,7 @@ Each local is 2 bytes (16-bit). Names map to LOCAL addressing mode (0x6) with co
 ### 6.1 Addressing Mode Mapping
 
 | Assembly syntax | VM mode | Extra bytes | Notes |
-|-----------------|---------|-------------|-------|
+| ----------------- | --------- | ------------- | ------- |
 | `[#value]` | 0x0 (IMM8) | 1 | Forced 8-bit immediate |
 | `#value`, `#NAME`, `$name`, `#@name` | 0x0 or 0x1 | 1 or 2 | Auto: [0,255] → IMM8, else IMM16 |
 | `D0` | 0x2 | 0 | |
@@ -202,6 +216,7 @@ Each local is 2 bytes (16-bit). Names map to LOCAL addressing mode (0x6) with co
 ### 6.2 Immediate Auto-Selection
 
 For all instructions with immediate source operands:
+
 - Value ∈ [0, 255] → IMM8 mode (1 byte)
 - Otherwise → IMM16 mode (2 bytes)
 
@@ -218,7 +233,7 @@ Negative values are treated as their unsigned 16-bit representation for mode sel
 ### 7.1 Script Execution
 
 | Mnemonic | Operands | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `NOP` | — | No operation |
 | `WAIT` | `#frames` | Add to wait counter, enter Waiting state |
 | `HALT` | — | Stop execution with error |
@@ -238,7 +253,7 @@ Negative values are treated as their unsigned 16-bit representation for mode sel
 ### 7.2 Data Movement
 
 | Mnemonic | Operands | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `MOV` | dst, src | Move (auto MOV.8/MOV.16) |
 | `XCHG` | reg, reg | Exchange two registers |
 | `PUSH` | src | Push to stack |
@@ -250,7 +265,7 @@ Negative values are treated as their unsigned 16-bit representation for mode sel
 ### 7.3 Arithmetic
 
 | Mnemonic | Operands | Flags | Description |
-|----------|----------|-------|-------------|
+| ---------- | ---------- | ------- | ------------- |
 | `ADD` | dst, src | NZCV | dst + src |
 | `SUB` | dst, src | NZCV | dst − src |
 | `MUL` | dst, src | NZCV | dst × src (low 16) |
@@ -266,7 +281,7 @@ Negative values are treated as their unsigned 16-bit representation for mode sel
 ### 7.4 Logic
 
 | Mnemonic | Operands | Flags | Description |
-|----------|----------|-------|-------------|
+| ---------- | ---------- | ------- | ------------- |
 | `AND` | dst, src | NZ | dst & src |
 | `OR` | dst, src | NZ | dst \| src |
 | `XOR` | dst, src | NZ | dst ^ src |
@@ -283,7 +298,7 @@ Shift count is always an immediate byte. Valid range: 0–15. The assembler warn
 All branches take a label name. The assembler calculates the signed 16-bit offset.
 
 | Mnemonic | Condition | Description |
-|----------|-----------|-------------|
+| ---------- | ----------- | ------------- |
 | `JMP` | — | Unconditional |
 | `BEQ` | Z=1 | Equal / zero |
 | `BNE` | Z=0 | Not equal |
@@ -299,7 +314,7 @@ All branches take a label name. The assembler calculates the signed 16-bit offse
 ### 7.6 Flag Operations
 
 | Mnemonic | Operands | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `SETF` | `@flag` | Set flag to 1 |
 | `CLRF` | `@flag` | Clear flag to 0 |
 | `TOGF` | `@flag` | Toggle flag |
@@ -314,7 +329,7 @@ All branches take a label name. The assembler calculates the signed 16-bit offse
 ### 7.6.1 Quick Reference: Flag and Value Testing
 
 | Intent | Code |
-|--------|------|
+| -------- | ------ |
 | Jump if flag is set | `TSTF @f` then `BNE label` |
 | Jump if flag is clear | `TSTF @f` then `BEQ label` |
 | Jump if value is zero | `TSTV %v` then `BEQ label` |
@@ -329,7 +344,7 @@ All branches take a label name. The assembler calculates the signed 16-bit offse
 Shortcut opcodes — shorter bytecode than equivalent general instructions with `%`:
 
 | Mnemonic | Operands | Flags | Description |
-|----------|----------|-------|-------------|
+| ---------- | ---------- | ------- | ------------- |
 | `CMPV` | `%value`, `#imm` | NZCV | Compare value with immediate |
 | `TSTV` | `%value` | NZ | Test value == 0 |
 | `CLRV` | `%value` | — | value = 0 |
@@ -343,7 +358,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 **Inventory:**
 
 | Mnemonic | Args | Description |
-|----------|------|-------------|
+| ---------- | ------ | ------------- |
 | `INV_ADD` | D0=item | Add item |
 | `INV_REMOVE` | D0=item | Remove item |
 | `INV_HAS` | D0=item → Z | Has item (Z=0 = yes) |
@@ -353,7 +368,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 **Timeline:**
 
 | Mnemonic | Args | Blocking | Description |
-|----------|------|----------|-------------|
+| ---------- | ------ | ---------- | ------------- |
 | `ANIM_PLAY` | D0=id | — | Start animation |
 | `ANIM_STOP` | D0=id | — | Stop animation |
 | `ANIM_WAIT` | D0=id | Yes | Wait for completion |
@@ -361,7 +376,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 **Scenes:**
 
 | Mnemonic | Args | Blocking | Description |
-|----------|------|----------|-------------|
+| ---------- | ------ | ---------- | ------------- |
 | `GOTO_SCENE` | D0=id | Yes | Transition to scene |
 | `GET_SCENE` | → D0 | — | Get current scene ID |
 | `HOTSPOT_ON` | D0=id | — | Enable hotspot |
@@ -371,7 +386,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 **Dialogue / Audio:**
 
 | Mnemonic | Args | Blocking | Description |
-|----------|------|----------|-------------|
+| ---------- | ------ | ---------- | ------------- |
 | `SAY` | D0=string, D1=speaker | Yes | Show dialogue line |
 | `SHOW_DIALOG` | D0=dialogue_id | Yes | Show dialogue tree |
 | `SHOW_TEXT` | D0=string, D1=x, D2=y | — | Display text |
@@ -383,7 +398,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 **Menu / Settings:**
 
 | Mnemonic | Args | Blocking | Description |
-|----------|------|----------|-------------|
+| ---------- | ------ | ---------- | ------------- |
 | `FADE_OUT` | D0=frames | Yes | Fade to black |
 | `FADE_IN` | D0=frames | Yes | Fade from black |
 | `SCREEN_CLR` | D0=color | — | Clear screen |
@@ -398,7 +413,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 Guarded by `GAME_DEBUG` conditional symbol. Treated as NOP in release builds.
 
 | Mnemonic | Operands | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `DBG_LOG` | (D0=string_id) | Log string table entry |
 | `DBG_LOGS` | `"inline string"` | Log inline ASCII string |
 | `DBG_REG` | — | Dump registers |
@@ -449,21 +464,23 @@ Arguments retain their sigils through expansion:
 - Parameters take priority over other symbols during expansion.
 - Labels inside macros are auto-suffixed with `__N` per expansion to avoid collisions, where N is a global expansion counter (e.g., `loop` becomes `loop__0`, `loop__1`, etc.). These mangled names appear in the debug map.
 - No recursive macros. Macros may invoke other macros (expanded iteratively).
-- Scoped to the file and any file that `.include`s it.
+- Visible throughout the global compilation unit.
 
 ---
 
 ## 9. Conditional Assembly
 
 Symbols are passed externally by the caller. No in-source symbol definition.
+NEONedit's Debug profile defines `GAME_DEBUG`; Release defines no profile
+symbol.
 
 ```asm
 .ifdef GAME_DEBUG
     DBG_REG
 .endif
 
-.ifndef RELEASE
-    !say_line #SPEAKER_NARRATOR, $debug_text
+.ifndef GAME_DEBUG
+    NOP                     ; release-only path
 .endif
 
 .ifdef FEATURE_X
@@ -480,18 +497,17 @@ Symbols are passed externally by the caller. No in-source symbol definition.
 
 ---
 
-## 10. Includes
+## 10. Project-Wide Compilation
 
-```asm
-.include "common.nnasm"
-```
+NEONedit supplies direct `<project>/scripts/*.nnasm` files to one global
+compilation unit; subdirectories are not scanned. Files are processed by
+ordinal project-relative path, then by declaration order within each file.
+Constants, strings, macros, scripts, and `CALL` targets are visible across
+files.
 
-- **Includable content:** `.consts`, `.flags`, `.values`, `.strings`, and `.macro` definitions.
-- `.script` blocks in included files are ignored with a warning.
-- Paths are relative to the including file's directory.
-- If a file is included multiple times, only the first inclusion is processed.
-- Circular includes are detected and produce an error.
-- Redefinition of an existing name (within the same namespace) via include produces an **error**. Rename the conflicting symbol in the included file or the including file.
+NNASM does not support `.include`. This avoids a second composition model,
+duplicate processing, include cycles, and access to sources outside the project.
+An `.include` directive is an error.
 
 ---
 
@@ -499,33 +515,33 @@ Symbols are passed externally by the caller. No in-source symbol definition.
 
 ### 11.1 Passes
 
-1. **Collect** — Scan all files (following includes). Gather all data sections and macros. Assign indices. Evaluate constant expressions.
+1. **Collect** — Seed host-supplied flag/value/string indexes, scan every ordered project source, gather source-defined data sections and macros, assign indexes, and evaluate constant expressions.
 2. **Layout** — Process scripts. Expand macros. Resolve labels and compute branch offsets. Build function TOC.
 3. **Emit** — Generate final bytecode with all references resolved.
 
 ### 11.2 Warnings
 
 | Condition | Severity |
-|-----------|----------|
+| ----------- | ---------- |
 | `[#value]` truncation | Warning |
-| `.script` in included file (skipped) | Warning |
-| Unused flag/value/string/constant | Warning |
+| Unused source-defined string/constant | Warning |
 | Shift count exceeds 15 (masked to low nibble) | Warning |
 
 ### 11.3 Errors
 
 | Condition | Severity |
-|-----------|----------|
+| ----------- | ---------- |
 | Undefined name reference | Error |
 | Wrong sigil for context (`@` in non-flag opcode) | Error |
-| Duplicate name within same namespace in same file | Error |
-| Name redefined (same namespace) via `.include` | Error |
-| `.values` entry outside range −32768 to 32767 | Error |
+| Duplicate name within the same global namespace | Error |
+| `.flags` or `.values` source declaration | Error |
+| `.strings` name duplicates a host-supplied string ID | Error |
+| Unsupported `.include` directive | Error |
 | Label/local name collision in same script | Error |
 | `%[D1]`, `%[D2]`, `%[D3]` (only D0 supported) | Error |
 | Missing `.end` | Error |
+| Script's final emitted instruction is not unconditional `RET` | Error |
 | Nested `.script` | Error |
-| Circular `.include` | Error |
 | `.locals` not first in script | Error |
 | `.endmacro` without preceding `.macro` | Error |
 | `.end` without preceding `.script` | Error |
@@ -548,32 +564,25 @@ Symbols are passed externally by the caller. No in-source symbol definition.
 The assembler produces structured output (the host tool serializes as needed):
 
 | Output | Content |
-|--------|---------|
+| -------- | --------- |
 | **Bytecode** | Single contiguous buffer, all scripts concatenated in declaration order |
-| **Function TOC** | Array of byte offsets into bytecode, one per script |
-| **Flags** | Ordered array of `{ name, initial_value }` |
-| **Values** | Ordered array of `{ name, initial_value }` |
+| **Function TOC** | Strictly increasing byte offsets into bytecode, one per script; the first offset is zero |
 | **Strings** | Ordered array of `{ name, content }` — merged into the `.noir` localization file, preserving string IDs assigned during assembly |
-| **Debug map** | Symbol table: script index→name, flag index→name, value index→name, string index→name, constant name→value |
+| **Referenced state** | External flag/value indexes used by bytecode, for diagnostics only |
+| **Debug metadata** | Function, label, local, source-span, and optional analysis-symbol data from which the host selects its external map rows |
 
 ---
 
 ## 13. Complete Example
 
-```asm
-.include "common.nnasm"
+This example assumes the NEONedit project supplies external flags
+`talked_to_guard` and `door_unlocked`, plus external value `money`.
 
+```asm
 .consts
 ITEM_KEY          1
 SPEAKER_GUARD     0
 SPEAKER_NARRATOR  1
-
-.flags
-talked_to_guard   false
-door_unlocked     false
-
-.values
-money             100
 
 .strings
 guard_greeting    "Hey, I see you have the key."
@@ -628,6 +637,7 @@ locked:
 ```
 
 ## Formal Grammar
+
 ```ebnf
 (* ============================================================ *)
 (* 1. Top-Level Structure                                        *)
@@ -638,7 +648,6 @@ program         = { top_level_item } ;
 top_level_item  = data_section
                 | script_block
                 | macro_def
-                | include_stmt
                 | conditional
                 ;
 
@@ -647,24 +656,14 @@ top_level_item  = data_section
 (* ============================================================ *)
 
 data_section    = const_section
-                | flag_section
-                | value_section
                 | string_section
                 ;
 
 const_section   = '.consts' NEWLINE { const_entry } ;
 const_entry     = IDENTIFIER const_expr NEWLINE ;
 
-flag_section    = '.flags' NEWLINE { flag_entry } ;
-flag_entry      = IDENTIFIER bool_literal NEWLINE ;
-
-value_section   = '.values' NEWLINE { value_entry } ;
-value_entry     = IDENTIFIER integer_literal NEWLINE ;
-
 string_section  = '.strings' NEWLINE { string_entry } ;
 string_entry    = IDENTIFIER STRING_LITERAL NEWLINE ;
-
-bool_literal    = 'true' | 'false' ;
 integer_literal = [ '-' ] DECIMAL_NUMBER ;
 
 (* ============================================================ *)
@@ -717,13 +716,7 @@ arg_list        = argument { ',' argument } ;
 argument        = operand | IDENTIFIER ;
 
 (* ============================================================ *)
-(* 6. Includes                                                   *)
-(* ============================================================ *)
-
-include_stmt    = '.include' STRING_LITERAL NEWLINE ;
-
-(* ============================================================ *)
-(* 7. Conditional Assembly                                       *)
+(* 6. Conditional Assembly                                       *)
 (* ============================================================ *)
 
 conditional     = ifdef_block | ifndef_block ;
@@ -744,7 +737,7 @@ conditional_body = top_level_item       (* when outside script/macro *)
                  ;
 
 (* ============================================================ *)
-(* 8. Instructions                                               *)
+(* 7. Instructions                                               *)
 (* ============================================================ *)
 
 instruction     = nullary_instr
@@ -852,7 +845,7 @@ dbg_logs_instr  = 'DBG_LOGS' STRING_LITERAL ;
 game_call_instr = nullary_instr ;  (* game calls use no inline operands *)
 
 (* ============================================================ *)
-(* 9. Operands                                                   *)
+(* 8. Operands                                                   *)
 (* ============================================================ *)
 
 dst_operand     = register | local_ref | value_ref ;
@@ -885,7 +878,7 @@ value_ref       = '%' IDENTIFIER               (* VALUES[constant index] *)
 flag_ref        = '@' IDENTIFIER ;             (* FLAGS[constant index] *)
 
 (* ============================================================ *)
-(* 10. Lexical Tokens                                            *)
+(* 9. Lexical Tokens                                             *)
 (* ============================================================ *)
 
 IDENTIFIER      = ( LETTER | '_' ) { LETTER | DIGIT | '_' } ;
@@ -904,7 +897,7 @@ COMMENT         = ';' { any character except NEWLINE } ;
 NEWLINE         = CR | LF | CR LF ;
 
 (* ============================================================ *)
-(* 11. Reserved Keywords                                         *)
+(* 10. Reserved Keywords                                         *)
 (* ============================================================ *)
 
 (*
@@ -938,14 +931,14 @@ NEWLINE         = CR | LF | CR LF ;
     LOCALS
 
   All directives (with dot prefix):
-    .script, .end, .locals, .consts, .flags, .values, .strings,
-    .macro, .endmacro, .include, .ifdef, .ifndef, .else, .endif
+    .script, .end, .locals, .consts, .strings,
+    .macro, .endmacro, .ifdef, .ifndef, .else, .endif
 
   Comparison is case-insensitive.
 *)
 
 (* ============================================================ *)
-(* 12. Disambiguation Rules                                      *)
+(* 11. Disambiguation Rules                                      *)
 (* ============================================================ *)
 
 (*
@@ -963,11 +956,13 @@ NEWLINE         = CR | LF | CR LF ;
      - If not found → error
 
   4. IDENTIFIER after '@':
-     - Looked up in .flags namespace → resolved to flag index
+     - Looked up in the host-supplied project flag catalog
+     - Resolved to the project-assigned flag index
      - If not found → error
 
   5. IDENTIFIER after '%':
-     - Looked up in .values namespace → resolved to value index
+     - Looked up in the host-supplied project value catalog
+     - Resolved to the project-assigned value index
      - If not found → error
 
   6. '!' prefix in instruction position:
@@ -985,12 +980,13 @@ NEWLINE         = CR | LF | CR LF ;
 
   9. '#@' in immediate position:
      - Followed by IDENTIFIER
-     - Looked up in .flags namespace → resolved to flag index as numeric immediate
+     - Looked up in the host-supplied project flag catalog
+     - Resolved to the project-assigned flag index as numeric immediate
      - If not found → error
 *)
 
 (* ============================================================ *)
-(* 13. Implementation Notes                                      *)
+(* 12. Implementation Notes                                      *)
 (* ============================================================ *)
 
 (*
@@ -1013,7 +1009,7 @@ NEWLINE         = CR | LF | CR LF ;
   When parsing conditional_body, the current context determines
   which alternatives are valid:
 
-    TOP_LEVEL  → top_level_item   (data sections, includes, nested conditionals)
+    TOP_LEVEL  → top_level_item   (data sections, macros, scripts, nested conditionals)
     IN_SCRIPT  → script_line      (labels, instructions, nested conditionals)
     IN_MACRO   → macro_body_line  (labels, instructions, nested conditionals)
 

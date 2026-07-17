@@ -18,7 +18,7 @@
    - [Palette Layout](#palette-layout)
    - [BOB Palette Slots](#bob-palette-slots)
    - [Bitplane Shifting](#bitplane-shifting)
-   - [Portrait Palette](#portrait-palette)
+   - [Portrait and Inventory Palettes](#portrait-and-inventory-palettes)
    - [Palette Cycling](#palette-cycling)
    - [Fade Transitions](#fade-transitions)
 5. [Text Rendering](#text-rendering)
@@ -34,9 +34,8 @@
 8. [Audio](#audio)
 9. [Nine-Patch UI Frames](#nine-patch-ui-frames)
 10. [Game Data Format (.neon)](#game-data-format-neon)
-    - [Header](#header)
-    - [Range Structure](#range-structure)
-    - [Chunk Catalog](#chunk-catalog)
+    - [Shared Binary Authority](#shared-binary-authority)
+    - [External ACE Dependency](#external-ace-dependency)
     - [Table of Contents (Runtime)](#table-of-contents-runtime)
     - [Background Caching](#background-caching)
 11. [Scene / Hotspot System](#scene--hotspot-system)
@@ -91,12 +90,12 @@ The engine drives all gameplay through scripts executed by the NoirScript byteco
 ## Target Platform
 
 | Property | Value |
-|----------|-------|
+| ---------- | ------- |
 | CPU | Motorola 68020+ |
 | Chipset | AGA (Advanced Graphics Architecture) |
 | RAM | 4 MB minimum (Chip + Fast) |
 | Storage | HDD only (no floppy) |
-| Resolution | 320×200, 8-bit indexed color (256 colors) |
+| Resolution | 320×200 or 320×256, 8-bit indexed color (256 colors) |
 | Refresh | 50 Hz PAL |
 | Audio | 4-channel Paula, ProTracker MOD playback via ptplayer |
 
@@ -106,27 +105,27 @@ The engine drives all gameplay through scripts executed by the NoirScript byteco
 
 ### Layer Stack
 
-```
-┌─────────────────────────────────────────────────────────┐
+```text
+┌──────────────────────────────────────────────────────────┐
 │                    Game States (states/)                 │
-│         splash, lang_selection, dialogue_test, ...      │
-├─────────────────────────────────────────────────────────┤
+│         splash, lang_selection, dialogue_test, ...       │
+├──────────────────────────────────────────────────────────┤
 │                   Core Systems (core/)                   │
 │   Screen, TextRender, Layer, GameData, Music, NinePatch  │
 │   NoirVM (scripting), StringTable, MousePointer          │
-├─────────────────────────────────────────────────────────┤
-│               C++ Wrapper Layer (ace++/)                  │
-│        RAII smart pointers for ACE C resources            │
-├─────────────────────────────────────────────────────────┤
-│            Minimal Template Library (mtl/)                │
+├──────────────────────────────────────────────────────────┤
+│               C++ Wrapper Layer (ace++/)                 │
+│        RAII smart pointers for ACE C resources           │
+├──────────────────────────────────────────────────────────┤
+│            Minimal Template Library (mtl/)               │
 │     vector, array, list, expected, unique_ptr, bstr      │
-├─────────────────────────────────────────────────────────┤
-│                    ACE Library                            │
+├──────────────────────────────────────────────────────────┤
+│                    ACE Library                           │
 │       View/Viewport, Blitter, Copper, Input, Audio       │
-├─────────────────────────────────────────────────────────┤
-│                   Amiga Hardware                          │
-│         Custom chips (Agnus, Denise, Paula)               │
-└─────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────────────────┤
+│                   Amiga Hardware                         │
+│         Custom chips (Agnus, Denise, Paula)              │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Main Loop
@@ -144,7 +143,7 @@ Uses ACE's `generic/main.h` pattern with three C-linkage callbacks:
 Key globals in the `NEONengine` namespace:
 
 | Global | Type | Purpose |
-|--------|------|---------|
+| -------- | ------ | --------- |
 | `g_pEngine` | `engine_ptr` | Engine singleton |
 | `g_gameStateManager` | `tStateManager*` | ACE state stack |
 | `g_mainScreen` | `Screen*` | Primary display |
@@ -162,7 +161,7 @@ ACE's stack-based `tState` architecture. Each state provides create/loop/destroy
 
 Abstraction over ACE's View/Viewport/SimpleBuffer:
 
-- 320×200 resolution with PAL vertical centering
+- 320×200 with PAL vertical centering, or full-height 320×256
 - Double-buffered: `screenGetBackBuffer()` / `screenGetFrontBuffer()`
 - Blitting: `screenBlitCopy()`, `screenTextCopy()`, `screenClear()`
 - Mouse binding: adjusts bounds for PAL offset
@@ -172,33 +171,82 @@ Abstraction over ACE's View/Viewport/SimpleBuffer:
 256 colors divided into fixed-purpose ranges:
 
 | Index Range | Purpose | Notes |
-|-------------|---------|-------|
-| 0–15 | UI (static) | Same for all scenes |
-| 16–31 | Hardware sprites / mouse | Amiga sprite HW |
-| 32–39 | BOB Slot 1 | 3 bitplanes (8 colors), dynamic |
-| 40–47 | BOB Slot 2 | 3 bitplanes (8 colors), dynamic |
-| 48–79 | BOB Slot 3+4 / Portrait | 5 bitplanes (32 colors) |
+| ------------- | --------- | ------- |
+| 0–31 | UI / hardware sprites | Fixed project UI palette |
+| 32–39 | BOB reverse slot 5 / portrait / inventory | 8-color physical bank |
+| 40–47 | BOB reverse slot 4 / portrait / inventory | 8-color physical bank |
+| 48–55 | BOB reverse slot 3 / portrait / inventory | 8-color physical bank |
+| 56–63 | BOB reverse slot 2 / portrait / inventory | 8-color physical bank |
+| 64–71 | BOB reverse slot 1 | 8-color physical bank |
+| 72–79 | BOB reverse slot 0 | 8-color physical bank |
 | 80–255 | Background | Scene-specific (176 colors) |
 
 Colors 0–31 remain constant across all scenes. Each scene has its own palette for indices 80–255 (and optionally 32–79).
 
+Runtime palette colors are ACE `.plt` entries in the game pak, addressed by the
+Adler32 hash of their normalized runtime paths. Scene setup loads the
+background palette first, overlays the project UI palette at indices 0–31, then
+overlays active portrait and BOB palettes at indices 32–79. The modal inventory
+screen replaces 32–63 with its own palette and restores the scene composition
+when closed. Palette cycling operates on the composed register buffer and does
+not reopen palette assets.
+
 ### BOB Palette Slots
 
-1. When drawing a BOB, find first unused slot
-2. If another BOB has the same palette, reuse that slot
-3. If different palette, use next available slot
-4. If all slots full, wrap to first slot
+Each instance has an explicit reverse-numbered palette slot. The slot base is
+`72 - (slot * 8)`. For bitmap depth `d`, reserve `max(8, 1 << d)` colors. The
+base must be aligned to that block and the block must end at or before index 79.
+
+- 1-8 colors: any slot.
+- 9-16 colors: slot 1 (64-79), slot 3 (48-63), or slot 5 (32-47).
+- 17-32 colors: slot 5 (32-63).
+- More than 32 colors: unsupported in the BOB region.
+
+The same palette hash may share one aligned block. Different live palettes may
+not overlap, and the manager does not silently wrap to another slot. The
+portrait and inventory each occupy 32-63 and conflict with reverse slots 2-5;
+they are mutually exclusive.
 
 ### Bitplane Shifting
 
-To use a 3-bitplane BOB in slot 32–39 (which requires color index 32+):
-1. `blitRect` to write 1s on bitplane 6 (sets bit 5 = +32)
-2. `blitCopy` the 3-bitplane BOB image
-3. Result: BOB colors are now indices 32–39
+For each opaque bit in the mask generated by `bitmap_conv`, source planes are
+cookie-cut into the corresponding low destination planes:
 
-### Portrait Palette
+```text
+D = (D & ~M) | (S & M)
+```
 
-Uses indices 48–79 (32 colors). Clobbers BOB slots 3 and 4, which must be reset when dialogue ends.
+Every destination plane above the source depth is set or cleared under the same
+mask according to the aligned base index:
+
+```text
+base bit 1: D = D | M
+base bit 0: D = D & ~M
+```
+
+Where the mask is transparent, the destination remains unchanged. Alignment
+ensures that OR-ing the fixed base bits with the local source index is
+equivalent to adding the base. The renderer uses the generated mask directly;
+it does not allocate a full-size dummy constant bitmap in CHIP RAM.
+
+### Portrait and Inventory Palettes
+
+Uses indices 32-63 (32 colors). It clobbers reverse BOB slots 2-5, which must be
+restored when dialogue or inventory mode ends. Dialogue and inventory are
+mutually exclusive.
+
+Portrait colors come from the active speaker image. Inventory colors come from
+the shared inventory PNG, are padded to exactly 32 entries, and are packaged as
+their own `.plt`. The inventory sheet is five bitplanes with local indices
+0-31; the aligned masked draw path maps it to 32-63.
+
+Cursor and nine-patch source PNG palettes are conversion-only. Their source
+RGB values do not define runtime colors. Cursor local indices 0-15 map to UI
+entries 16-31, with local zero transparent, for the attached 4-bitplane
+hardware sprite. Nine-patch indices map directly to UI entries 0-31. Their
+`BMPS` records reference the shared UI `.plt`, and no individual UI-asset
+palettes are stored in the pak. Fonts likewise have no independent palette;
+text selects UI palette indices at render time.
 
 ### Palette Cycling
 
@@ -243,20 +291,41 @@ Three modes: `text_justify::LEFT`, `CENTER`, `RIGHT`. Output is an `ace::text_bi
 
 ### Cursor Resolution
 
-Context-sensitive — 5 cursor types via `mouse_pointer` enum:
+Context-sensitive persisted cursor values:
 
 | Cursor | Icon | Condition |
-|--------|------|-----------|
+| -------- | ------ | ----------- |
+| DEFAULT | Arrow | No more specific interaction |
 | LOOK | Magnifying Glass | No click action, has description |
 | USE | Pointing Finger | Has click script |
-| SPEAK | Chat Bubble | Hotspot override for talkable NPCs |
+| TALK | Chat Bubble | Hotspot override for talkable NPCs |
 | GOTO | Exit Sign | Has `gotoSceneId` set |
-| USE_ITEM | Finger + Present | Player is using inventory item |
+
+Persisted `HOTS.cursor` values map directly to fixed cursor slots 0-4 in that
+order. Slot 5 is the engine-controlled Wait cursor. Using an inventory item is
+a transient interaction mode and displays the Use cursor; it is not a persisted
+hotspot cursor value.
+
+Version 2 cursor frames are fixed at 16×16 and rendered through the attached
+4-bitplane hardware-sprite path. UIST retains the dimensions for explicit
+validation and future format evolution.
+
+`SCEN.show_game_ui` controls both the menu/inventory overlay buttons and cursor
+visibility. Clearing it does not disable hotspot hit-testing or click handling,
+allowing cursorless cutscene interactions. If any scene sets it, the loaded
+game data must provide the complete UI palette, font, nine-patch, and six-cursor
+bundle. The inventory button is omitted when inventory is disabled.
+
+A dialogue with one or more currently eligible choices temporarily shows the
+cursor even when its scene suppresses normal game UI. Closing dialogue restores
+the scene's cursor state. A nonempty CHOC table therefore requires the
+six-cursor component.
 
 **AUTO mode resolution order:**
-1. `gotoSceneId ≠ -1` → GOTO
-2. `clickScriptOffset ≠ -1` → USE
-3. `hoverStringId ≠ -1` → LOOK
+
+1. `gotoSceneId ≠ 0xFFFF` → GOTO
+2. `clickFuncId ≠ 0xFFFF` → USE
+3. `hoverStringId ≠ 0xFFFF` → LOOK
 4. Else → default arrow
 
 ---
@@ -265,25 +334,29 @@ Context-sensitive — 5 cursor types via `mouse_pointer` enum:
 
 ### String Table Format (.noir)
 
-Separate localized files, one per language. Languages supported: EN, IT, DE.
-
-**Header (8 bytes):**
-
-| Field | Size | Description |
-|-------|------|-------------|
-| magic | 4 | `"NOIR"` |
-| version | 2 | Currently 2 |
-| languageId | 2 | 0=EN, 1=IT, 2=DE |
-
-**STRG chunk:** 4-byte chunk name + u32 string count + size_t data size, followed by contiguous bstr-format strings (u32 length + char data, no null terminator).
+Separate external localized files, one per configured language, named
+`<language>.noir`. Version 2 supports EN, IT, and DE. The exact header,
+record framing, checksum, language IDs, and empty-catalog form are defined only
+by NEONedit's
+[binary contract](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_format.md#noir-string-files).
 
 ### Runtime Loading
 
-1. Read header, validate magic/version/language
-2. Read STRG chunk header
-3. Single allocation for entire data block (FAST RAM)
-4. Walk data once to build offset table (`mtl::vector<void*>`)
-5. O(1) lookup: `get_string(id)` → `bstr_view`
+1. Validate the physical file, version 2 header, checksum, requested language,
+   aligned records, exact payload consumption, and complete
+   `{version, buildPeriod, buildNumber}` match using the shared binary and
+   validation contracts.
+2. For a nonempty catalog, evaluate
+   `payloadSize + stringCount * 4` in `uint64`, reject a result above
+   `0xFFFFFFFF`, and allocate one 4-byte-aligned block of that checked size; the
+   offset table begins at `base + payloadSize`. A zero-string catalog uses no
+   allocation.
+3. Read the payload once, record each string's payload-relative offset, and
+   expose O(1) lookup only after complete validation.
+
+Build-version tuple matching detects mixed generations within one project. It
+is not a cross-project fingerprint; published artifact sets from different
+projects must not be mixed.
 
 ---
 
@@ -303,6 +376,9 @@ Sound effects handled via game call opcodes (`PLAY_SFX`, `STOP_MUSIC`, etc.) thr
 
 Scalable UI frame rendering for dialogue boxes and panels:
 
+- Optional for dialogue; when absent, portrait/text/choices render without a
+  frame
+
 - Constructor takes `ace::bitmap_ptr` source + border sizes (left/top/right/bottom)
 - `render(width, height, flags)` → `ace::bitmap_ptr` — produces stretched nine-patch bitmap
 
@@ -310,141 +386,142 @@ Scalable UI frame rendering for dialogue boxes and panels:
 
 ## Game Data Format (.neon)
 
-The `.neon` file is a chunk-based binary format containing all structured game data. Assets (images, audio) are stored separately in an ACE pak file.
+> **Replacement format contract:** NEONedit's
+> [`game_data_build_plan.md`](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_build_plan.md)
+> is the implementation roadmap and linked contract index for the replacement
+> version 2 `.neon`, `.noir`, and pak integration. It supersedes the
+> incompatible legacy v2 loader layout while retaining the agreed version word
+> `2`.
+> The
+> [game-data format](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_format.md)
+> owns the framing contract, and the
+> [record-layout document](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_record_layouts.md)
+> is the sole authoritative shared byte-layout table. The material below is the
+> NEONengine-facing summary of those contracts.
+
+The `.neon` file is a chunk-based binary format containing all structured game
+data. The configured `.neon` file and all reachable assets are entries in one
+ACE pak. Localization files remain external so the selected `<language>.noir`
+can be loaded independently.
+
+### Runtime asset identity
+
+NEONengine never consumes NEONedit's source-path lookup keys. Every asset hash
+in `.neon` is the Adler32 of the final normalized entry path relative to the
+pak root.
+
+For example:
+
+```text
+project source: assets/images/blake.png
+pak entry:      assets/images/blake.bm
+runtime hash:   Adler32(ASCII("assets/images/blake.bm"))
+```
+
+Runtime paths are lowercase ASCII with `/` separators. They contain no rooted
+or parent-traversal components. The compiler creates the staging path using
+exactly the bytes it hashes, and final pak verification requires the TOC
+checksum to match. Images are referenced through `BMPS` IDs whose records hold
+bitmap, mask, and palette path hashes; music, SFX, and fonts may be referenced
+by path hash directly.
 
 **Design principles:**
-- Zero-allocation: single contiguous memory block
+
+- Single owning allocation: load the complete file into one 4-byte-aligned
+  block, validate in place, and expose chunk arrays through a fixed TOC
+- Zero per-chunk allocation/copy on the big-endian target
 - Range indexing for collections (no embedded pointers)
 - TOC struct populated at load time for O(1) access
+- Exactly two chunk kinds: self-contained Data payloads and fixed-element
+  Collection arrays, using the common header defined by the
+  [binary contract](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_format.md#neon-container)
+- FLGS and VALS names, order, indexes, and initial state come exclusively from
+  NEONedit project catalogs. NNASM references those external indexes but cannot
+  declare state.
 
-### Header
+The release loader treats checksum-valid output from NEONedit as trusted game
+content. For startup speed on the 68020, it validates the header and performs
+one checked structural chunk scan while building the private TOC. The scan
+compares known Collection strides and the fixed CONF, UIST, and INVC payload
+sizes before exposing typed views. It does not prewalk every record/reference,
+predecode all SCRP functions, or pre-open every asset. NEONedit Validate/Build
+and post-build staging verification own exhaustive semantic and asset
+validation. Assets are resolved on demand and fail explicitly through their
+normal loader paths.
 
-64 bytes:
+After that structural scan, ordinary compiled record IDs, ranges, enums, and
+cross-record relationships are trusted; runtime consumers do not duplicate
+host validation before forming their views. Bounds checks on dynamic
+script/API inputs remain part of those APIs.
 
-| Offset | Size | Field | Description |
-|--------|------|-------|-------------|
-| 0 | 4 | magic | `"NEON"` |
-| 4 | 2 | formatMajor | File format version major |
-| 6 | 2 | formatMinor | File format version minor |
-| 8 | 1 | dataYear | Last 2 digits of year |
-| 9 | 1 | dataMonth | Month |
-| 10 | 1 | dataDay | Day |
-| 11 | 1 | dataBuild | Build increment (resets daily) |
-| 12 | 52 | reserved | Padding to 64 bytes |
+NoirVM also trusts staging-verified instruction lengths, branch targets, and
+FUNC offsets. The release VM does not perform a remaining-byte check before
+each operand read; it retains checks driven by dynamic execution state,
+including external function IDs, PC dispatch, logical state indexes, stack
+bounds, division by zero, and invalid opcodes.
 
-### Range Structure
+The structural scan includes the FLGS internal envelope: its payload must be
+exactly `2 + ceil(logicalFlagCount / 8)` bytes before NoirVM receives the
+bitfield. Validation of unused high bits remains part of host staging
+verification.
 
-4 bytes — used throughout to reference sub-arrays within flat collections:
+For compressed or raw pak entries, the loader sizes its single persistent
+GameData allocation from the pak directory's uncompressed size and streams the
+entry into that block once. The in-place `.neon` header must report the same
+total size before chunk validation. Temporary ACE file/decompression wrappers
+are closed after the read and are not GameData-owned or per-chunk allocations.
+Before allocation, the uncompressed size must be 4-byte aligned and within
+`516..0xFFFFFFFC`.
 
-```
-struct Range {
-    uint16_t start;  // First index (inclusive)
-    uint16_t end;    // Last index (inclusive)
-};
-```
+### Shared binary authority
 
-### Chunk Catalog
+The version 2 header, build-version tuple, Range semantics, chunk
+framing/catalog, numeric domains,
+palette references, local field rules, and project/artifact validation are
+jointly defined by NEONedit's
+[binary contract](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_format.md),
+[record layouts](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_record_layouts.md),
+and
+[validation contract](https://github.com/steamknight/NEONedit/blob/main/docs/game_data_validation.md).
 
-All chunks: 4-byte identifier + `uint32` count + data. Elements start on 32-bit boundary.
+NEONengine declarations match the record-layout tables with naturally aligned
+members, no packed structs, and `static_assert` checks for every `sizeof` and
+`offsetof`. Runtime code does not maintain a second copy of those tables in
+this specification.
 
-**Size strategy:**
-- `uint32`: Adler32 hashes, script offsets, colors, collection counts
-- `uint16`: All indices, coordinates, dimensions, string IDs
-- `int16`: Optional fields where −1 = none
-- `uint8`/`int8`: Small enums, flags, frame counts, z-order
+#### External ACE dependency
 
-#### UIPT — UI Palette (32 colors)
-
-First chunk after header. Reserved colors 0–31. 8 + 128 = 136 bytes.
-
-#### PLTS / PLET — Palette Collection
-
-Collection of individual palettes. Each PLET: 4-byte ID + u32 color count + u32[] colors.
-
-#### BMPS / BMP_ — Bitmap References
-
-Each BMP_ (10 bytes): `fileId` (Adler32 for pak lookup), `maskFileId` (−1 if none), `paletteId` (into PLTS).
-
-#### GFXS / GFX_ — Graphics Entries
-
-Each GFX_ (10 bytes): `bitmapId`, `frameWidth`, `frameHeight`, `frameCount`, `frameDelay`, `zOrder`, padding.
-
-#### INVT — Inventory Items
-
-Each item (6 bytes): `nameStringId`, `descriptionStringId`, `bitmapId`.
-
-#### CMBN — Item Combination Table
-
-Each entry (8 bytes): `item1Id`, `item2Id`, `resultItemId`, `resultCount`. Order-independent.
-
-#### SPKR — Speakers
-
-Each speaker (4 bytes): `nameStringId`, `portraitBitmapId` (96×96 portrait).
-
-#### HOTS — Hotspots
-
-Each hotspot (28 bytes): bounds, cursor ID, flags, 4 state bitmap IDs, hover string ID, click script offset, goto scene ID, padding.
-
-#### TXTR — Text Regions
-
-Each region (8 bytes): `stringId`, `width`, `height`, `controlBits` (alignment, full width/height flags).
-
-#### KEYS — Keyframes
-
-Each keyframe (12 bytes): `time`, `type` enum, `flags` (interpolation/fire-once), 8-byte data union.
-
-**Keyframe types:** GFX_CREATE, GFX_MOVE, GFX_VISIBILITY, PALETTE_CYCLE_START/END, SFX_PLAY/STOP, MUSIC_PLAY/STOP, GOTO_SCENE, EXECUTE_SCRIPT.
-
-#### TIME — Timelines
-
-Each timeline (8 bytes): keyframe `Range`, `loopMode`, `loopCount`, padding.
-
-#### SCRP — Script Bytecode
-
-4-byte ID + u32 total size + raw bytecode blob. Scripts referenced by byte offset from chunk start.
-
-#### CHOC — Choices
-
-Each choice (16 bytes): text string ID, set/clear/check flag IDs, goto page ID, script offset, flags (enabled, disable-after-read).
-
-#### PAGS — Pages
-
-Each page (20 bytes): speaker ID, text string ID, set/clear/check flag IDs, next page ID, on-display script offset, flags, choices `Range`.
-
-#### DLGS — Dialogues
-
-Each dialogue (4 bytes): pages `Range`.
-
-#### SCEN — Scenes
-
-Each scene (40 bytes): name string ID, dimensions, offset, background bitmap ID, music file ID, enter/exit script offsets, first-visit string ID, fade duration, flags, hotspot/text region/graphics `Range`s.
+The configured host tools and NEONengine runtime must implement the
+compilation contract's `.plt` v2 AGA profile: mode byte 1, big-endian `uint16`
+count, and `00 RR GG BB` entries. They must also read the required `.bm`,
+`.fnt`, `.sfx`, and hash-only pak outputs and resolve pak entries by path hash.
+The legacy checked-in ACE submodule predates this profile and must be updated
+for the version 2 loader; capability, rather than an executable version
+string, is normative.
 
 ### Table of Contents (Runtime)
 
-Populated at load time — raw pointers into the loaded data block for O(1) access:
+Populated at load time with pointer/count views into the one owning GameData
+block. It exposes `CONF`, `UIST`, `INVC`, and FLGS metadata; pointer/count views
+for `CURS`, `BMPS`, `INVT`, `SPKR`, `HOTS`, `TXTR`, `GFXS`, `GFXI`, `SDES`,
+`KEYS`, `TIME`, `FUNC`, `VALS`, `CHOC`, `PAGS`, `DLGS`, and `SCEN`; plus
+pointer/byte-size views for `SCRP` and the packed FLGS bytes. No TOC member owns
+or copies chunk memory.
 
-```cpp
-struct TOC {
-    Palette*    uiPalette;
-    Palette*    palettes;
-    Bitmap*     bitmaps;
-    Graphics*   graphics;
-    Inventory*  inventory;
-    Speaker*    speakers;
-    Hotspot*    hotspots;
-    TextRegion* textRegions;
-    uint8_t*    scripts;
-    Choice*     choices;
-    Page*       pages;
-    Dialogue*   dialogues;
-    Scene*      scenes;
-    // Counts for each collection
-};
-```
+FUNC and SCRP are both empty or both nonempty. Nonempty FUNC offsets begin at
+zero and strictly increase, partitioning all SCRP bytes into function spans.
+Post-build staging verification decodes each span exactly, requires its final
+instruction to be unconditional RET, requires every branch target to be an
+instruction boundary inside that span, and validates CALL plus intrinsically
+typed flag/value operands. Generic immediates have no retained catalog type and
+are checked from source/relocation information during Validate/Build. The
+release loader does not repeat either pass; NoirVM retains its normal
+execution-time bounds and invalid-opcode handling.
 
 ### Background Caching
 
 LRU cache with N slots in FAST RAM:
+
 - On scene transition: fade out → memcpy cached BG to CHIP RAM → fade in
 - Cache miss: load from pack file during fade (500ms budget)
 - N configurable based on available memory
@@ -456,28 +533,44 @@ LRU cache with N slots in FAST RAM:
 ### Scene Data
 
 Everything is a Scene — gameplay, menus, cutscenes, title screen. Each scene contains:
+
 - Background image, dimensions, offset
 - Music (play, silence, or keep previous)
 - Enter/exit scripts
 - First-visit narration text
 - Hotspots, text regions, and graphics (via Range references)
-- Mouse constraint and fade duration options
+- Mouse constraint and game-UI visibility
+
+The SCEN offset and dimensions define a background rectangle that must fit
+entirely within the configured 320×200/320×256 display. A present background
+bitmap exactly matches the rectangle dimensions and is blitted at its stored
+offset without clipping. Compiled hotspot, text-region, graphics-instance, and
+GFX_MOVE coordinates are already absolute display coordinates; NEONedit applies
+the scene offset during compilation. Mouse bounds are derived once at scene
+entry when constrain-mouse is enabled, otherwise they cover the full display.
 
 ### Hotspot Data
 
 Each hotspot defines a rectangular interactive area with:
-- 4 visual states: idle, hovered, clicked, disabled (each an optional bitmap)
-- Context-sensitive cursor (AUTO or explicit override)
+
+- Signed position, unsigned dimensions, and signed z-order
+- Context-sensitive cursor (Default/Auto or explicit override)
 - Hover text for descriptions
 - Click script for interaction logic
 - Direct `gotoSceneId` shortcut for trivial transitions
-- Enable/disable flag
+- Initial enabled state
 
-No overlapping hotspots allowed (editor should flag). If overlap occurs, first in list wins.
+Per-state hotspot bitmaps are deferred and are not present in version 2
+`HOTS` records.
+
+Overlapping hotspots are supported. Hit testing selects the enabled hotspot with
+the highest z-index; scene list order breaks equal-z ties. The editor warns
+about overlaps because they may be difficult to author intentionally.
 
 ### Scene Transitions
 
-Fade to black → load scene → fade in. Duration overridable per-scene (default 500ms). Triggered by `GOTO_SCENE` VM opcode.
+Fade to black → load scene → fade in. `CONF` supplies the project-wide default
+duration in PAL frames. Triggered by the `GOTO_SCENE` VM opcode.
 
 ### Scene-Visited Tracking
 
@@ -489,7 +582,7 @@ Automatic bitfield (1 bit per scene), persisted in save game. Engine checks befo
 
 ### Hierarchy
 
-```
+```text
 Dialogue (container)
   └── Page[] (graph — can point to any page in the dialogue)
         └── Choice[] (can only point to pages in same dialogue)
@@ -503,20 +596,20 @@ Dialogue (container)
 
 ### Display Layout
 
-```
-┌────────────────────────────────────────┐
-│ ┌──────┐  ┌─────────────────────────┐  │
-│ │      │  │ Speaker Name            │  │
-│ │ 96×96│  │ Page text here...       │  │
-│ │portrait│ │ wrapped as needed...   │  │
-│ └──────┘  └─────────────────────────┘  │
-│                                        │
-│ ┌────────────────────────────────────┐  │
-│ │ 1. Choice one                     │  │
-│ │ 2. Choice two                     │  │
-│ │ 3. Choice three          ▼ more   │  │
-│ └────────────────────────────────────┘  │
-└────────────────────────────────────────┘
+```text
+┌─────────────────────────────────────────┐
+│ ┌────────┐  ┌─────────────────────────┐ │
+│ │        │  │ Speaker Name            │ │
+│ │ 96×96  │  │ Page text here...       │ │
+│ │portrait│  │ wrapped as needed...    │ │
+│ └────────┘  └─────────────────────────┘ │
+│                                         │
+│ ┌─────────────────────────────────────┐ │
+│ │ 1. Choice one                       │ │
+│ │ 2. Choice two                       │ │
+│ │ 3. Choice three          ▼ more     │ │
+│ └─────────────────────────────────────┘ │
+└─────────────────────────────────────────┘
 ```
 
 ### Player Input
@@ -541,11 +634,16 @@ Page and choice "read once" state tracked in separate bitfields, persisted in sa
 
 ## Inventory System
 
+The inventory display is modal. On entry, it loads the shared inventory
+spritesheet's 32-color `.plt` into registers 32-63 and suspends conflicting
+portrait/BOB use. On exit, it restores the active scene palette composition.
+Registers 0-31 retain the fixed UI palette throughout.
+
 ### Pool-Backed Linked List
 
 Fixed memory allocation, linked list semantics, zero heap fragmentation.
 
-```
+```c++
 InventoryNode (6 bytes):
     uint16_t itemId     // Index into INVT chunk
     uint16_t count      // Stack count
@@ -556,22 +654,22 @@ InventoryNode (6 bytes):
 ### Inventory Operations
 
 | Operation | Complexity | Description |
-|-----------|------------|-------------|
+| ----------- | ------------ | ------------- |
 | has(id) | O(n) | Walk from head |
 | get_count(id) | O(n) | Walk from head, return count or 0 |
 | add(id, n) | O(n) | Increment if exists; else allocate from free list |
 | remove(id, n) | O(n) | Decrement; if zero, return node to free list |
 
-### Item Combining
+### Item Combining (Deferred)
 
-1. Player selects first item, clicks "Combine", then clicks second item
-2. Engine searches CMBN chunk (order-independent: checks both (A,B) and (B,A))
-3. Match: deduct 1 of each ingredient, add `resultCount` of result
-4. No match: play failure SFX
+Version 2 has no `CMBN` chunk or built-in item-combination flow. This remains
+future work; game-specific interactions use scripts and the current use-item
+mode.
 
 ### Using Items on Hotspots
 
-1. Player selects item in inventory, clicks "Use" → cursor changes to USE_ITEM
+1. Player selects item in inventory, clicks "Use" → engine enters use-item mode
+   and displays the normal Use cursor
 2. Player clicks hotspot → hotspot's click script executes with item ID in D0
 3. Script checks item ID and acts accordingly; wrong item → failure SFX
 
@@ -583,7 +681,7 @@ InventoryNode (6 bytes):
 
 No verb bar — cursor changes automatically based on hotspot properties (see [Cursor Resolution](#cursor-resolution)).
 
-Characters are simply hotspots with `cursorId = SPEAK`. Click triggers dialogue via script.
+Characters are simply hotspots with `cursorId = TALK`. Click triggers dialogue via script.
 
 ### Right-Click Look
 
@@ -597,7 +695,11 @@ Higher-level manager built on top of ACE's BOB manager.
 
 ### Sprite Data
 
-In the game file (GFX_ chunk): bitmap ID, frame dimensions, frame count, animation delay, z-order.
+`GFXS` stores the bitmap ID, source x/y within a shared sheet, frame dimensions,
+frame count, and animation delay. Frames form a horizontal strip from that
+origin, so multiple graphics may select independent or overlapping strips from
+one bitmap. Per-instance position, z-order, palette slot, and initial visibility
+are stored in `GFXI`.
 
 ### Runtime Sprite State
 
@@ -606,11 +708,20 @@ Per-instance: sprite ID, position (x, y), current frame, visibility, palette slo
 ### Z-Ordering
 
 - Primary sort: z-order (lower draws first = background)
-- Secondary sort: Y coordinate (for same z-order, lower Y draws first)
+- Secondary sort: stable scene source order
 
 ### Palette Slot Tracking
 
-Tracks which palette slots (32–39, 40–47, 48–63, 64–79) are in use and which palette ID is loaded in each. Reuses slot if same palette requested; wraps to first slot if all full.
+Tracks ownership of the six reverse-numbered 8-color physical banks and the
+palette pak-path hash loaded into each aligned block. Reuses a block when the
+same hash and block geometry are requested. Invalid alignment, insufficient
+capacity, and conflicting live allocations are errors; there is no automatic
+wrap.
+
+NEONedit conservatively treats every GFXI owned by one scene as potentially
+live during build validation, regardless of initial or timeline visibility.
+Overlapping allocations are valid only with the same palette hash and exact
+base/size block.
 
 **Constraints:** Max BOB size 320×256. No hard limit on active BOBs (performance-bound).
 
@@ -622,27 +733,30 @@ Tracks which palette slots (32–39, 40–47, 48–63, 64–79) are in use and w
 
 ### Timing & Playback
 
-- Configurable: frames (1/50s PAL) or milliseconds
-- Multiple timelines can run concurrently
-- Loop modes: none, restart, ping-pong
-- Loop count: 0 (infinite) to N
-- Scripts can start/stop/pause/resume timelines by ID
+- Serialized timing is always PAL frames (1/50 second); milliseconds are an
+  editor display conversion only
+- A scene owns zero or one timeline, which runs as part of that scene
+- None requires count zero and plays one forward pass
+- Restart count zero is infinite; finite N counts complete forward passes
+- Ping-pong count zero is infinite; finite N counts complete out-and-back cycles
+- Standalone/concurrent timelines and script-controlled timeline management are
+  deferred
 
 ### Keyframe Data
 
 Each keyframe (12 bytes): time, type enum, flags (interpolation/fire-once), 8-byte type-specific data union.
 
-- **GFX_CREATE** — Instantiate a graphic from GFXS template at position
 - **GFX_MOVE** — Move graphic instance (with optional linear interpolation)
 - **GFX_VISIBILITY** — Show/hide graphic instance
 - **PALETTE_CYCLE_START/END** — Start/stop palette rotation
 - **SFX/MUSIC_PLAY/STOP** — Audio control
-- **GOTO_SCENE** — Scene transition
 - **EXECUTE_SCRIPT** — Run a script function
 
 ### Timeline Data
 
-Each timeline (8 bytes): keyframe Range (into KEYS collection), loop mode, loop count.
+Each optional scene timeline is an 8-byte TIME record containing its keyframe
+range, duration, loop mode, and loop count. Scene-level `goto_scene`, rather
+than a keyframe, runs when the timeline completes.
 
 ---
 
@@ -655,7 +769,9 @@ The scripting virtual machine is fully specified in [noir_script_reference.md](n
 - **Register-based** — 4 general-purpose data registers (D0–D3, 16-bit), status register (N/Z/C/V flags), stack/frame/program counter pointers (32-bit raw addresses)
 - **16-bit word size**, big-endian bytecode, cooperative yielding with configurable opcode budget per frame
 - **Addressing modes** packed in a single mode byte — immediates, registers, FP-relative locals, VALUES array (direct and register-indexed)
-- **External game state**: borrowed FLAGS bitfield (1-bit booleans) + VALUES array (16-bit integers) for persistent state, owned by the engine
+- **External game state**: borrowed FLAGS bitfield plus its exact logical flag
+  count, and a VALUES array of 16-bit integers; padding bits in the final FLAGS
+  byte are never addressable
 - **Engine bridge**: `NoirBridge` struct of function pointers decouples VM from all engine systems (inventory, scenes, dialogue, audio, screen, animations, save/load)
 - **Blocking operations**: WAIT (frame-counting timer) and bridge calls (SAY, FADE_OUT/IN, GOTO_SCENE, ANIM_WAIT, SHOW_DIALOG) that enter Blocked state until engine signals completion
 - **Re-entrant**: engine can call `execute()` while VM is running (e.g. from dialogue or hotspot callbacks); full register context saved/restored automatically
@@ -675,7 +791,7 @@ Scan dedicated save directory for `*.nsg` files. Sort by file timestamp for disp
 64 bytes:
 
 | Offset | Size | Field | Description |
-|--------|------|-------|-------------|
+| -------- | ------ | ------- | ------------- |
 | 0 | 4 | magic | `"NSAV"` |
 | 4 | 2 | version | Format version |
 | 6 | 2 | sceneId | Current scene |
@@ -690,7 +806,7 @@ Scan dedicated save directory for `*.nsg` files. Sort by file timestamp for disp
 Each chunk: 4-byte ID + uint16 byte count + data.
 
 | Chunk | Content |
-|-------|---------|
+| ------- | --------- |
 | FLGS | Boolean flag pool — raw bitfield copy |
 | INTS | Integer pool — raw copy |
 | SCNV | Scene-visited bitfield (1 bit per scene) |
@@ -705,6 +821,7 @@ Each chunk: 4-byte ID + uint16 byte count + data.
 ### Save / Load Procedure
 
 **Save:**
+
 1. Build header with current state
 2. Serialize all chunks to buffer
 3. Calculate Adler32 of buffer (bytes 24–EOF)
@@ -712,6 +829,7 @@ Each chunk: 4-byte ID + uint16 byte count + data.
 5. Write `.nsg` file
 
 **Load:**
+
 1. Read header, validate `"NSAV"` magic and version
 2. Verify Adler32 checksum
 3. Parse chunks, restore all pools and state
@@ -724,7 +842,7 @@ Each chunk: 4-byte ID + uint16 byte count + data.
 Custom STL replacement to avoid ~300KB binary bloat from libstdc++. All in `src/mtl/`.
 
 | Component | Purpose |
-|-----------|---------|
+| ----------- | --------- |
 | `unique_ptr<T, Deleter>` | Single-owner pointer with custom deleter |
 | `vector<T, MemFlags>` | Dynamic array with CHIP/FAST RAM memory selection |
 | `array<T, N>` | Fixed-size, constexpr-compatible |
@@ -754,7 +872,7 @@ Placement `operator new(size, MemF)` routes to `memAllocFast()`/`memAllocChip()`
 ## Implementation Status
 
 | System | Status |
-|--------|--------|
+| -------- | -------- |
 | Screen / fading | **Complete** |
 | Text rendering + layout | **Complete** |
 | UI hotspots (Layer) | **Complete** |
@@ -762,8 +880,8 @@ Placement `operator new(size, MemF)` routes to `memAllocFast()`/`memAllocChip()`
 | Nine-patch UI frames | **Complete** |
 | Mouse pointer system | **Complete** |
 | NoirScript VM | **Complete** — all opcodes implemented + 24 test suites |
-| Game data loading (.neon) | **Complete** — chunk-based parser |
-| Localization (string table) | **Complete** — .noir file loading |
+| Game data loading (.neon) | Legacy v2 loader complete; replacement v2 loader planned in game-data build Phase 7 |
+| Localization (string table) | Legacy v2 loader complete; replacement v2 loader planned in game-data build Phase 7 |
 | Test infrastructure | **Complete** — 19 test suites |
 | Dialogue branching | Data model defined, UI partial |
 | Scene navigation | Data model only |
