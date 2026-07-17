@@ -97,7 +97,7 @@ namespace NEONengine
             if (pFade->pView->uwFlags & VP_FLAG_AGA)
             {
                 UBYTE ubRatio = (255 * ubCnt) / pFade->ubCntEnd;
-                paletteDimAGA((ULONG *)pFade->pPaletteRef,
+                paletteDimAga((ULONG *)pFade->pPaletteRef,
                               (ULONG *)pFade->pView->pFirstVPort->pPalette,
                               pFade->ubColorCount,
                               ubRatio);
@@ -105,7 +105,7 @@ namespace NEONengine
             else
             {
                 UBYTE ubRatio = (15 * ubCnt) / pFade->ubCntEnd;
-                paletteDim(pFade->pPaletteRef,
+                paletteDimOcs(pFade->pPaletteRef,
                            pFade->pView->pFirstVPort->pPalette,
                            pFade->ubColorCount,
                            ubRatio);
