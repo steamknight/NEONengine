@@ -13,6 +13,8 @@
 
 #include <stdint.h>
 
+#include <ace++/pak_file.h>
+
 #include <mtl/expected.h>
 #include <mtl/memory.h>
 #include <mtl/utility.h>
@@ -91,8 +93,26 @@ namespace NEONengine
          */
         uist_chunk const& uist() const noexcept { return *_uist; }
 
+        /**
+         * @brief Opens a pak asset by its content hash for reading.
+         *
+         * Assets are content-addressed by the adler32 hash of their pak path,
+         * which is what the .neon records reference. The returned file is
+         * decompressed transparently on read. Test it for validity before use.
+         *
+         * @param hash The asset's adler32 pak-path hash.
+         * @return An owning file handle, or an invalid handle if not found.
+         */
+        ace::file_ptr open_asset(uint32_t hash)
+        {
+            return ace::pakFileGetFileByHash(_pak, hash);
+        }
+
         private:  //////////////////////////////////////////////////////////////////////////////////
-        explicit game_data(mtl::vector<uint8_t>&& image) noexcept : _buffer(mtl::move(image)) {}
+        game_data(ace::pakfile_ptr&& pak, mtl::vector<uint8_t>&& image) noexcept
+            : _pak(mtl::move(pak)), _buffer(mtl::move(image))
+        {
+        }
 
         /**
          * @brief Finds a chunk by FourCC, walking the chunk table within bounds.
@@ -102,6 +122,7 @@ namespace NEONengine
          */
         chunk_header const* find_chunk(uint32_t fourcc) const noexcept;
 
+        ace::pakfile_ptr _pak;               ///< The open game pak, kept for the run (self-closing).
         mtl::vector<uint8_t> _buffer;        ///< The whole .neon image, in Fast RAM (self-freeing).
         conf_chunk const* _conf{ nullptr };  ///< Cached 'CONF' payload, pointing into _buffer.
         uist_chunk const* _uist{ nullptr };  ///< Cached 'UIST' payload, pointing into _buffer.

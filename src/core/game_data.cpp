@@ -62,7 +62,7 @@ namespace NEONengine
             mtl::to<ULONG>(header.total_size),
             mtl::to<ULONG>(header.chunk_count));
 
-        auto gd = game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(image)));
+        auto gd = game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(pak), mtl::move(image)));
 
         auto const* conf_hdr = gd->find_chunk(CONF_ID);
         auto const* uist_hdr = gd->find_chunk(UIST_ID);

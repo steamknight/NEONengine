@@ -4,12 +4,13 @@
 #include <ace/utils/file.h>
 #include <ace/utils/pak_file.h>
 
+#include <ace++/file.h>
+
 #include <mtl/memory.h>
 
 namespace ace
 {
     using pakfile_ptr = mtl::unique_ptr<tPakFile, ::pakFileClose>;
-    using file_ptr    = mtl::unique_ptr<tFile, ::fileClose>;
 
     /**
      * @brief Opens a pak archive, owning the handle.
@@ -33,6 +34,21 @@ namespace ace
     inline file_ptr pakFileGetFile(pakfile_ptr& pPakFile, char const* szInternalPath)
     {
         return file_ptr(::pakFileGetFile(pPakFile.get(), szInternalPath));
+    }
+
+    /**
+     * @brief Opens a subfile within a pak by its adler32 path hash.
+     *
+     * For content-addressed assets whose hash is known but whose original path
+     * string is not (the hash is not reversible).
+     *
+     * @param pPakFile   The open pak archive.
+     * @param ulPathHash The subfile's adler32 path hash.
+     * @return An owning subfile handle; test it for validity before use.
+     */
+    inline file_ptr pakFileGetFileByHash(pakfile_ptr& pPakFile, ULONG ulPathHash)
+    {
+        return file_ptr(::pakFileGetFileByHash(pPakFile.get(), ulPathHash));
     }
 }  // namespace ace
 

@@ -2,6 +2,9 @@
 #define __ACEPP__FONT_H___INCLUDED__
 
 #include <ace/utils/font.h>
+
+#include <ace++/file.h>
+
 #include "mtl/memory.h"
 
 namespace ace
@@ -14,9 +17,9 @@ namespace ace
         return font_ptr(::fontCreateFromPath(szPath));
     }
 
-    inline font_ptr fontCreateFromFd(tFile *pFontFile)
+    inline font_ptr fontCreateFromFd(file_ptr&& pFontFile)
     {
-        return font_ptr(::fontCreateFromFd(pFontFile));
+        return font_ptr(::fontCreateFromFd(pFontFile.release()));
     }
 
     inline text_bitmap_ptr fontCreateTextBitMap(UWORD uwWidth, UWORD uwHeight)

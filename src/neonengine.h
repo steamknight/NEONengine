@@ -23,6 +23,8 @@ namespace NEONengine
         enum class error_code
         {
             GAME_DATA_LOAD_FAILED,
+            UI_FONT_LOAD_FAILED,
+            UI_PALETTE_LOAD_FAILED,
             DEFAULT_FONT_NOT_FOUND,
             FAILED_TO_CREATE_DEFAULT_TEXT_RENDERER,
         };
@@ -37,6 +39,7 @@ namespace NEONengine
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         game_data_ptr _pGameData{ nullptr };  ///< The one loaded .neon, owned for the process lifetime.
+        ace::font_ptr _pUiFont{ nullptr };    ///< The UI font, loaded from the pak via UIST.
         ace::font_ptr _pDefaultFont{ nullptr };
         text_renderer_ptr _pDefaultTextRenderer{ nullptr };
     };
