@@ -51,13 +51,15 @@ namespace NEONengine
          */
         enum class error
         {
-            PAK_NOT_FOUND,        ///< The pak file is missing or could not be opened.
-            NEON_NOT_IN_PAK,      ///< The pak has no NEON_FILE_NAME entry.
-            TOO_SMALL,            ///< The entry is smaller than a header.
-            READ_FAILED,          ///< Fewer bytes were read than expected.
-            BAD_MAGIC,            ///< The file does not start with 'NEON'.
-            UNSUPPORTED_VERSION,  ///< version != NEON_SUPPORTED_VERSION.
-            BAD_HEADER,           ///< header_size or total_size is inconsistent.
+            PAK_NOT_FOUND,           ///< The pak file is missing or could not be opened.
+            NEON_NOT_IN_PAK,         ///< The pak has no NEON_FILE_NAME entry.
+            TOO_SMALL,               ///< The entry is smaller than a header.
+            READ_FAILED,             ///< Fewer bytes were read than expected.
+            BAD_MAGIC,               ///< The file does not start with 'NEON'.
+            UNSUPPORTED_VERSION,     ///< version != NEON_SUPPORTED_VERSION.
+            BAD_HEADER,              ///< header_size or total_size is inconsistent.
+            REQUIRED_CHUNK_MISSING,  ///< CONF or UIST is absent, or the chunk table is out of bounds.
+            CHUNK_TOO_SMALL,         ///< A required chunk's payload is smaller than its record.
         };
 
         using result = mtl::expected<game_data_ptr, error>;
@@ -79,10 +81,30 @@ namespace NEONengine
             return *mtl::force_to<neon_header const*>(_buffer.data());
         }
 
+        /**
+         * @brief The validated 'CONF' payload: display geometry and default fade.
+         */
+        conf_chunk const& conf() const noexcept { return *_conf; }
+
+        /**
+         * @brief The validated 'UIST' payload: UI palette/font and cursor config.
+         */
+        uist_chunk const& uist() const noexcept { return *_uist; }
+
         private:  //////////////////////////////////////////////////////////////////////////////////
         explicit game_data(mtl::vector<uint8_t>&& image) noexcept : _buffer(mtl::move(image)) {}
 
-        mtl::vector<uint8_t> _buffer;  ///< The whole .neon image, in Fast RAM (self-freeing).
+        /**
+         * @brief Finds a chunk by FourCC, walking the chunk table within bounds.
+         *
+         * @return The chunk header, or nullptr if the chunk is absent or the
+         *         table runs past the buffer.
+         */
+        chunk_header const* find_chunk(uint32_t fourcc) const noexcept;
+
+        mtl::vector<uint8_t> _buffer;        ///< The whole .neon image, in Fast RAM (self-freeing).
+        conf_chunk const* _conf{ nullptr };  ///< Cached 'CONF' payload, pointing into _buffer.
+        uist_chunk const* _uist{ nullptr };  ///< Cached 'UIST' payload, pointing into _buffer.
     };
 }  // namespace NEONengine
 

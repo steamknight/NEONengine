@@ -62,6 +62,62 @@ namespace NEONengine
             mtl::to<ULONG>(header.total_size),
             mtl::to<ULONG>(header.chunk_count));
 
-        return game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(image)));
+        auto gd = game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(image)));
+
+        auto const* conf_hdr = gd->find_chunk(CONF_ID);
+        auto const* uist_hdr = gd->find_chunk(UIST_ID);
+        if (!conf_hdr || !uist_hdr)
+        {
+            return mtl::make_error<game_data_ptr, error>(error::REQUIRED_CHUNK_MISSING);
+        }
+        if (conf_hdr->body_size < sizeof(conf_chunk) || uist_hdr->body_size < sizeof(uist_chunk))
+        {
+            return mtl::make_error<game_data_ptr, error>(error::CHUNK_TOO_SMALL);
+        }
+
+        gd->_conf = mtl::force_to<conf_chunk const*>(conf_hdr + 1);
+        gd->_uist = mtl::force_to<uist_chunk const*>(uist_hdr + 1);
+
+        NE_LOG("game_data: CONF %hux%hu fade=%hu; UIST palette=%08lx font=%08lx",
+            mtl::to<UWORD>(gd->_conf->width),
+            mtl::to<UWORD>(gd->_conf->height),
+            mtl::to<UWORD>(gd->_conf->default_fade_frames),
+            mtl::to<ULONG>(gd->_uist->ui_palette_hash),
+            mtl::to<ULONG>(gd->_uist->font_hash));
+
+        return gd;
+    }
+
+    chunk_header const* game_data::find_chunk(uint32_t fourcc) const noexcept
+    {
+        constexpr auto chunk_header_bytes = mtl::to<uint32_t>(sizeof(chunk_header));
+
+        auto const& hdr = header();
+        auto const total = hdr.total_size;
+        uint32_t offset  = mtl::to<uint32_t>(sizeof(neon_header));
+
+        for (uint32_t remaining = hdr.chunk_count; remaining != 0; --remaining)
+        {
+            if (offset + chunk_header_bytes > total)
+            {
+                break;
+            }
+
+            auto const* chunk = mtl::force_to<chunk_header const*>(_buffer.data() + offset);
+            auto const next   = offset + chunk_header_bytes + chunk->body_size;
+            if (next <= offset || next > total)
+            {
+                break;
+            }
+
+            if (chunk->fourcc == fourcc)
+            {
+                return chunk;
+            }
+
+            offset = next;
+        }
+
+        return nullptr;
     }
 }  // namespace NEONengine
