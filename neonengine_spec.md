@@ -460,10 +460,11 @@ each operand read; it retains checks driven by dynamic execution state,
 including external function IDs, PC dispatch, logical state indexes, stack
 bounds, division by zero, and invalid opcodes.
 
-The structural scan includes the FLGS internal envelope: its payload must be
-exactly `2 + ceil(logicalFlagCount / 8)` bytes before NoirVM receives the
-bitfield. Validation of unused high bits remains part of host staging
-verification.
+The structural scan includes the FLGS internal envelope: its logical envelope,
+derived from the leading `uint16` flagCount, must be exactly
+`2 + ceil(logicalFlagCount / 8)` bytes, and the chunk `size` header field is that
+envelope aligned up to 4 bytes, before NoirVM receives the bitfield. Validation
+of unused high bits remains part of host staging verification.
 
 For compressed or raw pak entries, the loader sizes its single persistent
 GameData allocation from the pak directory's uncompressed size and streams the
