@@ -25,23 +25,21 @@ namespace NEONengine
             GAME_DATA_LOAD_FAILED,
             UI_FONT_LOAD_FAILED,
             UI_PALETTE_LOAD_FAILED,
-            DEFAULT_FONT_NOT_FOUND,
-            FAILED_TO_CREATE_DEFAULT_TEXT_RENDERER,
+            FAILED_TO_CREATE_TEXT_RENDERER,
         };
 
         using result = mtl::expected<engine_ptr, error_code>;
 
         public:  //////////////////////////////////////////////////////////////////////////////////
-        tFont* default_font() noexcept { return _pDefaultFont.get(); }
-        text_renderer* default_text_renderer() noexcept { return _pDefaultTextRenderer.get(); }
+        tFont* default_font() noexcept { return _pUiFont.get(); }
+        text_renderer* default_text_renderer() noexcept { return _pTextRenderer.get(); }
 
-        static result initialize(char const* szDefaultFontPath);
+        static result initialize();
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         game_data_ptr _pGameData{ nullptr };  ///< The one loaded .neon, owned for the process lifetime.
-        ace::font_ptr _pUiFont{ nullptr };    ///< The UI font, loaded from the pak via UIST.
-        ace::font_ptr _pDefaultFont{ nullptr };
-        text_renderer_ptr _pDefaultTextRenderer{ nullptr };
+        ace::font_ptr _pUiFont{ nullptr };    ///< The UI font, loaded from the pak via UIST; the engine's font.
+        text_renderer_ptr _pTextRenderer{ nullptr };
     };
 
     extern engine_ptr g_pEngine;

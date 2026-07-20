@@ -27,7 +27,7 @@ void genericCreate(void)
     g_gameStateManager = stateManagerCreate();
     g_mainScreen       = screenCreate();
 
-    auto engineResult = engine::initialize("data/font.fnt");
+    auto engineResult = engine::initialize();
     if (!engineResult)
     {
         NE_LOG("Could not create NEONengine. Error %d", mtl::to<int>(engineResult.error()));

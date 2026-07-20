@@ -15,7 +15,7 @@ namespace NEONengine
     Screen* g_mainScreen              = nullptr;
     engine_ptr g_pEngine              = nullptr;
 
-    engine::result engine::initialize(char const* szDefaultFontPath)
+    engine::result engine::initialize()
     {
         auto gameData = game_data::load();
         if (!gameData)
@@ -56,27 +56,19 @@ namespace NEONengine
             mtl::to<ULONG>(mtl::force_to<ULONG const*>(screenGetPalette(g_mainScreen))[0]),
             mtl::to<ULONG>(mtl::force_to<ULONG const*>(screenGetPalette(g_mainScreen))[1]));
 
-        auto font = ace::fontCreateFromPath(szDefaultFontPath);
-        if (!font)
-        {
-            NE_LOG("Could not load default font '%s'", szDefaultFontPath);
-            return mtl::make_error<engine_ptr, error_code>(error_code::DEFAULT_FONT_NOT_FOUND);
-        }
-
-        auto textRenderer = text_renderer::create(font.get());
+        auto textRenderer = text_renderer::create(uiFont.get());
         if (!textRenderer)
         {
-            NE_LOG("Could not create default text renderer. Error %d.",
+            NE_LOG("Could not create text renderer. Error %d.",
                    mtl::to<int>(textRenderer.error()));
             return mtl::make_error<engine_ptr, error_code>(
-                error_code::FAILED_TO_CREATE_DEFAULT_TEXT_RENDERER);
+                error_code::FAILED_TO_CREATE_TEXT_RENDERER);
         }
 
-        auto result                   = engine_ptr(new (mtl::MemF::Fast) engine());
-        result->_pGameData            = mtl::move(gameData.value());
-        result->_pUiFont              = mtl::move(uiFont);
-        result->_pDefaultFont         = mtl::move(font);
-        result->_pDefaultTextRenderer = mtl::move(textRenderer.value());
+        auto result            = engine_ptr(new (mtl::MemF::Fast) engine());
+        result->_pGameData     = mtl::move(gameData.value());
+        result->_pUiFont       = mtl::move(uiFont);
+        result->_pTextRenderer = mtl::move(textRenderer.value());
 
         return result;
     }
