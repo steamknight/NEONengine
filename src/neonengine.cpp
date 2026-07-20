@@ -8,6 +8,13 @@ namespace NEONengine
 
     engine::result engine::initialize(char const* szDefaultFontPath)
     {
+        auto gameData = game_data::load();
+        if (!gameData)
+        {
+            NE_LOG("Could not load game data. Error %d", mtl::to<int>(gameData.error()));
+            return mtl::make_error<engine_ptr, error_code>(error_code::GAME_DATA_LOAD_FAILED);
+        }
+
         auto font = ace::fontCreateFromPath(szDefaultFontPath);
         if (!font)
         {
@@ -25,6 +32,7 @@ namespace NEONengine
         }
 
         auto result                   = engine_ptr(new (mtl::MemF::Fast) engine());
+        result->_pGameData            = mtl::move(gameData.value());
         result->_pDefaultFont         = mtl::move(font);
         result->_pDefaultTextRenderer = mtl::move(textRenderer.value());
 

@@ -22,6 +22,7 @@ namespace NEONengine
         public:  //////////////////////////////////////////////////////////////////////////////////
         enum class error_code
         {
+            GAME_DATA_LOAD_FAILED,
             DEFAULT_FONT_NOT_FOUND,
             FAILED_TO_CREATE_DEFAULT_TEXT_RENDERER,
         };
@@ -35,6 +36,7 @@ namespace NEONengine
         static result initialize(char const* szDefaultFontPath);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
+        game_data_ptr _pGameData{ nullptr };  ///< The one loaded .neon, owned for the process lifetime.
         ace::font_ptr _pDefaultFont{ nullptr };
         text_renderer_ptr _pDefaultTextRenderer{ nullptr };
     };

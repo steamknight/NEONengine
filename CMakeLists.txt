@@ -124,6 +124,10 @@ configure_file(
 )
 
 configure_file(
+    ${RES_DIR}/game.pak ${DATA_DIR}/game.pak COPYONLY
+)
+
+configure_file(
     ${RES_DIR}/lang/en.noir ${DATA_DIR}/lang/en.noir COPYONLY
 )
 
