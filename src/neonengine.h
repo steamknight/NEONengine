@@ -58,8 +58,6 @@ namespace NEONengine
 
     extern Screen* g_mainScreen;
 
-    extern GameData* g_gameData;
-
 #if !defined(SAFE_CB_CALL)
 #define SAFE_CB_CALL(fn, ...) \
     if (fn) fn(__VA_ARGS__);

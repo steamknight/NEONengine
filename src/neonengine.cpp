@@ -4,7 +4,6 @@ namespace NEONengine
 {
     tStateManager* g_gameStateManager = nullptr;
     Screen* g_mainScreen              = nullptr;
-    GameData* g_gameData              = nullptr;
     engine_ptr g_pEngine              = nullptr;
 
     engine::result engine::initialize(char const* szDefaultFontPath)

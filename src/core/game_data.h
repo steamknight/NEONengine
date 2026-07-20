@@ -1,182 +1,89 @@
+/**
+ * @file game_data.h
+ * @brief Loading and access for the single .neon game-data file.
+ *
+ * The engine loads exactly one .neon for the lifetime of the process. It is
+ * extracted from the game pak, read whole into Fast RAM, validated, and then
+ * accessed in place by overlaying the format structs onto the buffer. The image
+ * is held in a container that frees itself when this object is destroyed.
+ */
+
 #ifndef __GAME_DATA_H__INCLUDED__
 #define __GAME_DATA_H__INCLUDED__
 
-#include <ace/types.h>
+#include <stdint.h>
+
+#include <mtl/expected.h>
+#include <mtl/memory.h>
+#include <mtl/utility.h>
+#include <mtl/vector.h>
+
+#include "game_data_format.h"
 
 namespace NEONengine
 {
     /**
-     * @brief Bounding box information for an area the user can interact with.
+     * @brief Path to the pak the engine loads, relative to the executable.
      */
-    struct Interaction
+    constexpr char PAK_FILE_PATH[] = "data/game.pak";
+
+    /**
+     * @brief Fixed name of the game-data entry inside the pak. Not customizable.
+     */
+    constexpr char NEON_FILE_NAME[] = "game.neon";
+
+    /**
+     * @brief The only .neon container version this engine can load.
+     */
+    constexpr uint16_t NEON_SUPPORTED_VERSION = 2;
+
+    class game_data;
+    using game_data_ptr = mtl::unique_ptr<game_data>;
+
+    /**
+     * @brief Owns the single loaded .neon image and exposes it in place.
+     */
+    class game_data
     {
-        tUwRect uwBounds;
-        UWORD uwPointerId;
-        UWORD uwGotoScene;
-        UWORD uwDescriptionId;
-        UWORD uwScriptOffset;
+        public:  ///////////////////////////////////////////////////////////////////////////////////
+        /**
+         * @brief Why game_data::load() failed.
+         */
+        enum class error
+        {
+            PAK_NOT_FOUND,        ///< The pak file is missing or could not be opened.
+            NEON_NOT_IN_PAK,      ///< The pak has no NEON_FILE_NAME entry.
+            TOO_SMALL,            ///< The entry is smaller than a header.
+            READ_FAILED,          ///< Fewer bytes were read than expected.
+            BAD_MAGIC,            ///< The file does not start with 'NEON'.
+            UNSUPPORTED_VERSION,  ///< version != NEON_SUPPORTED_VERSION.
+            BAD_HEADER,           ///< header_size or total_size is inconsistent.
+        };
+
+        using result = mtl::expected<game_data_ptr, error>;
+
+        /**
+         * @brief Loads and validates the one .neon from the game pak.
+         *
+         * @return The owning game_data on success, or an error code.
+         */
+        static result load();
+
+        NO_COPY(game_data)
+
+        /**
+         * @brief The validated 64-byte file header.
+         */
+        neon_header const& header() const noexcept
+        {
+            return *mtl::force_to<neon_header const*>(_buffer.data());
+        }
+
+        private:  //////////////////////////////////////////////////////////////////////////////////
+        explicit game_data(mtl::vector<uint8_t>&& image) noexcept : _buffer(mtl::move(image)) {}
+
+        mtl::vector<uint8_t> _buffer;  ///< The whole .neon image, in Fast RAM (self-freeing).
     };
+}  // namespace NEONengine
 
-    /**
-     * @brief Degines a text box.
-     */
-    struct TextRegion
-    {
-        tUwCoordYX uwPosition;
-        UWORD uwWidth;
-        UWORD uwTextId;
-        UBYTE ubJustify;
-        UBYTE ubCenterVertical;
-    };
-
-    /**
-     * @brief Generic range into an array using indices. Inclusive.
-     */
-    struct Range
-    {
-        UWORD uwFirstIndex;
-        UWORD uwLastIndex;
-    };
-
-    /**
-     * @brief Defines a scene in the game. Scenes are the various screens the user
-     * can explore.
-     */
-    struct Scene
-    {
-        UWORD uwNameId;
-        Range descriptions;
-        UWORD uwOnEnterScriptId;
-        UWORD uwOnExitScriptId;
-        UWORD uwBackgroundId;
-        Range interactiveAreas;
-        Range textRegions;
-        UWORD uwMusicId;
-    };
-
-    /**
-     * @brief Locations are a series of scenes.
-     */
-    struct Location
-    {
-        UWORD uwNameId;
-        Range backgrounds;
-        Range scenes;
-        Range shapes;
-        UWORD uwShapesFileId;
-        UWORD uwSpeakers[8];
-    };
-
-    /**
-     * @brief Using BlitzBASIC nomenclature, these define BOBs with their own
-     * custom palette.
-     */
-    struct Shape
-    {
-        UWORD uwShapeId;
-        UWORD uwPaletteId;
-    };
-
-    /**
-     * @brief A choice the player can make during a dialogue.
-     */
-    struct DialogueChoice
-    {
-        UWORD uwTextId;
-        UWORD uwSetFlagIdOnSelection;
-        UWORD uwClearFlagIdOnSelection;
-        UWORD uwCheckFlag;
-        UWORD uwGotoPageId;
-        UWORD uwScriptOffset;
-        UBYTE ubEnabled;
-        UBYTE ubSelfDisable;
-    };
-
-    /**
-     * @brief A page of dialogue.
-     */
-    struct DialoguePage
-    {
-        UWORD uwSpeakerId;
-        UWORD uwTextId;
-        UWORD uwSetFlagIdOnSelection;
-        UWORD uwClearFlagIdOnSelection;
-        UWORD uwCheckFlag;
-        UWORD uwGotoPageId;
-        Range choices;
-        UBYTE ubEnabled;
-        UBYTE ubSelfDisable;
-    };
-
-    /**
-     * @brief Dialogues are a collection of dialogue pages.
-     */
-    struct Dialogue
-    {
-        UWORD uwFirstPageId;
-        UWORD uwPageCount;
-    };
-
-    /**
-     * @brief Defines one entry in a color palette
-     */
-    struct PaletteEntry
-    {
-        UBYTE ubR;
-        UBYTE ubG;
-        UBYTE ubB;
-        UBYTE ubPadding;
-    };
-
-    /**
-     * @brief Collects all the game object loaded into memory.
-     */
-    struct GameData
-    {
-        Location *pLocations;
-        Scene *pScenes;
-        Interaction *pIteractables;
-        TextRegion *pTextRegions;
-        Dialogue *pDialogues;
-        DialoguePage *pDialoguePages;
-        DialogueChoice *pDialogueChoices;
-        UWORD *puwScriptData;
-        Shape *pShapes;
-        PaletteEntry *pPalettes;
-        PaletteEntry *pUiPalette;
-    };
-
-    /**
-     * @brief Possible results when reading a game data file.
-     *
-     * @see gameDataLoad()
-     */
-    enum class GameDataResult
-    {
-        SUCCESS = 0,
-        FILE_NOT_FOUND,
-        GENERIC_READ_ERROR,
-        NOT_NEON_FILE,
-        VERSION_NOT_SUPPORTED,
-        OUT_OF_MEMORY,
-        CORRUPTED_FILE,
-    };
-
-    /**
-     * @brief Loads the specified game data file.
-     * Currently only supports version 2.0
-     *
-     * @param szFilePath The file path of the game data file, generally ending in .NEON.
-     * @return GameDataResult Indicates if an error occured while reading.
-     */
-    GameDataResult gameDataLoad(const char *szFilePath);
-
-    /**
-     * @brief Frees all the game data.
-     *
-     * @see gameDataLoad()
-     */
-    void gameDataDestroy();
-}
-
-#endif // __GAME_DATA_H__INCLUDED__
+#endif  // __GAME_DATA_H__INCLUDED__
