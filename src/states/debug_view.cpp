@@ -27,7 +27,7 @@ namespace NEONengine
     {
         logBlockBegin("debugViewCreate");
 
-        s_pFont = fontCreateFromPath("data/font.fnt");
+        s_pFont = g_pEngine->default_font();
 
         s_pTextBmp = fontCreateTextBitMap(160, s_pFont->uwHeight * 3);
         s_pElapsedTimeBmp = fontCreateTextBitMap(160, s_pFont->uwHeight);
@@ -63,7 +63,6 @@ namespace NEONengine
 
     void debugViewDestroy(void)
     {
-        fontDestroy(s_pFont);
         fontDestroyTextBitMap(s_pTextBmp);
         fontDestroyTextBitMap(s_pElapsedTimeBmp);
     }

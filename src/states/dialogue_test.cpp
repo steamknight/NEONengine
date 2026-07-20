@@ -7,7 +7,6 @@
 #include <ace/managers/timer.h>
 #include <ace/managers/viewport/simplebuffer.h>
 #include <ace/utils/font.h>
-#include <ace/utils/palette.h>
 
 #include <ace++/bitmap.h>
 #include <ace++/font.h>
@@ -27,17 +26,6 @@ namespace NEONengine
 
         screenFadeFromBlack(g_mainScreen, 25, 0, nullptr);
         screenClear(g_mainScreen, 0);
-
-        paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
-        auto pFont = ace::fontCreateFromPath("data/font.fnt");
-
-        auto renderer_result = text_renderer::create(pFont.get());
-        if (!renderer_result)
-        {
-            NE_LOG("Failed to create text renderer: Error code %d",
-                mtl::to<int>(renderer_result.error()));
-            return;
-        }
 
         auto pPatchBitmap = ace::bitmapCreateFromPath("data/core/frame_9.bm", 0);
 

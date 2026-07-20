@@ -5,7 +5,6 @@
 #include <ace/managers/key.h>
 #include <ace/managers/system.h>
 #include <ace/managers/timer.h>
-#include <ace/utils/palette.h>
 
 #include <ace++/log.h>
 
@@ -37,8 +36,6 @@ namespace NEONengine
 
         screenFadeFromBlack(g_mainScreen, 25, 0, NULL);
         screenClear(g_mainScreen, 0);
-
-        paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
 
         drawText("Press the Spacebar",
                  0,
