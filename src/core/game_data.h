@@ -17,6 +17,7 @@
 
 #include <mtl/expected.h>
 #include <mtl/memory.h>
+#include <mtl/span.h>
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
@@ -60,8 +61,12 @@ namespace NEONengine
             BAD_MAGIC,               ///< The file does not start with 'NEON'.
             UNSUPPORTED_VERSION,     ///< version != NEON_SUPPORTED_VERSION.
             BAD_HEADER,              ///< header_size or total_size is inconsistent.
-            REQUIRED_CHUNK_MISSING,  ///< CONF or UIST is absent, or the chunk table is out of bounds.
-            CHUNK_TOO_SMALL,         ///< A required chunk's payload is smaller than its record.
+            REQUIRED_CHUNK_MISSING,  ///< A known chunk is absent from the file.
+            CHUNK_TOO_SMALL,         ///< A required Data chunk's payload is smaller than its record.
+            CHUNK_OUT_OF_BOUNDS,     ///< A chunk header or payload runs past the file, or the count is wrong.
+            UNKNOWN_CHUNK,           ///< A chunk's FourCC is not one of the known chunks.
+            DUPLICATE_CHUNK,         ///< A known chunk appears more than once.
+            BAD_CHUNK_STRIDE,        ///< A chunk's element size and count disagree with its body size.
         };
 
         using result = mtl::expected<game_data_ptr, error>;
@@ -76,6 +81,23 @@ namespace NEONengine
         NO_COPY(game_data)
 
         /**
+         * @brief Indexes and validates every chunk in a loaded .neon image.
+         *
+         * A single pass over the chunk table: it bounds-checks each chunk, maps
+         * it to its known slot, and rejects unknown, duplicate, missing, or
+         * mis-strided chunks. Pure and free of I/O - it takes the raw image and
+         * fills @p out - so load() and the tests exercise one validation path.
+         *
+         * @param image     The loaded .neon bytes; its header must already be valid.
+         * @param size      The number of bytes available at @p image.
+         * @param out       Filled with each known chunk's header on success.
+         * @param out_error Set to the failure reason when this returns false.
+         * @return True when all known chunks are present and consistent.
+         */
+        static bool index_chunks(uint8_t const* image, uint32_t size,
+            data::chunk_header const* (&out)[data::KNOWN_CHUNK_COUNT], error& out_error) noexcept;
+
+        /**
          * @brief The validated 64-byte file header.
          */
         data::header const& header() const noexcept
@@ -86,12 +108,86 @@ namespace NEONengine
         /**
          * @brief The validated 'CONF' payload: display geometry and default fade.
          */
-        data::config const& config() const noexcept { return *_config; }
+        data::config const& config() const noexcept { return *chunk_ptr<data::config>(data::known_chunk::config); }
 
         /**
          * @brief The validated 'UIST' payload: UI palette/font and cursor config.
          */
-        data::ui_state const& ui_state() const noexcept { return *_ui_state; }
+        data::ui_state const& ui_state() const noexcept { return *chunk_ptr<data::ui_state>(data::known_chunk::ui_state); }
+
+        /**
+         * @brief The validated 'INVC' payload: the inventory sheet and item range.
+         */
+        data::inventory_config const& inventory_config() const noexcept
+        {
+            return *chunk_ptr<data::inventory_config>(data::known_chunk::inventory_config);
+        }
+
+        /** @brief The 'CURS' fixed cursor roles. */
+        mtl::span<data::cursor> cursors() const noexcept { return chunk_span<data::cursor>(data::known_chunk::cursors); }
+
+        /** @brief The 'BMPS' bitmap references. */
+        mtl::span<data::bitmap_ref> bitmaps() const noexcept { return chunk_span<data::bitmap_ref>(data::known_chunk::bitmaps); }
+
+        /** @brief The 'INVT' inventory items. */
+        mtl::span<data::inventory_item> inventory_items() const noexcept
+        {
+            return chunk_span<data::inventory_item>(data::known_chunk::inventory_items);
+        }
+
+        /** @brief The 'SPKR' dialogue speakers. */
+        mtl::span<data::speaker> speakers() const noexcept { return chunk_span<data::speaker>(data::known_chunk::speakers); }
+
+        /** @brief The 'HOTS' scene hotspots. */
+        mtl::span<data::hotspot> hotspots() const noexcept { return chunk_span<data::hotspot>(data::known_chunk::hotspots); }
+
+        /** @brief The 'TXTR' scene text regions. */
+        mtl::span<data::text_region> text_regions() const noexcept
+        {
+            return chunk_span<data::text_region>(data::known_chunk::text_regions);
+        }
+
+        /** @brief The 'GFXS' graphic frame sources. */
+        mtl::span<data::graphic> graphics() const noexcept { return chunk_span<data::graphic>(data::known_chunk::graphics); }
+
+        /** @brief The 'GFXI' graphic instances. */
+        mtl::span<data::graphic_instance> graphic_instances() const noexcept
+        {
+            return chunk_span<data::graphic_instance>(data::known_chunk::graphic_instances);
+        }
+
+        /** @brief The 'SDES' scene-description string ids. */
+        mtl::span<uint16_t> scene_descriptions() const noexcept
+        {
+            return chunk_span<uint16_t>(data::known_chunk::scene_descriptions);
+        }
+
+        /** @brief The 'KEYS' timeline keyframes. */
+        mtl::span<data::keyframe> keyframes() const noexcept { return chunk_span<data::keyframe>(data::known_chunk::keyframes); }
+
+        /** @brief The 'TIME' timelines. */
+        mtl::span<data::timeline> timelines() const noexcept { return chunk_span<data::timeline>(data::known_chunk::timelines); }
+
+        /** @brief The 'FUNC' script function offsets into 'SCRP'. */
+        mtl::span<uint32_t> function_offsets() const noexcept
+        {
+            return chunk_span<uint32_t>(data::known_chunk::function_offsets);
+        }
+
+        /** @brief The 'VALS' initial signed values. */
+        mtl::span<int16_t> initial_values() const noexcept { return chunk_span<int16_t>(data::known_chunk::initial_values); }
+
+        /** @brief The 'CHOC' dialogue choices. */
+        mtl::span<data::choice> choices() const noexcept { return chunk_span<data::choice>(data::known_chunk::choices); }
+
+        /** @brief The 'PAGS' dialogue pages. */
+        mtl::span<data::page> pages() const noexcept { return chunk_span<data::page>(data::known_chunk::pages); }
+
+        /** @brief The 'DLGS' dialogues. */
+        mtl::span<data::dialogue> dialogues() const noexcept { return chunk_span<data::dialogue>(data::known_chunk::dialogues); }
+
+        /** @brief The 'SCEN' scenes. */
+        mtl::span<data::scene> scenes() const noexcept { return chunk_span<data::scene>(data::known_chunk::scenes); }
 
         /**
          * @brief Opens a pak asset by its content hash for reading.
@@ -115,17 +211,27 @@ namespace NEONengine
         }
 
         /**
-         * @brief Finds a chunk by FourCC, walking the chunk table within bounds.
-         *
-         * @return The chunk header, or nullptr if the chunk is absent or the
-         *         table runs past the buffer.
+         * @brief A Data chunk's payload, overlaid as its record type.
          */
-        data::chunk_header const* find_chunk(uint32_t fourcc) const noexcept;
+        template<class T>
+        T const* chunk_ptr(data::known_chunk kind) const noexcept
+        {
+            return mtl::force_to<T const*>(_chunks[mtl::to<uint32_t>(kind)] + 1);
+        }
 
-        ace::pakfile_ptr _pak;               ///< The open game pak, kept for the run (self-closing).
-        mtl::vector<uint8_t> _buffer;        ///< The whole .neon image, in Fast RAM (self-freeing).
-        data::config const* _config{ nullptr };      ///< Cached 'CONF' payload, pointing into _buffer.
-        data::ui_state const* _ui_state{ nullptr };  ///< Cached 'UIST' payload, pointing into _buffer.
+        /**
+         * @brief A Collection chunk's elements as a typed view over the buffer.
+         */
+        template<class T>
+        mtl::span<T> chunk_span(data::known_chunk kind) const noexcept
+        {
+            auto const* chunk = _chunks[mtl::to<uint32_t>(kind)];
+            return mtl::span<T>(mtl::force_to<T const*>(chunk + 1), chunk->element_count);
+        }
+
+        ace::pakfile_ptr _pak;         ///< The open game pak, kept for the run (self-closing).
+        mtl::vector<uint8_t> _buffer;  ///< The whole .neon image, in Fast RAM (self-freeing).
+        data::chunk_header const* _chunks[data::KNOWN_CHUNK_COUNT]{};  ///< Each known chunk's header in the buffer.
     };
 }  // namespace NEONengine
 

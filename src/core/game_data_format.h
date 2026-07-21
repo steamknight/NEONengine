@@ -481,6 +481,11 @@ namespace NEONengine::data
     };
 
     /**
+     * @brief The number of known chunks a valid version 2 file contains.
+     */
+    inline constexpr uint32_t KNOWN_CHUNK_COUNT = mtl::to<uint32_t>(known_chunk::count);
+
+    /**
      * @brief The on-disk big-endian FourCC for each known chunk, in enum order.
      */
     inline constexpr uint32_t KNOWN_CHUNK_FOURCCS[] = {
@@ -499,6 +504,59 @@ namespace NEONengine::data
      * @brief The on-disk FourCC for a known chunk.
      */
     constexpr uint32_t fourcc_of(known_chunk chunk) { return KNOWN_CHUNK_FOURCCS[mtl::to<uint32_t>(chunk)]; }
+
+    /**
+     * @brief The on-disk element size for each known chunk, in enum order.
+     *
+     * Collection chunks carry sizeof(record); the Data chunks (CONF, UIST, INVC,
+     * SCRP, FLGS) carry 0, as they have no fixed element stride. The loader uses
+     * this to reject any chunk whose stride disagrees with this build.
+     */
+    inline constexpr uint32_t KNOWN_CHUNK_ELEMENT_SIZES[] = {
+        0,                         // CONF
+        0,                         // UIST
+        sizeof(cursor),            // CURS
+        sizeof(bitmap_ref),        // BMPS
+        0,                         // INVC
+        sizeof(inventory_item),    // INVT
+        sizeof(speaker),           // SPKR
+        sizeof(hotspot),           // HOTS
+        sizeof(text_region),       // TXTR
+        sizeof(graphic),           // GFXS
+        sizeof(graphic_instance),  // GFXI
+        sizeof(uint16_t),          // SDES
+        sizeof(keyframe),          // KEYS
+        sizeof(timeline),          // TIME
+        sizeof(uint32_t),          // FUNC
+        0,                         // SCRP
+        0,                         // FLGS
+        sizeof(int16_t),           // VALS
+        sizeof(choice),            // CHOC
+        sizeof(page),              // PAGS
+        sizeof(dialogue),          // DLGS
+        sizeof(scene),             // SCEN
+    };
+
+    static_assert(sizeof(KNOWN_CHUNK_ELEMENT_SIZES) / sizeof(uint32_t) == KNOWN_CHUNK_COUNT,
+        "KNOWN_CHUNK_ELEMENT_SIZES must have one entry per known_chunk");
+
+    /**
+     * @brief Maps an on-disk FourCC to its known_chunk index.
+     *
+     * @return The index in [0, KNOWN_CHUNK_COUNT), or KNOWN_CHUNK_COUNT if the
+     *         FourCC is not a known chunk.
+     */
+    constexpr uint32_t known_chunk_index(uint32_t fourcc)
+    {
+        for (uint32_t index = 0; index < KNOWN_CHUNK_COUNT; ++index)
+        {
+            if (KNOWN_CHUNK_FOURCCS[index] == fourcc)
+            {
+                return index;
+            }
+        }
+        return KNOWN_CHUNK_COUNT;
+    }
 }  // namespace NEONengine::data
 
 #endif  // __GAME_DATA_FORMAT_H__INCLUDED__

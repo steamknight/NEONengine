@@ -64,60 +64,114 @@ namespace NEONengine
 
         auto gd = game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(pak), mtl::move(image)));
 
-        auto const* conf_hdr = gd->find_chunk(data::fourcc_of(data::known_chunk::config));
-        auto const* uist_hdr = gd->find_chunk(data::fourcc_of(data::known_chunk::ui_state));
-        if (!conf_hdr || !uist_hdr)
+        error index_error;
+        if (!index_chunks(gd->_buffer.data(), size, gd->_chunks, index_error))
         {
-            return mtl::make_error<game_data_ptr, error>(error::REQUIRED_CHUNK_MISSING);
+            return mtl::make_error<game_data_ptr, error>(index_error);
         }
-        if (conf_hdr->body_size < sizeof(data::config) || uist_hdr->body_size < sizeof(data::ui_state))
+
+        auto const conf_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::config)]->body_size;
+        auto const uist_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::ui_state)]->body_size;
+        auto const invc_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::inventory_config)]->body_size;
+        if (conf_body < sizeof(data::config) || uist_body < sizeof(data::ui_state)
+            || invc_body < sizeof(data::inventory_config))
         {
             return mtl::make_error<game_data_ptr, error>(error::CHUNK_TOO_SMALL);
         }
 
-        gd->_config   = mtl::force_to<data::config const*>(conf_hdr + 1);
-        gd->_ui_state = mtl::force_to<data::ui_state const*>(uist_hdr + 1);
-
         NE_LOG("game_data: CONF %hux%hu fade=%hu; UIST palette=%08lx font=%08lx",
-            mtl::to<UWORD>(gd->_config->width),
-            mtl::to<UWORD>(gd->_config->height),
-            mtl::to<UWORD>(gd->_config->default_fade_frames),
-            mtl::to<ULONG>(gd->_ui_state->ui_palette_hash),
-            mtl::to<ULONG>(gd->_ui_state->font_hash));
+            mtl::to<UWORD>(gd->config().width),
+            mtl::to<UWORD>(gd->config().height),
+            mtl::to<UWORD>(gd->config().default_fade_frames),
+            mtl::to<ULONG>(gd->ui_state().ui_palette_hash),
+            mtl::to<ULONG>(gd->ui_state().font_hash));
 
         return gd;
     }
 
-    data::chunk_header const* game_data::find_chunk(uint32_t fourcc) const noexcept
+    bool game_data::index_chunks(uint8_t const* image, uint32_t size,
+        data::chunk_header const* (&out)[data::KNOWN_CHUNK_COUNT], error& out_error) noexcept
     {
-        constexpr auto chunk_header_bytes = mtl::to<uint32_t>(sizeof(data::chunk_header));
-
-        auto const& hdr = header();
-        auto const total = hdr.total_size;
-        uint32_t offset  = mtl::to<uint32_t>(sizeof(data::header));
-
-        for (uint32_t remaining = hdr.chunk_count; remaining != 0; --remaining)
+        for (auto& slot : out)
         {
-            if (offset + chunk_header_bytes > total)
-            {
-                break;
-            }
-
-            auto const* chunk = mtl::force_to<data::chunk_header const*>(_buffer.data() + offset);
-            auto const next   = offset + chunk_header_bytes + chunk->body_size;
-            if (next <= offset || next > total)
-            {
-                break;
-            }
-
-            if (chunk->fourcc == fourcc)
-            {
-                return chunk;
-            }
-
-            offset = next;
+            slot = nullptr;
         }
 
-        return nullptr;
+        constexpr auto header_bytes       = mtl::to<uint32_t>(sizeof(data::header));
+        constexpr auto chunk_header_bytes = mtl::to<uint32_t>(sizeof(data::chunk_header));
+
+        auto const& hdr = *mtl::force_to<data::header const*>(image);
+        if (hdr.chunk_count != data::KNOWN_CHUNK_COUNT)
+        {
+            out_error = error::REQUIRED_CHUNK_MISSING;
+            return false;
+        }
+
+        uint32_t offset = header_bytes;
+        for (uint32_t remaining = hdr.chunk_count; remaining != 0; --remaining)
+        {
+            if (offset + chunk_header_bytes > size)
+            {
+                out_error = error::CHUNK_OUT_OF_BOUNDS;
+                return false;
+            }
+
+            auto const* chunk = mtl::force_to<data::chunk_header const*>(image + offset);
+            auto const next   = offset + chunk_header_bytes + chunk->body_size;
+            if (next <= offset || next > size)
+            {
+                out_error = error::CHUNK_OUT_OF_BOUNDS;
+                return false;
+            }
+
+            auto const index = data::known_chunk_index(chunk->fourcc);
+            if (index >= data::KNOWN_CHUNK_COUNT)
+            {
+                out_error = error::UNKNOWN_CHUNK;
+                return false;
+            }
+            if (out[index] != nullptr)
+            {
+                out_error = error::DUPLICATE_CHUNK;
+                return false;
+            }
+
+            auto const stride = data::KNOWN_CHUNK_ELEMENT_SIZES[index];
+            if (stride != 0)
+            {
+                auto const count = chunk->element_count;
+                if (chunk->element_size != stride || count > chunk->body_size / stride
+                    || chunk->body_size != mtl::to<uint32_t>(mtl::round_up<4>(count * stride)))
+                {
+                    out_error = error::BAD_CHUNK_STRIDE;
+                    return false;
+                }
+            }
+            else if (chunk->element_size != 0 || chunk->element_count != 0)
+            {
+                out_error = error::BAD_CHUNK_STRIDE;
+                return false;
+            }
+
+            out[index] = chunk;
+            offset     = next;
+        }
+
+        if (offset != hdr.total_size)
+        {
+            out_error = error::CHUNK_OUT_OF_BOUNDS;
+            return false;
+        }
+
+        for (auto const* slot : out)
+        {
+            if (slot == nullptr)
+            {
+                out_error = error::REQUIRED_CHUNK_MISSING;
+                return false;
+            }
+        }
+
+        return true;
     }
 }  // namespace NEONengine
