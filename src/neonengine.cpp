@@ -27,10 +27,10 @@ namespace NEONengine
 
         mtl::system_use_guard guard;  // systemUse()/systemUnuse() around all disk access below.
 
-        auto uiFontFd = gd->open_asset(gd->uist().font_hash);
+        auto uiFontFd = gd->open_asset(gd->ui_state().font_hash);
         if (!uiFontFd)
         {
-            NE_LOG("Could not open UI font asset %08lx", mtl::to<ULONG>(gd->uist().font_hash));
+            NE_LOG("Could not open UI font asset %08lx", mtl::to<ULONG>(gd->ui_state().font_hash));
             return mtl::make_error<engine_ptr, error_code>(error_code::UI_FONT_LOAD_FAILED);
         }
         auto uiFont = ace::fontCreateFromFd(mtl::move(uiFontFd));
@@ -40,10 +40,10 @@ namespace NEONengine
             return mtl::make_error<engine_ptr, error_code>(error_code::UI_FONT_LOAD_FAILED);
         }
 
-        auto uiPaletteFd = gd->open_asset(gd->uist().ui_palette_hash);
+        auto uiPaletteFd = gd->open_asset(gd->ui_state().ui_palette_hash);
         if (!uiPaletteFd)
         {
-            NE_LOG("Could not open UI palette asset %08lx", mtl::to<ULONG>(gd->uist().ui_palette_hash));
+            NE_LOG("Could not open UI palette asset %08lx", mtl::to<ULONG>(gd->ui_state().ui_palette_hash));
             return mtl::make_error<engine_ptr, error_code>(error_code::UI_PALETTE_LOAD_FAILED);
         }
         ace::paletteLoadFromFd(

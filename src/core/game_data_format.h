@@ -19,7 +19,9 @@
 
 #include <mtl/utility.h>
 
-namespace NEONengine
+#include "spatial.h"
+
+namespace NEONengine::data
 {
     /**
      * @brief Builds a big-endian FourCC from a four-character code.
@@ -43,12 +45,12 @@ namespace NEONengine
     /**
      * @brief The fixed 64-byte header at the start of every .neon file.
      */
-    struct neon_header
+    struct header
     {
         uint32_t magic;         ///< 0:  'NEON' as a big-endian FourCC (== NEON_MAGIC).
         uint16_t version;       ///< 4:  Container version; must equal NEON_SUPPORTED_VERSION.
         uint16_t build_period;  ///< 6:  UTC build period, decimal YYMM.
-        uint16_t header_size;   ///< 8:  Size of this header; must equal sizeof(neon_header).
+        uint16_t header_size;   ///< 8:  Size of this header; must equal sizeof(header).
         uint16_t reserved0;     ///< 10: Reserved, zero.
         uint32_t format_flags;  ///< 12: Reserved, zero.
         uint32_t total_size;    ///< 16: Total .neon size in bytes.
@@ -58,10 +60,10 @@ namespace NEONengine
         uint8_t reserved1[32];  ///< 32: Reserved, zero.
     };
 
-    static_assert(sizeof(neon_header) == 64, "neon_header must be exactly 64 bytes");
-    static_assert(__builtin_offsetof(neon_header, total_size) == 16, "total_size must be at offset 16");
-    static_assert(__builtin_offsetof(neon_header, checksum) == 20, "checksum must be at offset 20");
-    static_assert(__builtin_offsetof(neon_header, chunk_count) == 24, "chunk_count must be at offset 24");
+    static_assert(sizeof(header) == 64, "header must be exactly 64 bytes");
+    static_assert(__builtin_offsetof(header, total_size) == 16, "total_size must be at offset 16");
+    static_assert(__builtin_offsetof(header, checksum) == 20, "checksum must be at offset 20");
+    static_assert(__builtin_offsetof(header, chunk_count) == 24, "chunk_count must be at offset 24");
 
     /**
      * @brief The 16-byte header that precedes every chunk's payload.
@@ -84,16 +86,34 @@ namespace NEONengine
     static_assert(__builtin_offsetof(chunk_header, element_size) == 12, "element_size must be at offset 12");
 
     /**
-     * @brief 'CONF' chunk id.
+     * @brief A contiguous window into a collection, as an element start and count.
+     *
+     * Records use this to address the child elements they own in another chunk.
      */
-    constexpr uint32_t CONF_ID = make_fourcc("CONF");
+    struct range
+    {
+        uint16_t start;  ///< 0: Index of the first element.
+        uint16_t count;  ///< 2: Number of elements.
+
+        friend constexpr bool operator==(range const& lhs, range const& rhs) noexcept
+        {
+            return lhs.start == rhs.start && lhs.count == rhs.count;
+        }
+
+        friend constexpr bool operator!=(range const& lhs, range const& rhs) noexcept { return !(lhs == rhs); }
+    };
+
+    static_assert(sizeof(range) == 4, "range must be exactly 4 bytes");
+    static_assert(__builtin_offsetof(range, count) == 2, "range count must be at offset 2");
+    static_assert(__is_standard_layout(range), "range must be standard-layout to overlay the file buffer");
+    static_assert(__is_trivially_copyable(range), "range must be trivially copyable to overlay the file buffer");
 
     /**
      * @brief 'CONF' payload: project display geometry and the default fade.
      *
      * A Data chunk, 8 bytes.
      */
-    struct conf_chunk
+    struct config
     {
         uint16_t width;                ///< 0: Scene/display width.
         uint16_t height;               ///< 2: Scene/display height.
@@ -101,12 +121,7 @@ namespace NEONengine
         uint16_t reserved0;            ///< 6: Reserved, zero.
     };
 
-    static_assert(sizeof(conf_chunk) == 8, "conf_chunk must be exactly 8 bytes");
-
-    /**
-     * @brief 'UIST' chunk id.
-     */
-    constexpr uint32_t UIST_ID = make_fourcc("UIST");
+    static_assert(sizeof(config) == 8, "config must be exactly 8 bytes");
 
     /**
      * @brief 'UIST' payload: shared UI palette/font and nine-patch/cursor config.
@@ -114,27 +129,376 @@ namespace NEONengine
      * A Data chunk, 32 bytes. The palette and font are pak-path hashes; the
      * nine-patch and cursor-sheet bitmap ids are 0xFFFF when absent.
      */
-    struct uist_chunk
+    struct ui_state
     {
-        uint32_t ui_palette_hash;      ///< 0:  UI palette pak-path hash (0xFFFFFFFF invalid).
-        uint32_t font_hash;            ///< 4:  Font pak-path hash (0xFFFFFFFF invalid).
-        uint16_t nine_patch_bmps_id;   ///< 8:  Nine-patch BMPS id, or 0xFFFF.
-        uint16_t cursor_bmps_id;       ///< 10: Cursor-sheet BMPS id, or 0xFFFF.
-        uint16_t nine_patch_left;      ///< 12: Nine-patch left border.
-        uint16_t nine_patch_top;       ///< 14: Nine-patch top border.
-        uint16_t nine_patch_right;     ///< 16: Nine-patch right border.
-        uint16_t nine_patch_bottom;    ///< 18: Nine-patch bottom border.
-        uint16_t cursor_frame_width;   ///< 20: Cursor frame width.
-        uint16_t cursor_frame_height;  ///< 22: Cursor frame height.
-        uint16_t curs_range_start;     ///< 24: CURS range start.
-        uint16_t curs_range_count;     ///< 26: CURS range count.
-        uint32_t reserved0;            ///< 28: Reserved, zero.
+        uint32_t ui_palette_hash;       ///< 0:  UI palette pak-path hash (0xFFFFFFFF invalid).
+        uint32_t font_hash;             ///< 4:  Font pak-path hash (0xFFFFFFFF invalid).
+        uint16_t nine_patch_bitmap_id;  ///< 8:  Nine-patch BMPS id, or 0xFFFF.
+        uint16_t cursor_bitmap_id;      ///< 10: Cursor-sheet BMPS id, or 0xFFFF.
+        uint16_t nine_patch_left;       ///< 12: Nine-patch left border.
+        uint16_t nine_patch_top;        ///< 14: Nine-patch top border.
+        uint16_t nine_patch_right;      ///< 16: Nine-patch right border.
+        uint16_t nine_patch_bottom;     ///< 18: Nine-patch bottom border.
+        uint16_t cursor_frame_width;    ///< 20: Cursor frame width.
+        uint16_t cursor_frame_height;   ///< 22: Cursor frame height.
+        range cursor_range;             ///< 24: CURS range.
+        uint32_t reserved0;             ///< 28: Reserved, zero.
     };
 
-    static_assert(sizeof(uist_chunk) == 32, "uist_chunk must be exactly 32 bytes");
-    static_assert(__builtin_offsetof(uist_chunk, font_hash) == 4, "font_hash must be at offset 4");
-    static_assert(__builtin_offsetof(uist_chunk, cursor_frame_width) == 20, "cursor_frame_width must be at offset 20");
-    static_assert(__builtin_offsetof(uist_chunk, reserved0) == 28, "reserved0 must be at offset 28");
-}  // namespace NEONengine
+    static_assert(sizeof(ui_state) == 32, "ui_state must be exactly 32 bytes");
+    static_assert(__builtin_offsetof(ui_state, font_hash) == 4, "font_hash must be at offset 4");
+    static_assert(__builtin_offsetof(ui_state, cursor_frame_width) == 20, "cursor_frame_width must be at offset 20");
+    static_assert(__builtin_offsetof(ui_state, cursor_range) == 24, "cursor_range must be at offset 24");
+    static_assert(__builtin_offsetof(ui_state, reserved0) == 28, "reserved0 must be at offset 28");
+
+    /**
+     * @brief 'INVC' payload: the shared inventory sheet and its item range.
+     *
+     * A Data chunk, 12 bytes. The disabled form uses a sheet id of 0xFFFF, zero
+     * frame dimensions, and an empty item range.
+     */
+    struct inventory_config
+    {
+        uint16_t sheet_bitmap_id;   ///< 0:  Inventory-sheet BMPS id, or 0xFFFF when disabled.
+        uint16_t frame_width;       ///< 2:  Item frame width.
+        uint16_t frame_height;      ///< 4:  Item frame height.
+        range item_range;           ///< 6:  INVT range.
+        uint16_t reserved0;         ///< 10: Reserved, zero.
+    };
+
+    static_assert(sizeof(inventory_config) == 12, "inventory_config must be exactly 12 bytes");
+    static_assert(__builtin_offsetof(inventory_config, item_range) == 6, "item_range must be at offset 6");
+
+    /**
+     * @brief 'CURS' element: one fixed cursor role's frame and click hotspot.
+     *
+     * A Collection element, 8 bytes.
+     */
+    struct cursor
+    {
+        uint16_t frame;           ///< 0: Frame index in the cursor sheet.
+        point<uint16_t> hotspot;  ///< 2: Click hotspot within the frame.
+        uint16_t reserved0;       ///< 6: Reserved, zero.
+    };
+
+    static_assert(sizeof(cursor) == 8, "cursor must be exactly 8 bytes");
+    static_assert(__builtin_offsetof(cursor, hotspot) == 2, "hotspot must be at offset 2");
+    static_assert(__builtin_offsetof(cursor, reserved0) == 6, "reserved0 must be at offset 6");
+
+    /**
+     * @brief 'BMPS' element: a bitmap id resolved to its pak-path hashes.
+     *
+     * A Collection element, 16 bytes.
+     */
+    struct bitmap_ref
+    {
+        uint32_t bitmap_hash;   ///< 0:  Bitmap pak-path hash.
+        uint32_t mask_hash;     ///< 4:  Mask bitmap pak-path hash, or 0xFFFFFFFF.
+        uint32_t palette_hash;  ///< 8:  Palette pak-path hash.
+        uint32_t reserved0;     ///< 12: Reserved, zero.
+    };
+
+    static_assert(sizeof(bitmap_ref) == 16, "bitmap_ref must be exactly 16 bytes");
+    static_assert(__builtin_offsetof(bitmap_ref, mask_hash) == 4, "mask_hash must be at offset 4");
+    static_assert(__builtin_offsetof(bitmap_ref, palette_hash) == 8, "palette_hash must be at offset 8");
+
+    /**
+     * @brief 'INVT' element: one inventory item's frame and localized strings.
+     *
+     * A Collection element, 8 bytes.
+     */
+    struct inventory_item
+    {
+        uint16_t frame;                  ///< 0: Inventory-sheet frame index.
+        uint16_t name_string_id;         ///< 2: Name string id.
+        uint16_t description_string_id;  ///< 4: Description string id.
+        uint16_t reserved0;              ///< 6: Reserved, zero.
+    };
+
+    static_assert(sizeof(inventory_item) == 8, "inventory_item must be exactly 8 bytes");
+
+    /**
+     * @brief 'SPKR' element: a dialogue speaker's name and optional portrait.
+     *
+     * A Collection element, 4 bytes.
+     */
+    struct speaker
+    {
+        uint16_t name_string_id;     ///< 0: Display-name string id.
+        uint16_t portrait_bitmap_id; ///< 2: Portrait BMPS id, or 0xFFFF.
+    };
+
+    static_assert(sizeof(speaker) == 4, "speaker must be exactly 4 bytes");
+
+    /**
+     * @brief 'HOTS' element: a scene interaction region and its behavior.
+     *
+     * A Collection element, 20 bytes.
+     */
+    struct hotspot
+    {
+        rect bounds;               ///< 0:  Interaction region.
+        uint16_t z_order;          ///< 8:  Hit-test priority.
+        uint8_t cursor;            ///< 10: Cursor role 0-4.
+        uint8_t flags;             ///< 11: bit0 = initially enabled.
+        uint16_t hover_string_id;  ///< 12: Hover string id, or 0xFFFF.
+        uint16_t click_function_id;///< 14: Click FUNC id, or 0xFFFF.
+        uint16_t goto_scene_id;    ///< 16: Goto SCEN id, or 0xFFFF.
+        uint16_t reserved0;        ///< 18: Reserved, zero.
+    };
+
+    static_assert(sizeof(hotspot) == 20, "hotspot must be exactly 20 bytes");
+    static_assert(__builtin_offsetof(hotspot, z_order) == 8, "z_order must be at offset 8");
+    static_assert(__builtin_offsetof(hotspot, cursor) == 10, "cursor must be at offset 10");
+    static_assert(__builtin_offsetof(hotspot, flags) == 11, "flags must be at offset 11");
+    static_assert(__builtin_offsetof(hotspot, hover_string_id) == 12, "hover_string_id must be at offset 12");
+
+    /**
+     * @brief 'TXTR' element: localized bitmap-font text placed in a scene.
+     *
+     * A Collection element, 16 bytes.
+     */
+    struct text_region
+    {
+        rect bounds;           ///< 0:  Layout rectangle.
+        uint16_t z_order;      ///< 8:  Draw order.
+        uint8_t color_index;   ///< 10: UI palette color index, 0-31.
+        uint8_t control_bits;  ///< 11: Alignment and full-scene layout bits.
+        uint16_t string_id;    ///< 12: Text string id.
+        uint16_t reserved0;    ///< 14: Reserved, zero.
+    };
+
+    static_assert(sizeof(text_region) == 16, "text_region must be exactly 16 bytes");
+    static_assert(__builtin_offsetof(text_region, z_order) == 8, "z_order must be at offset 8");
+    static_assert(__builtin_offsetof(text_region, color_index) == 10, "color_index must be at offset 10");
+    static_assert(__builtin_offsetof(text_region, control_bits) == 11, "control_bits must be at offset 11");
+    static_assert(__builtin_offsetof(text_region, string_id) == 12, "string_id must be at offset 12");
+
+    /**
+     * @brief 'GFXS' element: a reusable horizontal animation strip in a bitmap.
+     *
+     * A Collection element, 12 bytes.
+     */
+    struct graphic
+    {
+        uint16_t source_bitmap_id;  ///< 0:  Source bitmap BMPS id.
+        point<uint16_t> source;     ///< 2:  Strip origin within the bitmap.
+        uint16_t frame_width;       ///< 6:  Frame width.
+        uint16_t frame_height;      ///< 8:  Frame height.
+        uint8_t frame_count;        ///< 10: Frame count, 1-255.
+        uint8_t frame_delay;        ///< 11: Frame delay in PAL frames; 0 when static.
+    };
+
+    static_assert(sizeof(graphic) == 12, "graphic must be exactly 12 bytes");
+    static_assert(__builtin_offsetof(graphic, source) == 2, "source must be at offset 2");
+    static_assert(__builtin_offsetof(graphic, frame_width) == 6, "frame_width must be at offset 6");
+    static_assert(__builtin_offsetof(graphic, frame_count) == 10, "frame_count must be at offset 10");
+    static_assert(__builtin_offsetof(graphic, frame_delay) == 11, "frame_delay must be at offset 11");
+
+    /**
+     * @brief 'GFXI' element: one placed instance of a GFXS graphic.
+     *
+     * A Collection element, 12 bytes.
+     */
+    struct graphic_instance
+    {
+        uint16_t graphic_id;       ///< 0:  Global GFXS id.
+        point<uint16_t> pos;       ///< 2:  Placement position.
+        uint16_t z_order;          ///< 6:  Draw order.
+        uint8_t bob_palette_slot;  ///< 8:  BOB palette slot, 0-5.
+        uint8_t flags;             ///< 9:  bit0 = initially visible.
+        uint16_t reserved0;        ///< 10: Reserved, zero.
+    };
+
+    static_assert(sizeof(graphic_instance) == 12, "graphic_instance must be exactly 12 bytes");
+    static_assert(__builtin_offsetof(graphic_instance, pos) == 2, "pos must be at offset 2");
+    static_assert(__builtin_offsetof(graphic_instance, z_order) == 6, "z_order must be at offset 6");
+    static_assert(__builtin_offsetof(graphic_instance, bob_palette_slot) == 8, "bob_palette_slot must be at offset 8");
+    static_assert(__builtin_offsetof(graphic_instance, flags) == 9, "flags must be at offset 9");
+
+    /**
+     * @brief 'KEYS' element: one typed timeline event at a PAL-frame time.
+     *
+     * A Collection element, 12 bytes. The 8-byte payload is interpreted by
+     * type; its typed overlays are added when the timeline runtime consumes it.
+     */
+    struct keyframe
+    {
+        uint16_t time;        ///< 0: Time in PAL frames.
+        uint8_t type;         ///< 2: Keyframe type.
+        uint8_t flags;        ///< 3: bit0 fire_once; bit1 interpolate (GFX_MOVE only).
+        uint8_t payload[8];   ///< 4: Type-specific payload.
+    };
+
+    static_assert(sizeof(keyframe) == 12, "keyframe must be exactly 12 bytes");
+    static_assert(__builtin_offsetof(keyframe, type) == 2, "type must be at offset 2");
+    static_assert(__builtin_offsetof(keyframe, payload) == 4, "payload must be at offset 4");
+
+    /**
+     * @brief 'TIME' element: a scene timeline over a range of keyframes.
+     *
+     * A Collection element, 8 bytes.
+     */
+    struct timeline
+    {
+        range keyframe_range;           ///< 0: KEYS range.
+        uint16_t duration;              ///< 4: Duration in PAL frames.
+        uint8_t loop_mode;              ///< 6: 0 None, 1 Restart, 2 PingPong.
+        uint8_t loop_count;             ///< 7: Complete cycles; 0 = infinite.
+    };
+
+    static_assert(sizeof(timeline) == 8, "timeline must be exactly 8 bytes");
+    static_assert(__builtin_offsetof(timeline, duration) == 4, "duration must be at offset 4");
+    static_assert(__builtin_offsetof(timeline, loop_mode) == 6, "loop_mode must be at offset 6");
+
+    /**
+     * @brief 'CHOC' element: one selectable dialogue response.
+     *
+     * A Collection element, 16 bytes.
+     */
+    struct choice
+    {
+        uint16_t text_string_id;   ///< 0:  Text string id.
+        uint16_t set_flag_id;      ///< 2:  Set flag id, or 0xFFFF.
+        uint16_t clear_flag_id;    ///< 4:  Clear flag id, or 0xFFFF.
+        uint16_t check_flag_id;    ///< 6:  Check flag id, or 0xFFFF.
+        uint16_t goto_page_id;     ///< 8:  Goto global PAGS id, or 0xFFFF.
+        uint16_t click_function_id;///< 10: On-click FUNC id, or 0xFFFF.
+        uint16_t flags;            ///< 12: bit0 enabled; bit1 disable-after-read.
+        uint16_t reserved0;        ///< 14: Reserved, zero.
+    };
+
+    static_assert(sizeof(choice) == 16, "choice must be exactly 16 bytes");
+    static_assert(__builtin_offsetof(choice, goto_page_id) == 8, "goto_page_id must be at offset 8");
+    static_assert(__builtin_offsetof(choice, flags) == 12, "flags must be at offset 12");
+
+    /**
+     * @brief 'PAGS' element: one dialogue page and its choice range.
+     *
+     * A Collection element, 20 bytes.
+     */
+    struct page
+    {
+        uint16_t speaker_id;         ///< 0:  Speaker id, or 0xFFFF.
+        uint16_t text_string_id;     ///< 2:  Text string id.
+        uint16_t set_flag_id;        ///< 4:  Set flag id, or 0xFFFF.
+        uint16_t clear_flag_id;      ///< 6:  Clear flag id, or 0xFFFF.
+        uint16_t check_flag_id;      ///< 8:  Check flag id, or 0xFFFF.
+        uint16_t next_page_id;       ///< 10: Next global PAGS id, or 0xFFFF.
+        uint16_t display_function_id;///< 12: On-display FUNC id, or 0xFFFF.
+        uint16_t flags;              ///< 14: bit0 enabled; bit1 disable-after-read.
+        range choice_range;          ///< 16: CHOC range.
+    };
+
+    static_assert(sizeof(page) == 20, "page must be exactly 20 bytes");
+    static_assert(__builtin_offsetof(page, next_page_id) == 10, "next_page_id must be at offset 10");
+    static_assert(__builtin_offsetof(page, choice_range) == 16, "choice_range must be at offset 16");
+
+    /**
+     * @brief 'DLGS' element: a dialogue over a range of pages.
+     *
+     * A Collection element, 8 bytes.
+     */
+    struct dialogue
+    {
+        range page_range;           ///< 0: PAGS range.
+        uint16_t first_page_id;     ///< 4: First global PAGS id, or 0xFFFF.
+        uint16_t reserved0;         ///< 6: Reserved, zero.
+    };
+
+    static_assert(sizeof(dialogue) == 8, "dialogue must be exactly 8 bytes");
+    static_assert(__builtin_offsetof(dialogue, first_page_id) == 4, "first_page_id must be at offset 4");
+
+    /**
+     * @brief 'SCEN' element: one runtime scene's assets, behavior, and child ranges.
+     *
+     * A Collection element, 44 bytes.
+     */
+    struct scene
+    {
+        uint32_t music_hash;                    ///< 0:  MOD hash, 0xFFFFFFFF keep, 0xFFFFFFFE silence.
+        uint16_t background_bitmap_id;          ///< 4:  Background BMPS id, or 0xFFFF.
+        uint16_t timeline_id;                   ///< 6:  TIME id, or 0xFFFF.
+        uint16_t on_enter_function_id;          ///< 8:  On-enter FUNC id, or 0xFFFF.
+        uint16_t on_exit_function_id;           ///< 10: On-exit FUNC id, or 0xFFFF.
+        uint16_t goto_scene_id;                 ///< 12: Goto SCEN id, or 0xFFFF.
+        uint16_t flags;                         ///< 14: bit0 constrains mouse; bit1 shows UI overlay.
+        point<uint16_t> offset;                 ///< 16: Background/viewport offset.
+        uint16_t width;                         ///< 20: Width.
+        uint16_t height;                        ///< 22: Height.
+        range scene_description_range;          ///< 24: SDES range.
+        range hotspot_range;                    ///< 28: HOTS range.
+        range text_region_range;                ///< 32: TXTR range.
+        range graphic_range;                    ///< 36: GFXS range.
+        range graphic_instance_range;           ///< 40: GFXI range.
+    };
+
+    static_assert(sizeof(scene) == 44, "scene must be exactly 44 bytes");
+    static_assert(__builtin_offsetof(scene, background_bitmap_id) == 4, "background_bitmap_id must be at offset 4");
+    static_assert(__builtin_offsetof(scene, offset) == 16, "offset must be at offset 16");
+    static_assert(__builtin_offsetof(scene, width) == 20, "width must be at offset 20");
+    static_assert(__builtin_offsetof(scene, scene_description_range) == 24, "scene_description_range must be at offset 24");
+    static_assert(__builtin_offsetof(scene, graphic_instance_range) == 40, "graphic_instance_range must be at offset 40");
+
+    // 'SDES', 'FUNC', and 'VALS' are scalar collections with no record struct:
+    // they are exposed as spans of uint16_t (string ids), uint32_t (SCRP byte
+    // offsets), and int16_t (initial values) respectively. 'SCRP' is a raw
+    // bytecode byte payload and 'FLGS' is a uint16 flag count followed by packed
+    // initial bits; both are variable Data chunks accessed without a record type.
+
+    /**
+     * @brief Identifies each of the 22 known chunks, in catalog order.
+     *
+     * Used to index the loaded chunk table. Each chunk's on-disk big-endian
+     * FourCC is given by fourcc_of(); the four-character codes appear only as
+     * data in KNOWN_CHUNK_FOURCCS, never as identifiers.
+     */
+    enum class known_chunk : uint32_t
+    {
+        config,              ///< 'CONF' Data: display geometry and default fade.
+        ui_state,            ///< 'UIST' Data: UI palette/font, nine-patch, and cursor config.
+        cursors,             ///< 'CURS' Collection: fixed cursor roles.
+        bitmaps,             ///< 'BMPS' Collection: bitmap, mask, and palette hashes.
+        inventory_config,    ///< 'INVC' Data: inventory sheet and item range.
+        inventory_items,     ///< 'INVT' Collection: inventory items.
+        speakers,            ///< 'SPKR' Collection: dialogue speakers.
+        hotspots,            ///< 'HOTS' Collection: scene hotspots.
+        text_regions,        ///< 'TXTR' Collection: scene text regions.
+        graphics,            ///< 'GFXS' Collection: graphic frame sources.
+        graphic_instances,   ///< 'GFXI' Collection: graphic instances.
+        scene_descriptions,  ///< 'SDES' Collection: scene-description string ids.
+        keyframes,           ///< 'KEYS' Collection: timeline keyframes.
+        timelines,           ///< 'TIME' Collection: timelines.
+        function_offsets,    ///< 'FUNC' Collection: SCRP function offsets.
+        bytecode,            ///< 'SCRP' Data: NoirVM bytecode.
+        flags,               ///< 'FLGS' Data: flag count and packed initial bits.
+        initial_values,      ///< 'VALS' Collection: initial signed values.
+        choices,             ///< 'CHOC' Collection: dialogue choices.
+        pages,               ///< 'PAGS' Collection: dialogue pages.
+        dialogues,           ///< 'DLGS' Collection: dialogues.
+        scenes,              ///< 'SCEN' Collection: scenes and child ranges.
+        count                ///< Number of known chunks.
+    };
+
+    /**
+     * @brief The on-disk big-endian FourCC for each known chunk, in enum order.
+     */
+    inline constexpr uint32_t KNOWN_CHUNK_FOURCCS[] = {
+        make_fourcc("CONF"), make_fourcc("UIST"), make_fourcc("CURS"), make_fourcc("BMPS"),
+        make_fourcc("INVC"), make_fourcc("INVT"), make_fourcc("SPKR"), make_fourcc("HOTS"),
+        make_fourcc("TXTR"), make_fourcc("GFXS"), make_fourcc("GFXI"), make_fourcc("SDES"),
+        make_fourcc("KEYS"), make_fourcc("TIME"), make_fourcc("FUNC"), make_fourcc("SCRP"),
+        make_fourcc("FLGS"), make_fourcc("VALS"), make_fourcc("CHOC"), make_fourcc("PAGS"),
+        make_fourcc("DLGS"), make_fourcc("SCEN"),
+    };
+
+    static_assert(sizeof(KNOWN_CHUNK_FOURCCS) / sizeof(uint32_t) == mtl::to<uint32_t>(known_chunk::count),
+        "KNOWN_CHUNK_FOURCCS must have one entry per known_chunk");
+
+    /**
+     * @brief The on-disk FourCC for a known chunk.
+     */
+    constexpr uint32_t fourcc_of(known_chunk chunk) { return KNOWN_CHUNK_FOURCCS[mtl::to<uint32_t>(chunk)]; }
+}  // namespace NEONengine::data
 
 #endif  // __GAME_DATA_FORMAT_H__INCLUDED__

@@ -78,20 +78,20 @@ namespace NEONengine
         /**
          * @brief The validated 64-byte file header.
          */
-        neon_header const& header() const noexcept
+        data::header const& header() const noexcept
         {
-            return *mtl::force_to<neon_header const*>(_buffer.data());
+            return *mtl::force_to<data::header const*>(_buffer.data());
         }
 
         /**
          * @brief The validated 'CONF' payload: display geometry and default fade.
          */
-        conf_chunk const& conf() const noexcept { return *_conf; }
+        data::config const& config() const noexcept { return *_config; }
 
         /**
          * @brief The validated 'UIST' payload: UI palette/font and cursor config.
          */
-        uist_chunk const& uist() const noexcept { return *_uist; }
+        data::ui_state const& ui_state() const noexcept { return *_ui_state; }
 
         /**
          * @brief Opens a pak asset by its content hash for reading.
@@ -120,12 +120,12 @@ namespace NEONengine
          * @return The chunk header, or nullptr if the chunk is absent or the
          *         table runs past the buffer.
          */
-        chunk_header const* find_chunk(uint32_t fourcc) const noexcept;
+        data::chunk_header const* find_chunk(uint32_t fourcc) const noexcept;
 
         ace::pakfile_ptr _pak;               ///< The open game pak, kept for the run (self-closing).
         mtl::vector<uint8_t> _buffer;        ///< The whole .neon image, in Fast RAM (self-freeing).
-        conf_chunk const* _conf{ nullptr };  ///< Cached 'CONF' payload, pointing into _buffer.
-        uist_chunk const* _uist{ nullptr };  ///< Cached 'UIST' payload, pointing into _buffer.
+        data::config const* _config{ nullptr };      ///< Cached 'CONF' payload, pointing into _buffer.
+        data::ui_state const* _ui_state{ nullptr };  ///< Cached 'UIST' payload, pointing into _buffer.
     };
 }  // namespace NEONengine
 
