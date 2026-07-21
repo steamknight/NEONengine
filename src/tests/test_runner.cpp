@@ -10,6 +10,7 @@
 
 #include "core/screen.h"
 #include "tests/bstr_view_tests.h"
+#include "tests/game_data_tests.h"
 #include "tests/mtl_array_tests.h"
 #include "tests/mtl_expected_tests.h"
 #include "tests/mtl_list_tests.h"
@@ -48,6 +49,7 @@ namespace NEONengine::tests
         RUN_SUITE(mtl_list);
         RUN_SUITE(mtl_vector);
         RUN_SUITE(mtl_expected);
+        RUN_SUITE(game_data);
         RUN_SUITE(noir_vm);
         RUN_SUITE(noir_vm_data_move);
         RUN_SUITE(noir_vm_arithmetic);
@@ -81,6 +83,8 @@ namespace NEONengine::tests
             char const* szError = tests[i].test_fn();
             if (szError)
             {
+                NE_LOG("test FAIL %s.%s: %s", szSuiteName, tests[i].name, szError);
+
                 y += text->uwActualHeight;
                 snprintf(buffer, sizeof(buffer), "%s: %s", tests[i].name, szError);
                 text = pTextRenderer->create_text((char const*)buffer, 320, text_justify::RIGHT);
@@ -94,6 +98,8 @@ namespace NEONengine::tests
                 ++passedTests;
             }
         }
+
+        NE_LOG("test suite %s: %lu/%lu passed", szSuiteName, (ULONG)passedTests, (ULONG)testCount);
 
         snprintf(buffer, sizeof(buffer), "Passed %ld/%ld tests.", passedTests, testCount);
         text = pTextRenderer->create_text((char const*)buffer, 320, text_justify::RIGHT);
