@@ -4,7 +4,6 @@
 
 #include <ace/managers/mouse.h>
 #include <ace/managers/system.h>
-#include <ace/utils/palette.h>
 
 #include <ace++/bitmap.h>
 #include <ace++/log.h>
@@ -94,7 +93,6 @@ namespace NEONengine
         screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
         screenClear(g_mainScreen, 0);
 
-        paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
         s_pFlagsAtlas = ace::bitmapCreateFromPath("data/core/flags.bm", 0);
 
         mousePointerCreate("data/core/pointers.bm");

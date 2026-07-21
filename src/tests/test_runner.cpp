@@ -5,7 +5,6 @@
 
 #include <ace/managers/system.h>
 #include <ace/utils/font.h>
-#include <ace/utils/palette.h>
 
 #include <ace++/log.h>
 
@@ -43,8 +42,6 @@ namespace NEONengine::tests
 
         screenFadeFromBlack(g_mainScreen, 25, 0, NULL);
         screenClear(g_mainScreen, 0);
-
-        paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
 
         RUN_SUITE(bstr_view);
         RUN_SUITE(mtl_array);

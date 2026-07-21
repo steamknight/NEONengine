@@ -84,23 +84,20 @@ file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/core)
 file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/music)
 file(MAKE_DIRECTORY ${DATA_DIR} ${DATA_DIR}/lang)
 
-# Convert palette and background image
-convertPalette(${GAME_LINKED} ${RES_DIR}/mpg.act ${DATA_DIR}/mpg.plt AGA_COLORS)
+# Convert background image
 convertBitmaps(
     TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/mpg.act
     SOURCES ${RES_DIR}/mpg.png
     DESTINATIONS ${DATA_DIR}/mpg.bm
 )
 
-# Convert palette and flags
-convertPalette(${GAME_LINKED} ${RES_DIR}/core/base.act ${DATA_DIR}/core/base.plt AGA_COLORS)
+# Convert flags
 convertBitmaps(
     TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/base.act
     SOURCES ${RES_DIR}/core/flags.png
     DESTINATIONS ${DATA_DIR}/core/flags.bm
 )
 
-convertPalette(${GAME_LINKED} ${RES_DIR}/core/base.act ${DATA_DIR}/core/base.plt AGA_COLORS)
 convertBitmaps(
     TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/pointers.act
     SOURCES ${RES_DIR}/core/pointers.png
@@ -136,9 +133,3 @@ if(ACE_TEST_RUNNER)
         ${RES_DIR}/lang/test.noir ${DATA_DIR}/lang/test.noir COPYONLY
     )
 endif()
-
-# Fonts
-convertFont(
-    TARGET ${GAME_LINKED} FIRST_CHAR 32
-    SOURCE ${RES_DIR}/font_winds7.png DESTINATION ${DATA_DIR}/font.fnt
-)

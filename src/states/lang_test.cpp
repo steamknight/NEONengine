@@ -3,7 +3,6 @@
 #include <stdint.h>
 
 #include <ace/managers/timer.h>
-#include <ace/utils/palette.h>
 
 #include <ace++/font.h>
 #include <ace++/log.h>
@@ -22,8 +21,6 @@ namespace NEONengine
 
         screenFadeFromBlack(g_mainScreen, 25, 0, nullptr);
         screenClear(g_mainScreen, 0);
-
-        paletteLoadFromPath("data/core/base.plt", screenGetPalette(g_mainScreen), 255);
 
         auto string_result = string_table::create_from_file("data/lang/test.noir");
         if (!string_result)
