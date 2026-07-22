@@ -1044,6 +1044,52 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── reset_execution() abandons the run but keeps game state ─────────────────
+
+    TEST_IMPL(test_noir_reset_execution_clears_run_keeps_state)
+    {
+        // Park the VM mid-run with a dirty register and a mutated game value,
+        // then reset_execution() and confirm the execution state is clean while
+        // VALUES survive and the VM can run a fresh function afterwards.
+        bytecode_builder bc;
+
+        uint16_t fn0 = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(42);
+        bc.emit(noir_op::INCV);  // VALUES[0] += 1
+        bc.emit_u16(0);
+        bc.emit(noir_op::WAIT);  // park the VM (non-idle) mid-run
+        bc.emit_u16(5);
+        bc.emit(noir_op::RET);
+
+        uint16_t fn1 = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        TEST_ASSERT(vm.execute(fn0) == noir_status::ok, "fn0 starts");
+        vm.update();
+        TEST_ASSERT(vm.state() == noir_state::waiting, "vm parked mid-run");
+        TEST_ASSERT(vm.reg_d(0) == 42, "D0 dirty before reset");
+        TEST_ASSERT(bc.values[0] == 1, "value mutated before reset");
+
+        vm.reset_execution();
+        TEST_ASSERT(vm.state() == noir_state::idle, "idle after reset");
+        TEST_ASSERT(vm.reg_d(0) == 0 && vm.reg_d(1) == 0 && vm.reg_d(2) == 0 && vm.reg_d(3) == 0,
+            "registers cleared by reset");
+        TEST_ASSERT(vm.sr() == 0, "status register cleared by reset");
+        TEST_ASSERT(vm.exit_code() == 0, "exit code cleared by reset");
+        TEST_ASSERT(bc.values[0] == 1, "game state preserved across reset");
+
+        auto status = bc.run_to_completion(vm, fn1);
+        TEST_ASSERT(status == noir_status::completed, "fresh function runs after reset");
+        TEST_ASSERT(vm.exit_code() == 5, "fresh function produced its own result");
+        TEST_SUCCESS;
+    }
+
     // ═════════════════════════════════════════════════════════════════════════════
     // Test suite registration
     // ═════════════════════════════════════════════════════════════════════════════
@@ -1081,6 +1127,8 @@ namespace NEONengine
     TEST(test_noir_reentry_invalid_func)
     // Final state
     TEST(test_noir_reentry_state_is_idle_after_completion)
+    // Execution reset
+    TEST(test_noir_reset_execution_clears_run_keeps_state)
     TEST_SUITE_END
 
 }  // namespace NEONengine

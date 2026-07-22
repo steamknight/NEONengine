@@ -116,6 +116,33 @@ namespace NEONengine
         return noir_status::ok;
     }
 
+    // ─── reset_execution() ────────────────────────────────────────────────────────
+
+    void noir_vm::reset_execution() noexcept
+    {
+        _d[0] = 0;
+        _d[1] = 0;
+        _d[2] = 0;
+        _d[3] = 0;
+        _sr   = 0;
+
+        _sp = _stack.data() + _stack.size();
+        _fp = _sp;
+        _pc = nullptr;
+
+        _reentry_level     = 0;
+        _call_depth        = 0;
+        _opcodes_remaining = 0;
+        _blocking_counter  = 0;
+        _wait_counter      = 0;
+
+        _exit_code        = 0;
+        _last_error       = noir_status::ok;
+        _state            = noir_state::idle;
+        _cached_dst_mode  = 0;
+        _cached_dst_param = 0;
+    }
+
     // ─── update() ───────────────────────────────────────────────────────────────
 
     noir_status noir_vm::update() noexcept

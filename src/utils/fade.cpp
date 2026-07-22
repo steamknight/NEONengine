@@ -78,7 +78,9 @@ namespace NEONengine
                       cbOnDone);
         pFade->eState   = eState;
         pFade->ubCnt    = 0;
-        pFade->ubCntEnd = ubFramesToFullFade;
+        // A zero-frame fade divides by zero in fadeProcess; clamp to one instant
+        // frame so the fade still completes and fires cbOnDone.
+        pFade->ubCntEnd = ubFramesToFullFade ? ubFramesToFullFade : 1;
         pFade->cbOnDone = cbOnDone;
         pFade->isMusic  = isMusic;
         logBlockEnd("fadeSet()");

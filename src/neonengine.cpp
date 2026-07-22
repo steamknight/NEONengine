@@ -1,5 +1,7 @@
 #include "neonengine.h"
 
+#include "core/noir_bridge.h"
+
 #include <ace++/palette.h>
 
 #include <mtl/utility.h>
@@ -9,6 +11,7 @@ namespace NEONengine
     namespace
     {
         constexpr UWORD UI_PALETTE_COLOR_COUNT = 32;  ///< UI colors, palette indices 0..31.
+        constexpr uint16_t NOIR_STACK_SIZE     = 512;  ///< Script VM stack size, in bytes.
     }
 
     tStateManager* g_gameStateManager = nullptr;
@@ -69,6 +72,44 @@ namespace NEONengine
         result->_pGameData     = mtl::move(gameData.value());
         result->_pUiFont       = mtl::move(uiFont);
         result->_pTextRenderer = mtl::move(textRenderer.value());
+
+        // Seed the runtime game-state buffers from the loaded initial state, then
+        // build the one persistent script VM over them. FLAGS/VALUES are copied so
+        // the on-disk image stays pristine and the runtime state is separately
+        // savable; the VM borrows these engine-owned buffers for its lifetime.
+        auto const initialFlags = result->_pGameData->initial_flags();
+        result->_flags.resize(initialFlags.size());
+        for (uint32_t i = 0; i < initialFlags.size(); ++i)
+        {
+            result->_flags.data()[i] = initialFlags[i];
+        }
+
+        auto const initialValues = result->_pGameData->initial_values();
+        result->_values.resize(initialValues.size());
+        for (uint32_t i = 0; i < initialValues.size(); ++i)
+        {
+            result->_values.data()[i] = mtl::to<uint16_t>(initialValues[i]);
+        }
+
+        auto const scripts   = result->_pGameData->scripts();
+        auto const functions = result->_pGameData->function_offsets();
+        result->_vm          = noir_vm_ptr(new (mtl::MemF::Fast) noir_vm(  //
+            result->_flags.data(),
+            mtl::to<uint16_t>(result->_flags.size()),
+            result->_values.data(),
+            mtl::to<uint16_t>(result->_values.size()),
+            scripts.data(),
+            scripts.size(),
+            functions.data(),
+            mtl::to<uint16_t>(functions.size()),
+            &engine_bridge(),
+            NOIR_STACK_SIZE));
+
+        NE_LOG("game_data: VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
+            mtl::to<ULONG>(scripts.size()),
+            mtl::to<UWORD>(functions.size()),
+            mtl::to<UWORD>(result->_flags.size()),
+            mtl::to<UWORD>(result->_values.size()));
 
         return result;
     }

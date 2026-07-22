@@ -73,8 +73,9 @@ namespace NEONengine
         auto const conf_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::config)]->body_size;
         auto const uist_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::ui_state)]->body_size;
         auto const invc_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::inventory_config)]->body_size;
+        auto const flgs_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::flags)]->body_size;
         if (conf_body < sizeof(data::config) || uist_body < sizeof(data::ui_state)
-            || invc_body < sizeof(data::inventory_config))
+            || invc_body < sizeof(data::inventory_config) || flgs_body < sizeof(uint16_t))
         {
             return mtl::make_error<game_data_ptr, error>(error::CHUNK_TOO_SMALL);
         }

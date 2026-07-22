@@ -3,6 +3,8 @@
 
 #include <ace/utils/bitmap.h>
 
+#include <ace++/file.h>
+
 #include <mtl/memory.h>
 #include <mtl/utility.h>
 
@@ -21,9 +23,11 @@ namespace ace
         return bitmap_ptr(::bitmapCreateFromPath(szPath, isFast));
     }
 
-    inline bitmap_ptr bitmapCreateFromFd(tFile* pFile, UBYTE isFast)
+    inline bitmap_ptr bitmapCreateFromFd(file_ptr&& pFile, UBYTE isFast)
     {
-        return bitmap_ptr(::bitmapCreateFromFd(pFile, isFast));
+        // ACE's bitmapCreateFromFd closes the file itself; release ownership to
+        // it so the file_ptr does not double-close the same handle.
+        return bitmap_ptr(::bitmapCreateFromFd(pFile.release(), isFast));
     }
 
     inline void bitmapDestroy(bitmap_ptr& pBitmap)

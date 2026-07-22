@@ -3,9 +3,12 @@
 
 #include <exec/types.h>
 
+#include <ace++/file.h>
+
 namespace NEONengine
 {
     void musicLoad(char const *szFilePath);
+    void musicLoad(ace::file_ptr &&pFile);
     void musicPlayCurrent(UBYTE ubLoop);
     void musicFree(void);
 }  // namespace NEONengine

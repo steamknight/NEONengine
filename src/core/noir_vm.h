@@ -5,6 +5,7 @@
 
 #include <ace/types.h>
 
+#include "mtl/memory.h"
 #include "mtl/utility.h"
 #include "mtl/vector.h"
 
@@ -219,6 +220,22 @@ namespace NEONengine
          */
         noir_status update() noexcept;
 
+        /**
+         * @brief Abandon the current execution and return to a clean idle state.
+         *
+         * Clears all per-run execution state - registers, SR, stack pointer,
+         * frame pointer, program counter, call depth, re-entry level, the
+         * wait/blocking counters and the result - so the next execute() begins a
+         * fresh top-level function. Borrowed memory (FLAGS, VALUES, BYTECODE,
+         * TOC, bridge), the owned stack allocation and the configured
+         * opcodes-per-update are all preserved.
+         *
+         * Used when control transfers away from the running script - a scene
+         * change, say - and the current call chain must be discarded rather than
+         * resumed. Game state in FLAGS/VALUES is untouched.
+         */
+        void reset_execution() noexcept;
+
         // ── Blocking counter (for engine use) ────────────────────────────────
 
         /**
@@ -375,6 +392,8 @@ namespace NEONengine
         noir_debug_stats _debug_stats;
 #endif
     };
+
+    using noir_vm_ptr = mtl::unique_ptr<noir_vm>;
 
 }  // namespace NEONengine
 

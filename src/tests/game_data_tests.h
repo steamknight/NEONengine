@@ -179,6 +179,75 @@ namespace NEONengine
         return expect_reject(buf, sizeof(buf), error::CHUNK_OUT_OF_BOUNDS);
     }
 
+    TEST_IMPL(test_index_measures_mid_table_data_bodies)
+    {
+        // SCRP (bytecode) and FLGS (flags) are Data chunks that carry bodies in
+        // the middle of the table in a real file. Verify index_chunks advances
+        // past them and that their bytes land where scripts()/initial_flags() read.
+        constexpr uint32_t scrp_body = 8;  // eight bytecode bytes
+        constexpr uint32_t flgs_body = 4;  // u16 count + two packed bytes
+        constexpr uint32_t size      = kEmptyImageSize + scrp_body + flgs_body;
+        alignas(4) uint8_t buf[size];
+        for (uint32_t i = 0; i < size; ++i)
+        {
+            buf[i] = 0;
+        }
+
+        auto& header       = *mtl::force_to<data::header*>(buf);
+        header.magic       = data::NEON_MAGIC;
+        header.version     = NEON_SUPPORTED_VERSION;
+        header.header_size = sizeof(data::header);
+        header.total_size  = size;
+        header.chunk_count = data::KNOWN_CHUNK_COUNT;
+
+        uint32_t offset = mtl::to<uint32_t>(sizeof(data::header));
+        for (uint32_t i = 0; i < data::KNOWN_CHUNK_COUNT; ++i)
+        {
+            auto& chunk         = *mtl::force_to<data::chunk_header*>(buf + offset);
+            chunk.fourcc        = data::KNOWN_CHUNK_FOURCCS[i];
+            chunk.element_size  = data::KNOWN_CHUNK_ELEMENT_SIZES[i];
+            chunk.element_count = 0;
+
+            auto* payload = buf + offset + sizeof(data::chunk_header);
+            uint32_t body = 0;
+            if (i == mtl::to<uint32_t>(data::known_chunk::bytecode))
+            {
+                body = scrp_body;
+                for (uint32_t b = 0; b < scrp_body; ++b)
+                {
+                    payload[b] = mtl::to<uint8_t>(0xA0 + b);
+                }
+            }
+            else if (i == mtl::to<uint32_t>(data::known_chunk::flags))
+            {
+                body                                = flgs_body;
+                *mtl::force_to<uint16_t*>(payload)  = 12;    // twelve flags
+                payload[sizeof(uint16_t) + 0]       = 0x05;  // packed initial bits
+                payload[sizeof(uint16_t) + 1]       = 0x00;
+            }
+            chunk.body_size = body;
+            offset += mtl::to<uint32_t>(sizeof(data::chunk_header)) + body;
+        }
+
+        data::chunk_header const* out[data::KNOWN_CHUNK_COUNT];
+        error err = error::PAK_NOT_FOUND;
+        TEST_ASSERT(game_data::index_chunks(buf, size, out, err), "image with mid-table data bodies rejected");
+
+        auto const* scrp = out[mtl::to<uint32_t>(data::known_chunk::bytecode)];
+        auto const* flgs = out[mtl::to<uint32_t>(data::known_chunk::flags)];
+        TEST_ASSERT(scrp->body_size == scrp_body, "SCRP body size not measured");
+        TEST_ASSERT(flgs->body_size == flgs_body, "FLGS body size not measured");
+
+        auto const* scrp_bytes = mtl::force_to<uint8_t const*>(scrp + 1);
+        TEST_ASSERT(scrp_bytes[0] == 0xA0 && scrp_bytes[scrp_body - 1] == mtl::to<uint8_t>(0xA0 + scrp_body - 1),
+            "SCRP bytecode not readable at its body");
+
+        auto const* flgs_bytes = mtl::force_to<uint8_t const*>(flgs + 1);
+        TEST_ASSERT(*mtl::force_to<uint16_t const*>(flgs_bytes) == 12, "FLGS count not readable");
+        TEST_ASSERT(flgs_bytes[sizeof(uint16_t)] == 0x05, "FLGS initial bits not readable");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(game_data)
         TEST(test_index_accepts_minimal_image)
         TEST(test_index_reads_collection_count)
@@ -190,6 +259,7 @@ namespace NEONengine
         TEST(test_index_rejects_data_chunk_with_elements)
         TEST(test_index_rejects_out_of_bounds_chunk)
         TEST(test_index_rejects_total_size_mismatch)
+        TEST(test_index_measures_mid_table_data_bodies)
     TEST_SUITE_END
 }  // namespace NEONengine
 

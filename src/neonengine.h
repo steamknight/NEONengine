@@ -8,8 +8,10 @@
 
 #include <mtl/expected.h>
 #include <mtl/memory.h>
+#include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/noir_vm.h"
 #include "core/screen.h"
 #include "core/text_render.h"
 
@@ -34,12 +36,43 @@ namespace NEONengine
         tFont* default_font() noexcept { return _pUiFont.get(); }
         text_renderer* default_text_renderer() noexcept { return _pTextRenderer.get(); }
 
+        game_data& data() noexcept { return *_pGameData; }
+        noir_vm& vm() noexcept { return *_vm; }
+
+        /** @brief Post a scene change requested by a script (GOTO_SCENE). */
+        void request_scene(uint16_t scene_id) noexcept
+        {
+            _pending_scene     = scene_id;
+            _has_pending_scene = true;
+        }
+
+        /** @brief True when a script has requested a scene change. */
+        bool has_pending_scene() const noexcept { return _has_pending_scene; }
+
+        /** @brief Consume the pending scene request, clearing it. */
+        uint16_t take_pending_scene() noexcept
+        {
+            _has_pending_scene = false;
+            return _pending_scene;
+        }
+
+        /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
+        uint16_t current_scene() const noexcept { return _current_scene; }
+        void set_current_scene(uint16_t scene_id) noexcept { _current_scene = scene_id; }
+
         static result initialize();
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         game_data_ptr _pGameData{ nullptr };  ///< The one loaded .neon, owned for the process lifetime.
         ace::font_ptr _pUiFont{ nullptr };    ///< The UI font, loaded from the pak via UIST; the engine's font.
         text_renderer_ptr _pTextRenderer{ nullptr };
+
+        noir_vm_ptr _vm{ nullptr };     ///< The one persistent script VM, over the buffers below.
+        mtl::vector<uint8_t> _flags;    ///< Runtime game flags, seeded from FLGS (mutable, savable).
+        mtl::vector<uint16_t> _values;  ///< Runtime game values, seeded from VALS (mutable, savable).
+        uint16_t _pending_scene{ 0 };   ///< Scene requested by a script, awaiting a transition.
+        bool _has_pending_scene{ false };
+        uint16_t _current_scene{ 0 };   ///< Scene the runtime is presenting.
     };
 
     extern engine_ptr g_pEngine;
@@ -48,6 +81,7 @@ namespace NEONengine
     extern tState g_stateFontTest,  //
         g_stateDebugView,           //
         g_stateSplash,              //
+        g_stateScene,               //
         g_stateLangSelect,          //
         g_stateDialogueTest,        //
         g_stateLangTest;

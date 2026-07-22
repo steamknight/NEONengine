@@ -174,6 +174,27 @@ namespace NEONengine
             return chunk_span<uint32_t>(data::known_chunk::function_offsets);
         }
 
+        /** @brief The 'SCRP' NoirVM bytecode blob; 'FUNC' offsets index into it. */
+        mtl::span<uint8_t> scripts() const noexcept
+        {
+            auto const* chunk = _chunks[mtl::to<uint32_t>(data::known_chunk::bytecode)];
+            return mtl::span<uint8_t>(mtl::force_to<uint8_t const*>(chunk + 1), chunk->body_size);
+        }
+
+        /** @brief The 'FLGS' declared flag count. */
+        uint16_t flag_count() const noexcept
+        {
+            return *mtl::force_to<uint16_t const*>(_chunks[mtl::to<uint32_t>(data::known_chunk::flags)] + 1);
+        }
+
+        /** @brief The 'FLGS' packed initial flag bits (the body following the 2-byte count). */
+        mtl::span<uint8_t> initial_flags() const noexcept
+        {
+            auto const* chunk = _chunks[mtl::to<uint32_t>(data::known_chunk::flags)];
+            return mtl::span<uint8_t>(mtl::force_to<uint8_t const*>(chunk + 1) + sizeof(uint16_t),
+                mtl::to<uint32_t>(chunk->body_size - sizeof(uint16_t)));
+        }
+
         /** @brief The 'VALS' initial signed values. */
         mtl::span<int16_t> initial_values() const noexcept { return chunk_span<int16_t>(data::known_chunk::initial_values); }
 

@@ -118,10 +118,11 @@ namespace NEONengine::data
         uint16_t width;                ///< 0: Scene/display width.
         uint16_t height;               ///< 2: Scene/display height.
         uint16_t default_fade_frames;  ///< 4: Default fade duration in PAL frames.
-        uint16_t reserved0;            ///< 6: Reserved, zero.
+        uint16_t boot_scene_id;        ///< 6: SCEN id the engine boots into (0 by default).
     };
 
     static_assert(sizeof(config) == 8, "config must be exactly 8 bytes");
+    static_assert(__builtin_offsetof(config, boot_scene_id) == 6, "boot_scene_id must be at offset 6");
 
     /**
      * @brief 'UIST' payload: shared UI palette/font and nine-patch/cursor config.
@@ -423,7 +424,7 @@ namespace NEONengine::data
         uint16_t on_exit_function_id;           ///< 10: On-exit FUNC id, or 0xFFFF.
         uint16_t goto_scene_id;                 ///< 12: Goto SCEN id, or 0xFFFF.
         uint16_t flags;                         ///< 14: bit0 constrains mouse; bit1 shows UI overlay.
-        point<uint16_t> offset;                 ///< 16: Background/viewport offset.
+        point<uint16_t> offset;                 ///< 16: Screen position of the background top-left.
         uint16_t width;                         ///< 20: Width.
         uint16_t height;                        ///< 22: Height.
         range scene_description_range;          ///< 24: SDES range.
