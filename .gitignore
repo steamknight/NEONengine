@@ -55,6 +55,7 @@ build/
 amiga-system/
 .vscode/c_cpp_properties.json
 modules/ACE
+test-project/
 
 .vs/
 editor/x64
