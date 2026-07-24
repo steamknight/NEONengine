@@ -113,24 +113,32 @@ convertBitmaps(
     INTERLEAVED
 )
 
-configure_file(
-    ${RES_DIR}/music/theme.mod ${DATA_DIR}/music/theme.mod COPYONLY
+# Copy runtime data files next to the executable at BUILD time, not configure
+# time. configure_file() only runs during CMake configure, so re-exporting an
+# asset (e.g. game.pak) and running a plain `cmake --build` left a stale copy in
+# DATA_DIR while the engine kept loading the old one. A custom command with
+# copy_if_different, driven by a DEPENDS on the source, re-copies on every build
+# whenever the source has changed.
+set(DATA_FILES
+    music/theme.mod
+    gutter.neon
+    game.pak
+    lang/en.noir
 )
-
-configure_file(
-    ${RES_DIR}/gutter.neon ${DATA_DIR}/gutter.neon COPYONLY
-)
-
-configure_file(
-    ${RES_DIR}/game.pak ${DATA_DIR}/game.pak COPYONLY
-)
-
-configure_file(
-    ${RES_DIR}/lang/en.noir ${DATA_DIR}/lang/en.noir COPYONLY
-)
-
 if(ACE_TEST_RUNNER)
-    configure_file(
-        ${RES_DIR}/lang/test.noir ${DATA_DIR}/lang/test.noir COPYONLY
-    )
+    list(APPEND DATA_FILES lang/test.noir)
 endif()
+
+set(COPIED_DATA_FILES "")
+foreach(rel IN LISTS DATA_FILES)
+    add_custom_command(
+        OUTPUT ${DATA_DIR}/${rel}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RES_DIR}/${rel} ${DATA_DIR}/${rel}
+        DEPENDS ${RES_DIR}/${rel}
+        COMMENT "Copying ${rel} to data dir"
+        VERBATIM
+    )
+    list(APPEND COPIED_DATA_FILES ${DATA_DIR}/${rel})
+endforeach()
+
+add_custom_target(game_data ALL DEPENDS ${COPIED_DATA_FILES})
