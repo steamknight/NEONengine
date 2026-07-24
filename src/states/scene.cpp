@@ -147,6 +147,7 @@ namespace NEONengine
         {
             load_scene(g_pEngine->take_pending_scene());
         }
+        scene_bobs_update();
         scene_bobs_draw();
     }
 

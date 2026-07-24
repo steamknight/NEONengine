@@ -2,11 +2,12 @@
  * @file scene_bobs.h
  * @brief Draws a scene's GFXI graphic instances as ACE BOBs.
  *
- * Scope of the current slice: each visible instance is drawn statically at
- * frame 0, in GFXI order. Deliberately not handled yet: z-order sorting, frame
- * animation, and runtime move/visibility. ACE also does no off-screen clipping
- * and tracks bob counts/undraw size in 8-/16-bit fields, so scenes must be
- * validated/capped (editor side) before many or off-screen bobs are used.
+ * Scope of the current slice: each visible instance is drawn in GFXI order and
+ * plays its graphic's looping frame animation (graphic.frame_delay).
+ * Deliberately not handled yet: z-order sorting and runtime move/visibility.
+ * ACE also does no off-screen clipping and tracks bob counts/undraw size in
+ * 8-/16-bit fields, so scenes must be validated/capped (editor side) before
+ * many or off-screen bobs are used.
  */
 
 #ifndef __SCENE_BOBS_H__INCLUDED__
@@ -38,6 +39,14 @@ namespace NEONengine
      * instance at frame 0. Reads the pak, so call under a system-use guard.
      */
     void scene_bobs_load(data::scene const& scene);
+
+    /**
+     * @brief Advances every visible graphic's looping frame animation.
+     *
+     * Call from the scene loop each frame, before scene_bobs_draw(). Static
+     * graphics (frame_delay 0 or a single frame) are left untouched.
+     */
+    void scene_bobs_update();
 
     /**
      * @brief Draws every bob into the current back buffer.
