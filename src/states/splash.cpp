@@ -40,6 +40,9 @@ namespace NEONengine
 
         bitmapDestroy(pLogo);
 
+        // Static image: mirror it into the other buffer so it survives swaps.
+        screenDuplicateBackToFront(g_mainScreen);
+
         musicLoad("data/music/theme.mod");
 
         systemUnuse();

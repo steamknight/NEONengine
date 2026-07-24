@@ -12,6 +12,7 @@
 #include "core/game_data.h"
 #include "core/music.h"
 #include "core/noir_vm.h"
+#include "core/scene_bobs.h"
 #include "core/screen.h"
 
 namespace NEONengine
@@ -85,6 +86,13 @@ namespace NEONengine
                     }
                 }
 
+                // Mirror the freshly drawn background into the other buffer so the
+                // bob manager has an intact background to undraw against in both
+                // frames, then build this scene's bobs. scene_bobs_load overlays
+                // the bob palette bands on top of the background palette above.
+                screenDuplicateBackToFront(g_mainScreen);
+                scene_bobs_load(sc);
+
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
                     auto mod = gd.open_asset(sc.music_hash);
@@ -108,6 +116,16 @@ namespace NEONengine
                 // fades up from black instead of flashing at full brightness.
                 g_pEngine->vm().update();
             }
+            else
+            {
+                // No entry script ran, so nothing would bring the palette up (the
+                // loaded palette only reaches the display through a fade). Fade in
+                // from black with the project's default so a script-less scene is
+                // still visible.
+                uint16_t const frames = gd.config().default_fade_frames;
+                screenFadeFromBlack(
+                    g_mainScreen, mtl::to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
+            }
         }
     }  // namespace
 
@@ -118,6 +136,7 @@ namespace NEONengine
         // 'unused'. Drop to that baseline once (as splash does); load_scene
         // re-enters 'used' briefly via a system_use_guard for each pak access.
         systemUnuse();
+        scene_bobs_create();
         load_scene(g_pEngine->data().config().boot_scene_id);
     }
 
@@ -128,10 +147,12 @@ namespace NEONengine
         {
             load_scene(g_pEngine->take_pending_scene());
         }
+        scene_bobs_draw();
     }
 
     void sceneDestroy(void)
     {
+        scene_bobs_destroy();
         musicFree();
         logBlockEnd("State: Scene");
     }

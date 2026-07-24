@@ -19,6 +19,7 @@ namespace NEONengine
 
         screenFadeFromBlack(g_mainScreen, 25, 0, nullptr);
         screenClear(g_mainScreen, 0);
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     void stateSelectorProcess(void) {}

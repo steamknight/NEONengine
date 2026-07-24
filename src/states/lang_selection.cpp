@@ -92,6 +92,8 @@ namespace NEONengine
 
         screenFadeFromBlack(g_mainScreen, FADE_DURATION, 0, NULL);
         screenClear(g_mainScreen, 0);
+        // Clear both buffers; the per-frame flag redraw then keeps both current.
+        screenDuplicateBackToFront(g_mainScreen);
 
         s_pFlagsAtlas = ace::bitmapCreateFromPath("data/core/flags.bm", 0);
 

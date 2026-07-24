@@ -43,6 +43,7 @@ namespace NEONengine
                  320,
                  2,
                  text_justify::CENTER);
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     void drawFontTest()
@@ -110,6 +111,7 @@ namespace NEONengine
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartFullPage, ulEndFullPage));
         snprintf(renderBuffer, sizeof(renderBuffer), "Whole page rendered in %s ", timerBuffer);
         drawText((char const*)renderBuffer, 0, 255 - FH, 320, 1, text_justify::CENTER);
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     static UBYTE ubColor    = 0;
@@ -139,6 +141,7 @@ namespace NEONengine
                            ubColor++,
                            FONT_COOKIE);
         if (ubColor > 31) ubColor = 0;
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     void fontTestDestroy() {}

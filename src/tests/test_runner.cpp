@@ -64,6 +64,7 @@ namespace NEONengine::tests
         RUN_SUITE(noir_vm_menu);
         RUN_SUITE(noir_vm_debug);
         RUN_SUITE(noir_vm_reentry);
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     void runTestSuite(char const* szSuiteName, Test tests[], uint32_t testCount)

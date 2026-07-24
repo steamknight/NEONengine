@@ -143,6 +143,27 @@ namespace NEONengine
     UWORD* screenGetPalette(Screen* screen);
 
     /**
+     * @brief The screen's vertical centering offset, in scanlines.
+     *
+     * Content drawn straight into a buffer (e.g. bobs) must add this so it lines
+     * up with the background, which screenBlitCopy already shifts down by it.
+     *
+     * @param screen A pointer to a Screen object.
+     * @return The vertical offset applied to on-screen content.
+     */
+    UWORD screenGetVerticalOffset(Screen* screen);
+
+    /**
+     * @brief Copies the whole back buffer into the front buffer.
+     *
+     * Used after drawing a static background so both double-buffered frames hold
+     * it, which the bob manager needs to undraw bobs correctly in either frame.
+     *
+     * @param screen A pointer to a Screen object.
+     */
+    void screenDuplicateBackToFront(Screen* screen);
+
+    /**
      * @brief Copies a rectangular region from the source bitmap to the back buffer.
      *
      * @param screen A pointer to a Screen object.

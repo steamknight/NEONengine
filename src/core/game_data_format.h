@@ -276,25 +276,34 @@ namespace NEONengine::data
     static_assert(__builtin_offsetof(text_region, string_id) == 12, "string_id must be at offset 12");
 
     /**
-     * @brief 'GFXS' element: a reusable horizontal animation strip in a bitmap.
+     * @brief 'GFXS' element: one graphic's vertical animation strip.
+     *
+     * Each graphic owns a dedicated single-column bitmap whose frames are
+     * stacked vertically. Frame width equals the bitmap width and frame count
+     * equals bitmapHeight / frameHeight. The build exports the strip as an
+     * 8-bitplane interleaved bitmap and bakes its pixel indices into the
+     * graphic's BOB palette-slot band.
      *
      * A Collection element, 12 bytes.
      */
     struct graphic
     {
         uint16_t source_bitmap_id;  ///< 0:  Source bitmap BMPS id.
-        point<uint16_t> source;     ///< 2:  Strip origin within the bitmap.
-        uint16_t frame_width;       ///< 6:  Frame width.
-        uint16_t frame_height;      ///< 8:  Frame height.
-        uint8_t frame_count;        ///< 10: Frame count, 1-255.
-        uint8_t frame_delay;        ///< 11: Frame delay in PAL frames; 0 when static.
+        uint16_t frame_width;       ///< 2:  Frame width (equals the bitmap width).
+        uint16_t frame_height;      ///< 4:  Frame height.
+        uint8_t frame_count;        ///< 6:  Frame count, 1-255.
+        uint8_t frame_delay;        ///< 7:  Frame delay in PAL frames; 0 when static.
+        uint8_t palette_slot;       ///< 8:  BOB palette slot, 0-5.
+        uint8_t reserved0;          ///< 9:  Reserved, zero.
+        uint16_t reserved1;         ///< 10: Reserved, zero.
     };
 
     static_assert(sizeof(graphic) == 12, "graphic must be exactly 12 bytes");
-    static_assert(__builtin_offsetof(graphic, source) == 2, "source must be at offset 2");
-    static_assert(__builtin_offsetof(graphic, frame_width) == 6, "frame_width must be at offset 6");
-    static_assert(__builtin_offsetof(graphic, frame_count) == 10, "frame_count must be at offset 10");
-    static_assert(__builtin_offsetof(graphic, frame_delay) == 11, "frame_delay must be at offset 11");
+    static_assert(__builtin_offsetof(graphic, frame_width) == 2, "frame_width must be at offset 2");
+    static_assert(__builtin_offsetof(graphic, frame_height) == 4, "frame_height must be at offset 4");
+    static_assert(__builtin_offsetof(graphic, frame_count) == 6, "frame_count must be at offset 6");
+    static_assert(__builtin_offsetof(graphic, frame_delay) == 7, "frame_delay must be at offset 7");
+    static_assert(__builtin_offsetof(graphic, palette_slot) == 8, "palette_slot must be at offset 8");
 
     /**
      * @brief 'GFXI' element: one placed instance of a GFXS graphic.
@@ -304,17 +313,16 @@ namespace NEONengine::data
     struct graphic_instance
     {
         uint16_t graphic_id;       ///< 0:  Global GFXS id.
-        point<uint16_t> pos;       ///< 2:  Placement position.
+        point<uint16_t> pos;       ///< 2:  Placement position (Y, X).
         uint16_t z_order;          ///< 6:  Draw order.
-        uint8_t bob_palette_slot;  ///< 8:  BOB palette slot, 0-5.
+        uint8_t reserved0;         ///< 8:  Reserved, zero (palette slot lives on GFXS).
         uint8_t flags;             ///< 9:  bit0 = initially visible.
-        uint16_t reserved0;        ///< 10: Reserved, zero.
+        uint16_t reserved1;        ///< 10: Reserved, zero.
     };
 
     static_assert(sizeof(graphic_instance) == 12, "graphic_instance must be exactly 12 bytes");
     static_assert(__builtin_offsetof(graphic_instance, pos) == 2, "pos must be at offset 2");
     static_assert(__builtin_offsetof(graphic_instance, z_order) == 6, "z_order must be at offset 6");
-    static_assert(__builtin_offsetof(graphic_instance, bob_palette_slot) == 8, "bob_palette_slot must be at offset 8");
     static_assert(__builtin_offsetof(graphic_instance, flags) == 9, "flags must be at offset 9");
 
     /**

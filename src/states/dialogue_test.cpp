@@ -76,6 +76,7 @@ namespace NEONengine
         screenTextCopy(g_mainScreen, pTextCreate.get(), 0, 180, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pPatchCreate.get(), 0, 191, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pRender.get(), 0, 202, 1, FONT_COOKIE);
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     void dialogueTestProcess(void) {}

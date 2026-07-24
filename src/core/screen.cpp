@@ -102,10 +102,12 @@ namespace NEONengine
             fadeProcess(screen->pFade);
         }
 
+        // viewProcessManagers() runs the simple buffer manager, which swaps the
+        // double buffer once per frame. Calling simpleBufferProcess() again here
+        // would swap a second time, leaving the back buffer unchanged for drawing
+        // (and permanently desyncing the bob manager).
         viewProcessManagers(screen->pView);
         copProcessBlocks();
-
-        simpleBufferProcess(screen->pBuffer);
 
         debug_start_idle();
         vPortWaitForEnd(screen->pViewport);
@@ -174,6 +176,18 @@ namespace NEONengine
     UWORD* screenGetPalette(Screen* screen)
     {
         return screen->pFade->pPaletteRef;
+    }
+
+    UWORD screenGetVerticalOffset(Screen* screen)
+    {
+        return screen->uwOffset;
+    }
+
+    void screenDuplicateBackToFront(Screen* screen)
+    {
+        tBitMap* pBack  = screen->pBuffer->pBack;
+        tBitMap* pFront = screen->pBuffer->pFront;
+        blitCopy(pBack, 0, 0, pFront, 0, 0, SCREEN_WIDTH, pBack->Rows, MINTERM_COPY);
     }
 
     void screenBlitCopy(Screen* screen,

@@ -39,6 +39,7 @@ namespace NEONengine
 
         auto pSailor = pRenderer->create_text(pStrings->get_string(1), 320, text_justify::CENTER);
         screenTextCopy(g_mainScreen, pSailor.get(), 0, 30, 2, FONT_COOKIE);
+        screenDuplicateBackToFront(g_mainScreen);
     }
 
     void langTestProcess() {}
