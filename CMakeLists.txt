@@ -32,8 +32,9 @@ if(ACE_TEST_RUNNER)
 endif()
 
 # ACE
-add_subdirectory(modules/ace ace)
-include_directories(modules/ace/include)
+set(ACE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/ace" CACHE PATH "Path to the ACE source tree (defaults to the modules/ace submodule)")
+add_subdirectory(${ACE_SOURCE_DIR} ace)
+include_directories(${ACE_SOURCE_DIR}/include)
 
 # Force lower-case binary name for Linux etc.
 set(TARGET_NAME ${PROJECT_NAME_LOWER})

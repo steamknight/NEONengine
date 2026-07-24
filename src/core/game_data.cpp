@@ -22,7 +22,7 @@ namespace NEONengine
             return mtl::make_error<game_data_ptr, error>(error::PAK_NOT_FOUND);
         }
 
-        auto neon = ace::pakFileGetFile(pak, NEON_FILE_NAME);
+        auto neon = ace::pakFileGetFileByPath(pak, NEON_FILE_NAME);
         if (!neon)
         {
             return mtl::make_error<game_data_ptr, error>(error::NEON_NOT_IN_PAK);

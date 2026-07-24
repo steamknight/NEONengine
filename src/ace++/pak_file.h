@@ -31,9 +31,9 @@ namespace ace
      * @param szInternalPath  The subfile's pak-relative path.
      * @return An owning subfile handle; test it for validity before use.
      */
-    inline file_ptr pakFileGetFile(pakfile_ptr& pPakFile, char const* szInternalPath)
+    inline file_ptr pakFileGetFileByPath(pakfile_ptr& pPakFile, char const* szInternalPath)
     {
-        return file_ptr(::pakFileGetFile(pPakFile.get(), szInternalPath));
+        return file_ptr(::pakFileGetFileByPath(pPakFile.get(), szInternalPath));
     }
 
     /**
