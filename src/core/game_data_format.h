@@ -235,6 +235,10 @@ namespace NEONengine::data
      * @brief 'HOTS' element: a scene interaction region and its behavior.
      *
      * A Collection element, 20 bytes.
+     *
+     * @p graphic_id is optional. When present it names a 'GFXS' graphic whose
+     * frames are drawn to show the hotspot's current state, by convention frame
+     * 0 normal, 1 hovered, 2 pressed, and 3 disabled.
      */
     struct hotspot
     {
@@ -245,7 +249,7 @@ namespace NEONengine::data
         uint16_t hover_string_id;  ///< 12: Hover string id, or 0xFFFF.
         uint16_t click_function_id;///< 14: Click FUNC id, or 0xFFFF.
         uint16_t goto_scene_id;    ///< 16: Goto SCEN id, or 0xFFFF.
-        uint16_t reserved0;        ///< 18: Reserved, zero.
+        uint16_t graphic_id;       ///< 18: State-graphic GFXS id, or 0xFFFF.
     };
 
     static_assert(sizeof(hotspot) == 20, "hotspot must be exactly 20 bytes");
@@ -253,6 +257,7 @@ namespace NEONengine::data
     static_assert(__builtin_offsetof(hotspot, cursor) == 10, "cursor must be at offset 10");
     static_assert(__builtin_offsetof(hotspot, flags) == 11, "flags must be at offset 11");
     static_assert(__builtin_offsetof(hotspot, hover_string_id) == 12, "hover_string_id must be at offset 12");
+    static_assert(__builtin_offsetof(hotspot, graphic_id) == 18, "graphic_id must be at offset 18");
 
     /**
      * @brief 'TXTR' element: localized bitmap-font text placed in a scene.
