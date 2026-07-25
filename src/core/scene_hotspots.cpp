@@ -11,6 +11,7 @@
 
 #include "core/game_data.h"
 #include "core/mouse_pointer.h"
+#include "core/scene_bobs.h"
 #include "core/screen.h"
 
 namespace NEONengine
@@ -52,6 +53,31 @@ namespace NEONengine
         {
             return x >= bounds.pos.x && x < bounds.pos.x + bounds.width  //
                 && y >= bounds.pos.y && y < bounds.pos.y + bounds.height;
+        }
+
+        /**
+         * @brief The frame the hotspot @p index's state graphic should show.
+         */
+        hotspot_frame state_frame(uint16_t index)
+        {
+            if (s_enabled[index] == 0) return hotspot_frame::DISABLED;
+            // A press only reads as pressed while the pointer is still over the
+            // hotspot it latched onto, matching the rule that decides the click.
+            if (s_pressed == index && s_hovered == index) return hotspot_frame::PRESSED;
+            if (s_hovered == index) return hotspot_frame::HOVERED;
+            return hotspot_frame::NORMAL;
+        }
+
+        /**
+         * @brief Pushes the hotspot @p index's current state to its graphic.
+         *
+         * Ignores NO_HOTSPOT so callers can pass a "previously hovered" slot
+         * without checking it first.
+         */
+        void refresh_state_frame(uint16_t index)
+        {
+            if (index == NO_HOTSPOT) return;
+            scene_bobs_set_hotspot_frame(index, state_frame(index));
         }
 
         /**
@@ -123,6 +149,13 @@ namespace NEONengine
         s_max_x = max_x;
         s_max_y = max_y;
 
+        // Bobs register on the normal frame, so a hotspot that starts disabled
+        // needs its state applied before the first draw.
+        for (uint16_t index = 0; index < s_count; ++index)
+        {
+            refresh_state_frame(index);
+        }
+
         NE_LOG("scene_hotspots: %hu hotspot(s) loaded", s_count);
     }
 
@@ -139,9 +172,17 @@ namespace NEONengine
         // complete a click it can no longer respond to.
         if (!enabled)
         {
+            auto const was_hovered = s_hovered;
+            auto const was_pressed = s_pressed;
             if (s_hovered == index) s_hovered = NO_HOTSPOT;
             if (s_pressed == index) s_pressed = NO_HOTSPOT;
+            // The hotspot that lost the press may be a different one from the
+            // hotspot just disabled, and it too returns to its resting frame.
+            refresh_state_frame(was_hovered);
+            refresh_state_frame(was_pressed);
         }
+
+        refresh_state_frame(index);
     }
 
     void scene_hotspots_update()
@@ -183,6 +224,7 @@ namespace NEONengine
             }
         }
 
+        auto const prev_hovered = s_hovered;
         s_hovered = hit;
 
         // The pointer shows what the hotspot under it would do, and falls back
@@ -197,6 +239,9 @@ namespace NEONengine
         bool const released_edge = !is_down && s_was_down;
         s_was_down               = is_down;
 
+        auto const prev_pressed = s_pressed;
+        uint16_t activated      = NO_HOTSPOT;
+
         if (pressed_edge)
         {
             // Latches even on empty space, so a press that began off a hotspot
@@ -205,8 +250,24 @@ namespace NEONengine
         }
         else if (released_edge)
         {
-            if (s_pressed != NO_HOTSPOT && s_pressed == hit) activate(hit);
+            if (s_pressed != NO_HOTSPOT && s_pressed == hit) activated = hit;
             s_pressed = NO_HOTSPOT;
         }
+
+        // Repaint only what moved. At most one hotspot is hovered and one
+        // pressed, so the four slots cover every transition; repeats simply
+        // recompute the same frame, and NO_HOTSPOT is ignored.
+        if (s_hovered != prev_hovered || s_pressed != prev_pressed)
+        {
+            refresh_state_frame(prev_hovered);
+            refresh_state_frame(prev_pressed);
+            refresh_state_frame(s_hovered);
+            refresh_state_frame(s_pressed);
+        }
+
+        // Activate last so the click's own effects land on top: the script may
+        // call HOTSPOT_ON/OFF, which repaints the hotspots it touches, and may
+        // request a scene that rebuilds the set entirely.
+        if (activated != NO_HOTSPOT) activate(activated);
     }
 }  // namespace NEONengine
