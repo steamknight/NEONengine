@@ -22,7 +22,6 @@ namespace NEONengine
         // build time, so the engine only overlays each graphic's colors here.
         constexpr uint8_t BOB_PALETTE_SLOT0_BASE = 72;
         constexpr uint16_t PALETTE_SIZE          = 256;
-        constexpr uint32_t NO_ASSET              = 0xFFFFFFFFu;
         constexpr uint8_t GFXI_FLAG_VISIBLE      = 1;  // graphic_instance::flags bit 0
 
         // One placed graphic: its ACE bob plus the frame strip and optional
@@ -128,7 +127,7 @@ namespace NEONengine
                 if (!frames) continue;
 
                 ace::bitmap_ptr mask{ nullptr };
-                if (ref.mask_hash != NO_ASSET)
+                if (ref.mask_hash != data::NO_ASSET)
                 {
                     mask = ace::bitmapCreateFromFd(gd.open_asset(ref.mask_hash), 0);
                     if (!mask) continue;
@@ -158,7 +157,13 @@ namespace NEONengine
             }
         }
 
-        bobReallocateBuffers();
+        // ACE sizes its bob queues and undraw buffers from what was registered,
+        // so with nothing registered it allocates zero bytes and builds
+        // zero-height bitmaps, which it reports as errors. A scene with no
+        // graphics simply leaves the manager unsized; scene_bobs_draw() skips
+        // it as well.
+        if (!s_assets.empty()) bobReallocateBuffers();
+
         NE_LOG("scene_bobs: %lu bob(s) loaded", mtl::to<ULONG>(s_assets.size()));
     }
 
