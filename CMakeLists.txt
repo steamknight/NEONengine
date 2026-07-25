@@ -109,8 +109,14 @@ set(DATA_FILES
     music/theme.mod
     gutter.neon
     game.pak
-    lang/en.noir
 )
+
+# Language tables are discovered rather than listed: the exporter emits one
+# .noir per authored language, so naming them here would mean editing this file
+# every time a language is added or dropped. Adding one needs a reconfigure,
+# same as adding a source file.
+file(GLOB LANG_FILES RELATIVE ${RES_DIR} ${RES_DIR}/lang/*.noir)
+list(APPEND DATA_FILES ${LANG_FILES})
 
 set(COPIED_DATA_FILES "")
 foreach(rel IN LISTS DATA_FILES)

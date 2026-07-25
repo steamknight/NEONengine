@@ -75,6 +75,29 @@ namespace NEONengine
             return _pending_scene;
         }
 
+        /**
+         * @brief Post a language change requested by a script (SET_LANG).
+         *
+         * Deferred rather than applied on the spot: SET_LANG runs inside a VM
+         * step, and swapping the table reads from disk. The state loop applies
+         * it at the same safe point it applies a pending scene.
+         */
+        void request_language(language lang) noexcept
+        {
+            _pending_language     = lang;
+            _has_pending_language = true;
+        }
+
+        /** @brief True when a script has requested a language change. */
+        bool has_pending_language() const noexcept { return _has_pending_language; }
+
+        /** @brief Consume the pending language request, clearing it. */
+        language take_pending_language() noexcept
+        {
+            _has_pending_language = false;
+            return _pending_language;
+        }
+
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         uint16_t current_scene() const noexcept { return _current_scene; }
         void set_current_scene(uint16_t scene_id) noexcept { _current_scene = scene_id; }
@@ -92,6 +115,8 @@ namespace NEONengine
         mtl::vector<uint16_t> _values;  ///< Runtime game values, seeded from VALS (mutable, savable).
         uint16_t _pending_scene{ 0 };   ///< Scene requested by a script, awaiting a transition.
         bool _has_pending_scene{ false };
+        language _pending_language{ language::EN };  ///< Language requested by a script, awaiting a swap.
+        bool _has_pending_language{ false };
         uint16_t _current_scene{ 0 };   ///< Scene the runtime is presenting.
     };
 

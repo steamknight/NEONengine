@@ -16,6 +16,7 @@
 #include "core/scene_bobs.h"
 #include "core/scene_hotspots.h"
 #include "core/screen.h"
+#include "core/string_table.h"
 
 namespace NEONengine
 {
@@ -28,6 +29,31 @@ namespace NEONengine
         // palette is loaded straight into indices 0.. rather than the 80..255
         // scene band; revisit when UI-overlay scenes arrive.
         constexpr UWORD SCENE_PALETTE_COLORS = 256;
+
+        /**
+         * @brief Apply a script's SET_LANG request, reporting what took effect.
+         *
+         * engine::set_language keeps the current table when the new one cannot
+         * be loaded, so the log names the language actually in force afterwards.
+         */
+        void apply_pending_language()
+        {
+            auto const requested = g_pEngine->take_pending_language();
+            g_pEngine->set_language(requested);
+
+            // The language's own name proves the table really swapped. It is a
+            // view into the .noir image with no terminator of its own, so copy
+            // it out with an explicit length rather than passing it to a C API.
+            auto const name = g_pEngine->strings().language_name();
+            char buffer[string_table::MAX_LANGUAGE_NAME + 1];
+            auto const copied
+                = MIN(name.length(), mtl::to<size_t>(string_table::MAX_LANGUAGE_NAME));
+            memcpy(buffer, name.data(), copied);
+            buffer[copied] = '\0';
+
+            NE_LOG("scene: language is now '%s' (%s)",
+                language_code(g_pEngine->current_language()), buffer);
+        }
 
         /**
          * @brief Present scene @p scene_id: background, music, and entry script.
@@ -148,6 +174,12 @@ namespace NEONengine
     void sceneProcess(void)
     {
         g_pEngine->vm().update();
+        // Language before scene: a script that switches language and then leaves
+        // should present the next scene in the language it just chose.
+        if (g_pEngine->has_pending_language())
+        {
+            apply_pending_language();
+        }
         if (g_pEngine->has_pending_scene())
         {
             load_scene(g_pEngine->take_pending_scene());

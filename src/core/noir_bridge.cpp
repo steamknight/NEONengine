@@ -4,6 +4,7 @@
 #include "core/mouse_pointer.h"
 #include "core/scene_hotspots.h"
 #include "core/screen.h"
+#include "core/string_table.h"
 
 #include <mtl/utility.h>
 
@@ -76,7 +77,21 @@ namespace NEONengine
         void nb_anim_wait(uint16_t) {}
 
         // ── System (stubbed for this slice) ────────────────────────────────────
-        void nb_set_lang(uint16_t) {}
+        // Records the request; the state loop applies it at a safe point. Doing
+        // it here would read from disk inside a VM step, and a later slice will
+        // want to re-render the scene's text once the swap lands.
+        void nb_set_lang(uint16_t lang)
+        {
+            if (lang >= mtl::to<uint16_t>(language::COUNT))
+            {
+                NE_LOG("noir_bridge: SET_LANG %hu is not a known language id", lang);
+                return;
+            }
+
+            NE_LOG("noir_bridge: SET_LANG %hu ('%s') requested", lang,
+                language_code(mtl::to<language>(lang)));
+            if (g_pEngine) g_pEngine->request_language(mtl::to<language>(lang));
+        }
         void nb_save_game(uint16_t) {}
         void nb_load_game(uint16_t) {}
         void nb_new_game() {}
