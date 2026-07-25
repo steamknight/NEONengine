@@ -55,11 +55,16 @@ namespace NEONengine
         /**
          * @brief Zero bytes following a record of @p length.
          *
-         * Records are padded so every length prefix stays 4-byte aligned.
+         * Always one to four, never zero. Padding to the next 4-byte boundary
+         * alone would leave a length divisible by four with no trailing byte,
+         * so a full four bytes are added in that case instead. That keeps every
+         * length prefix 4-byte aligned *and* guarantees at least one zero byte
+         * after the text, which is what lets bstr_view::data() be handed
+         * straight to a C API.
          */
         constexpr uint32_t padding_for(uint32_t length) noexcept
         {
-            return (4 - (length & 3)) & 3;
+            return 4 - (length & 3);
         }
 
         /**

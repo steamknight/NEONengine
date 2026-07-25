@@ -41,18 +41,11 @@ namespace NEONengine
             auto const requested = g_pEngine->take_pending_language();
             g_pEngine->set_language(requested);
 
-            // The language's own name proves the table really swapped. It is a
-            // view into the .noir image with no terminator of its own, so copy
-            // it out with an explicit length rather than passing it to a C API.
-            auto const name = g_pEngine->strings().language_name();
-            char buffer[string_table::MAX_LANGUAGE_NAME + 1];
-            auto const copied
-                = MIN(name.length(), mtl::to<size_t>(string_table::MAX_LANGUAGE_NAME));
-            memcpy(buffer, name.data(), copied);
-            buffer[copied] = '\0';
-
+            // The language's own name proves the table really swapped. Records
+            // always carry a terminator, so the view goes straight to "%s".
             NE_LOG("scene: language is now '%s' (%s)",
-                language_code(g_pEngine->current_language()), buffer);
+                language_code(g_pEngine->current_language()),
+                g_pEngine->strings().language_name().data());
         }
 
         /**

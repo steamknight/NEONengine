@@ -95,6 +95,10 @@ namespace NEONengine
         /**
          * @brief Construct from pointer + explicit length (no null validation).
          *
+         * @warning The only constructor that cannot guarantee a terminator: the
+         * result is null-terminated only if @p s already happens to be. Prefer
+         * @ref from_bstr for record data.
+         *
          * @param s Data pointer (may be nullptr => becomes empty view unless
          * len>0 which is ignored).
          * @param len Number of characters to expose.
@@ -153,7 +157,11 @@ namespace NEONengine
 
         /**
          * @brief Pointer to characters (never null).
-         * Guaranteed null-terminated if source was a valid bstr or C string.
+         *
+         * Null-terminated, and so safe to hand to a C API, for every view built
+         * from a string literal, a C string or @ref from_bstr, because a bstr
+         * record always carries a terminator. Only the explicit
+         * (pointer, length) constructor can break that.
          *
          * @return Pointer to first character (never nullptr).
          */
