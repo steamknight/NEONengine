@@ -43,6 +43,16 @@ namespace NEONengine::data
     static_assert(NEON_MAGIC == 0x4E454F4Eu, "NEON_MAGIC must be the big-endian 'NEON' FourCC");
 
     /**
+     * @brief The id an optional record reference carries when it names nothing.
+     */
+    constexpr uint16_t NO_ID = 0xFFFF;
+
+    /**
+     * @brief The pak-path hash an optional asset reference carries when absent.
+     */
+    constexpr uint32_t NO_ASSET = 0xFFFFFFFFu;
+
+    /**
      * @brief The fixed 64-byte header at the start of every .neon file.
      */
     struct header

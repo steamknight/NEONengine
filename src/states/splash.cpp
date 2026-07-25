@@ -114,7 +114,7 @@ namespace NEONengine
 
     void onFadeOutComplete(void)
     {
-        stateChange(g_gameStateManager, &g_stateLangSelect);
+        stateChange(g_gameStateManager, &g_stateScene);
     }
 
     void splashDestroy(void)

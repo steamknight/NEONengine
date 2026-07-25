@@ -102,7 +102,6 @@ namespace NEONengine
         g_stateDebugView,           //
         g_stateSplash,              //
         g_stateScene,               //
-        g_stateLangSelect,          //
         g_stateDialogueTest;
 
 #ifdef ACE_TEST_RUNNER

@@ -92,20 +92,6 @@ convertBitmaps(
     DESTINATIONS ${DATA_DIR}/mpg.bm
 )
 
-# Convert flags
-convertBitmaps(
-    TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/base.act
-    SOURCES ${RES_DIR}/core/flags.png
-    DESTINATIONS ${DATA_DIR}/core/flags.bm
-)
-
-convertBitmaps(
-    TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/pointers.act
-    SOURCES ${RES_DIR}/core/pointers.png
-    DESTINATIONS ${DATA_DIR}/core/pointers.bm
-    INTERLEAVED
-)
-
 convertBitmaps(
     TARGET ${GAME_LINKED} PALETTE ${RES_DIR}/core/base.act
     SOURCES ${RES_DIR}/core/frame_9.png

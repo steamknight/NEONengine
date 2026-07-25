@@ -1,6 +1,8 @@
 #include "core/noir_bridge.h"
 
 #include "neonengine.h"
+#include "core/mouse_pointer.h"
+#include "core/scene_hotspots.h"
 #include "core/screen.h"
 
 #include <mtl/utility.h>
@@ -41,9 +43,16 @@ namespace NEONengine
             if (g_pEngine) g_pEngine->request_scene(scene_id);
         }
         uint16_t nb_get_scene() { return g_pEngine ? g_pEngine->current_scene() : uint16_t(0); }
-        void nb_hotspot_on(uint16_t) {}
-        void nb_hotspot_off(uint16_t) {}
-        void nb_set_pointer(uint16_t) {}
+        void nb_hotspot_on(uint16_t id) { scene_hotspots_set_enabled(id, true); }
+        void nb_hotspot_off(uint16_t id) { scene_hotspots_set_enabled(id, false); }
+
+        void nb_set_pointer(uint16_t type)
+        {
+            if (type < mtl::to<uint16_t>(mouse_pointer::COUNT))
+            {
+                mousePointerSwitch(mtl::to<mouse_pointer>(type));
+            }
+        }
 
         // ── Inventory (stubbed for this slice) ─────────────────────────────────
         void nb_inv_add(uint16_t) {}

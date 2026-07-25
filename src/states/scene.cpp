@@ -12,15 +12,15 @@
 #include "core/game_data.h"
 #include "core/music.h"
 #include "core/noir_vm.h"
+#include "core/mouse_pointer.h"
 #include "core/scene_bobs.h"
+#include "core/scene_hotspots.h"
 #include "core/screen.h"
 
 namespace NEONengine
 {
     namespace
     {
-        constexpr uint16_t NO_BITMAP   = 0xFFFF;
-        constexpr uint16_t NO_FUNCTION = 0xFFFF;
         constexpr uint32_t MUSIC_KEEP    = 0xFFFFFFFF;
         constexpr uint32_t MUSIC_SILENCE = 0xFFFFFFFE;
 
@@ -56,7 +56,7 @@ namespace NEONengine
             {
                 mtl::system_use_guard guard;  // OS on for pak/disk access
 
-                if (sc.background_bitmap_id != NO_BITMAP)
+                if (sc.background_bitmap_id != data::NO_ID)
                 {
                     auto const& ref = gd.bitmaps()[sc.background_bitmap_id];
                     ace::paletteLoadFromFd(gd.open_asset(ref.palette_hash),
@@ -92,6 +92,7 @@ namespace NEONengine
                 // the bob palette bands on top of the background palette above.
                 screenDuplicateBackToFront(g_mainScreen);
                 scene_bobs_load(sc);
+                scene_hotspots_load(sc);
 
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
@@ -108,7 +109,7 @@ namespace NEONengine
             if (music_started) musicPlayCurrent(1);
 
             g_pEngine->vm().reset_execution();
-            if (sc.on_enter_function_id != NO_FUNCTION
+            if (sc.on_enter_function_id != data::NO_ID
                 && g_pEngine->vm().execute(sc.on_enter_function_id) == noir_status::ok)
             {
                 // Run the entry script's first opcodes (its FADE_IN) this frame,
@@ -137,6 +138,10 @@ namespace NEONengine
         // re-enters 'used' briefly via a system_use_guard for each pak access.
         systemUnuse();
         scene_bobs_create();
+        {
+            mtl::system_use_guard guard;  // OS on for the pak read.
+            mousePointerCreate();
+        }
         load_scene(g_pEngine->data().config().boot_scene_id);
     }
 
@@ -147,12 +152,16 @@ namespace NEONengine
         {
             load_scene(g_pEngine->take_pending_scene());
         }
+        scene_hotspots_update();
+        mousePointerUpdate();
         scene_bobs_update();
         scene_bobs_draw();
     }
 
     void sceneDestroy(void)
     {
+        scene_hotspots_clear();
+        mousePointerDestroy();
         scene_bobs_destroy();
         musicFree();
         logBlockEnd("State: Scene");
