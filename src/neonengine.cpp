@@ -12,6 +12,20 @@ namespace NEONengine
     {
         constexpr UWORD UI_PALETTE_COLOR_COUNT = 32;  ///< UI colors, palette indices 0..31.
         constexpr uint16_t NOIR_STACK_SIZE     = 512;  ///< Script VM stack size, in bytes.
+
+        /**
+         * @brief True when @p strings was produced by the same build as the pak.
+         *
+         * Every file of one build shares a {period, number} tuple. A table from
+         * another build may still parse, but its catalog order would map string
+         * ids to unrelated text, so it must be refused rather than displayed.
+         */
+        bool matches_build(game_data const& gd, string_table const& strings) noexcept
+        {
+            auto const& hd = gd.header();
+            return strings.build_period() == hd.build_period
+                && strings.build_number() == hd.build_number;
+        }
     }
 
     tStateManager* g_gameStateManager = nullptr;
@@ -68,10 +82,27 @@ namespace NEONengine
                 error_code::FAILED_TO_CREATE_TEXT_RENDERER);
         }
 
+        // English is the one language the format guarantees is present, so it is
+        // the boot language; set_language() swaps to another once one is chosen.
+        auto strings = string_table::create(language::EN);
+        if (!strings)
+        {
+            NE_LOG("Could not load the English string table. Error %d.",
+                   mtl::to<int>(strings.error()));
+            return mtl::make_error<engine_ptr, error_code>(error_code::STRING_TABLE_LOAD_FAILED);
+        }
+
+        if (!matches_build(*gd, *strings.value()))
+        {
+            NE_LOG("The English string table is from another build than the pak.");
+            return mtl::make_error<engine_ptr, error_code>(error_code::STRING_TABLE_LOAD_FAILED);
+        }
+
         auto result            = engine_ptr(new (mtl::MemF::Fast) engine());
         result->_pGameData     = mtl::move(gameData.value());
         result->_pUiFont       = mtl::move(uiFont);
         result->_pTextRenderer = mtl::move(textRenderer.value());
+        result->_pStrings      = mtl::move(strings.value());
 
         // Seed the runtime game-state buffers from the loaded initial state, then
         // build the one persistent script VM over them. FLAGS/VALUES are copied so
@@ -112,5 +143,31 @@ namespace NEONengine
             mtl::to<UWORD>(result->_values.size()));
 
         return result;
+    }
+
+    bool engine::set_language(language lang)
+    {
+        if (_pStrings && _pStrings->language_id() == lang) return true;
+
+        // Load first, swap second: on failure the current table stays live.
+        mtl::system_use_guard guard;  // systemUse()/systemUnuse() around the disk access.
+
+        auto strings = string_table::create(lang);
+        if (!strings)
+        {
+            NE_LOG("Could not load language '%s'. Error %d.",
+                language_code(lang), mtl::to<int>(strings.error()));
+            return false;
+        }
+
+        if (!matches_build(*_pGameData, *strings.value()))
+        {
+            NE_LOG("Language '%s' is from another build; keeping the current one.",
+                language_code(lang));
+            return false;
+        }
+
+        _pStrings = mtl::move(strings.value());
+        return true;
     }
 }  // namespace NEONengine

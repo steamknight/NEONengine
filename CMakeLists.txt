@@ -125,9 +125,6 @@ set(DATA_FILES
     game.pak
     lang/en.noir
 )
-if(ACE_TEST_RUNNER)
-    list(APPEND DATA_FILES lang/test.noir)
-endif()
 
 set(COPIED_DATA_FILES "")
 foreach(rel IN LISTS DATA_FILES)

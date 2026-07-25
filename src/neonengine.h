@@ -13,6 +13,7 @@
 #include "core/game_data.h"
 #include "core/noir_vm.h"
 #include "core/screen.h"
+#include "core/string_table.h"
 #include "core/text_render.h"
 
 namespace NEONengine
@@ -28,6 +29,7 @@ namespace NEONengine
             UI_FONT_LOAD_FAILED,
             UI_PALETTE_LOAD_FAILED,
             FAILED_TO_CREATE_TEXT_RENDERER,
+            STRING_TABLE_LOAD_FAILED,
         };
 
         using result = mtl::expected<engine_ptr, error_code>;
@@ -38,6 +40,23 @@ namespace NEONengine
 
         game_data& data() noexcept { return *_pGameData; }
         noir_vm& vm() noexcept { return *_vm; }
+
+        /** @brief The active language's strings. */
+        string_table& strings() noexcept { return *_pStrings; }
+
+        /** @brief The language currently loaded. */
+        language current_language() const noexcept { return _pStrings->language_id(); }
+
+        /**
+         * @brief Switch to @p lang, keeping the current strings if it fails.
+         *
+         * The new table is loaded before the old one is released, so a missing
+         * or corrupt language file never leaves the game without strings.
+         *
+         * @param lang The language to load.
+         * @return True when @p lang is now active.
+         */
+        bool set_language(language lang);
 
         /** @brief Post a scene change requested by a script (GOTO_SCENE). */
         void request_scene(uint16_t scene_id) noexcept
@@ -66,6 +85,7 @@ namespace NEONengine
         game_data_ptr _pGameData{ nullptr };  ///< The one loaded .neon, owned for the process lifetime.
         ace::font_ptr _pUiFont{ nullptr };    ///< The UI font, loaded from the pak via UIST; the engine's font.
         text_renderer_ptr _pTextRenderer{ nullptr };
+        string_table_ptr _pStrings{ nullptr };  ///< The active language's strings, swapped by set_language.
 
         noir_vm_ptr _vm{ nullptr };     ///< The one persistent script VM, over the buffers below.
         mtl::vector<uint8_t> _flags;    ///< Runtime game flags, seeded from FLGS (mutable, savable).
@@ -83,8 +103,7 @@ namespace NEONengine
         g_stateSplash,              //
         g_stateScene,               //
         g_stateLangSelect,          //
-        g_stateDialogueTest,        //
-        g_stateLangTest;
+        g_stateDialogueTest;
 
 #ifdef ACE_TEST_RUNNER
     namespace tests
