@@ -156,6 +156,7 @@ namespace NEONengine
         TEST_ASSERT(clock.tick(track) == tick_result::FINISHED, "the track should finish on its last cycle");
         TEST_ASSERT(!clock.is_running(), "a finished track should not be running");
         TEST_ASSERT(clock.cycles_done() == 3, "a finished track should have played its whole loop count");
+        TEST_ASSERT(clock.position() == 1, "a finished forward track should rest on its last position");
         TEST_ASSERT(clock.tick(track) == tick_result::IDLE, "a finished track should stay finished");
         TEST_SUCCESS;
     }
@@ -171,6 +172,7 @@ namespace NEONengine
         TEST_ASSERT(run(clock, track, 2) == tick_result::RUNNING, "the track should play its whole duration");
         TEST_ASSERT(clock.tick(track) == tick_result::FINISHED, "a non-looping track should stop after one cycle");
         TEST_ASSERT(clock.cycles_done() == 1, "a non-looping track plays exactly one cycle");
+        TEST_ASSERT(clock.position() == 2, "a non-looping track should rest on its last position");
         TEST_SUCCESS;
     }
 
@@ -254,6 +256,7 @@ namespace NEONengine
         TEST_ASSERT(run(clock, track, 7) == tick_result::RUNNING, "the track finished a cycle too early");
         TEST_ASSERT(clock.tick(track) == tick_result::FINISHED, "the track should finish on its last cycle");
         TEST_ASSERT(clock.cycles_done() == 2, "a finished track should have played its whole loop count");
+        TEST_ASSERT(clock.position() == 0, "a finished ping-pong should come to rest back at the start");
         TEST_SUCCESS;
     }
 

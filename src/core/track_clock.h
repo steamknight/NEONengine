@@ -17,7 +17,9 @@
  *
  * In both modes the tick that completes a cycle lands the playhead back on 0,
  * which is the next cycle's first frame. Nothing is duplicated at the seam, and
- * a ping-pong cycle is literally 0 -> duration -> 0.
+ * a ping-pong cycle is literally 0 -> duration -> 0. The one exception is the
+ * cycle that ends a finite track: a forward track is left resting on its last
+ * position, and only a ping-pong comes to rest back on 0.
  */
 
 #ifndef __TRACK_CLOCK_H__INCLUDED__
@@ -118,6 +120,13 @@ namespace NEONengine
             if (!last) return tick_result::LOOPED;
 
             m_running = false;
+
+            // Where a finite track comes to rest differs by mode: a forward
+            // track stops on its last position, a ping-pong back on its first.
+            // Nothing resumes a stopped track, so this is for the record rather
+            // than for playback.
+            if (mode != data::loop_mode::PING_PONG) m_position = effective_duration(track.duration);
+
             return tick_result::FINISHED;
         }
 
