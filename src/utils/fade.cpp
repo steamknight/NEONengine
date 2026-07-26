@@ -15,53 +15,49 @@ namespace NEONengine
 {
     using namespace mtl;
 
-    tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount)
+    tFade *fadeCreate(tView *pView, UWORD *pPalette, UWORD uwColorCount,
+                      UWORD uwExemptFirst, UWORD uwExemptCount)
     {
-        logBlockBegin("fadeCreate(pView: %p, pPalette: %p, ubColorCount: %hhu)",
+        logBlockBegin("fadeCreate(pView: %p, pPalette: %p, uwColorCount: %hu)",
                       pView,
                       pPalette,
-                      ubColorCount);
+                      uwColorCount);
 
-        tFade *pFade        = new (MemF::Fast | MemF::Clear) tFade();
-        pFade->eState       = FADE_STATE_IDLE;
-        pFade->pView        = pView;
-        pFade->ubColorCount = ubColorCount;
-
-        UWORD uwMaxColors;
-        if (pView->uwFlags & VP_FLAG_AGA)
+        // AGA-only: the view is always created with TAG_VIEW_USES_AGA, so there
+        // is no OCS/ECS path to fall back to.
+        if (!(pView->uwFlags & VP_FLAG_AGA))
         {
-            uwMaxColors = 1 << pView->pFirstVPort->ubBpp;
-            pFade->pPaletteRef
-                = (UWORD *)memAlloc(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
-        }
-        else
-        {
-            uwMaxColors        = 32;
-            pFade->pPaletteRef = new (MemF::Fast | MemF::Clear) UWORD(sizeof(UWORD) * uwMaxColors);
+            logWrite("ERR: fadeCreate() requires an AGA view");
         }
 
-        if (ubColorCount > uwMaxColors)
+        // AGA palette entries are 24 bit, stored as one ULONG each behind a
+        // UWORD* for the ACE API.
+        UWORD const uwMaxColors = 1 << pView->pFirstVPort->ubBpp;
+        if (uwColorCount > uwMaxColors)
         {
-            logWrite("ERR: Unsupported palette size: %hhu, max: %hhu", ubColorCount, uwMaxColors);
+            logWrite("ERR: Unsupported palette size: %hu, max: %hu", uwColorCount, uwMaxColors);
+            uwColorCount = uwMaxColors;
         }
-        for (UBYTE i = 0; i < ubColorCount; ++i) { pFade->pPaletteRef[i] = pPalette[i]; }
+
+        tFade *pFade         = new (MemF::Fast | MemF::Clear) tFade();
+        pFade->eState        = FADE_STATE_IDLE;
+        pFade->pView         = pView;
+        pFade->uwColorCount  = uwColorCount;
+        pFade->uwExemptFirst = uwExemptFirst;
+        pFade->uwExemptCount = uwExemptCount;
+        pFade->pPaletteRef
+            = (UWORD *)memAlloc(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
+
+        auto *pRefEntries       = (ULONG *)pFade->pPaletteRef;
+        auto const *pSrcEntries = (ULONG const *)pPalette;
+        for (UWORD i = 0; i < uwColorCount; ++i) { pRefEntries[i] = pSrcEntries[i]; }
         logBlockEnd("fadeCreate()");
         return pFade;
     }
 
     void fadeDestroy(tFade *pFade)
     {
-        if (pFade->pView->uwFlags & VP_FLAG_AGA)
-        {
-            // AGA uses 24 bit palette entries.
-            memFree(pFade->pPaletteRef, sizeof(ULONG) * (1 << pFade->pView->pFirstVPort->ubBpp));
-        }
-        else
-        {
-            // 12 bit palette entries for Non-AGA
-            memFree(pFade->pPaletteRef, sizeof(UWORD) * (32));
-        }
-
+        memFree(pFade->pPaletteRef, sizeof(ULONG) * (1 << pFade->pView->pFirstVPort->ubBpp));
         memFree(pFade, sizeof(*pFade));
     }
 
@@ -96,21 +92,22 @@ namespace NEONengine
             UBYTE ubCnt = pFade->ubCnt;
             if (pFade->eState == FADE_STATE_OUT) { ubCnt = pFade->ubCntEnd - pFade->ubCnt; }
 
-            if (pFade->pView->uwFlags & VP_FLAG_AGA)
+            UBYTE ubRatio = (255 * ubCnt) / pFade->ubCntEnd;
+            auto *pRef    = (ULONG *)pFade->pPaletteRef;
+            auto *pLive   = (ULONG *)pFade->pView->pFirstVPort->pPalette;
+
+            // The hardware pointer draws from the exempt band. Dimming it
+            // would black the cursor out exactly while a load blocks the
+            // loop with the screen already faded down, so the fade steps
+            // over the band and leaves it at its authored brightness.
+            UWORD const uwExemptEnd = pFade->uwExemptFirst + pFade->uwExemptCount;
+            if (pFade->uwExemptFirst) { paletteDimAga(pRef, pLive, pFade->uwExemptFirst, ubRatio); }
+            if (uwExemptEnd < pFade->uwColorCount)
             {
-                UBYTE ubRatio = (255 * ubCnt) / pFade->ubCntEnd;
-                paletteDimAga((ULONG *)pFade->pPaletteRef,
-                              (ULONG *)pFade->pView->pFirstVPort->pPalette,
-                              pFade->ubColorCount,
+                paletteDimAga(pRef + uwExemptEnd,
+                              pLive + uwExemptEnd,
+                              pFade->uwColorCount - uwExemptEnd,
                               ubRatio);
-            }
-            else
-            {
-                UBYTE ubRatio = (15 * ubCnt) / pFade->ubCntEnd;
-                paletteDimOcs(pFade->pPaletteRef,
-                           pFade->pView->pFirstVPort->pPalette,
-                           pFade->ubColorCount,
-                           ubRatio);
             }
             viewUpdateGlobalPalette(pFade->pView);
 
@@ -138,5 +135,10 @@ namespace NEONengine
             eState        = pFade->eState;
         }
         return eState;
+    }
+    void fadeSetExempt(tFade *pFade, UWORD uwFirst, UWORD uwCount)
+    {
+        pFade->uwExemptFirst = uwFirst;
+        pFade->uwExemptCount = uwCount;
     }
 }  // namespace NEONengine

@@ -12,7 +12,8 @@
 namespace NEONengine
 {
     constexpr int BIT_DEPTH   = 8;
-    constexpr int MAX_COLORS  = 255;
+    // Every AGA entry, so nothing is stranded at full brightness through a fade.
+    constexpr int MAX_COLORS  = 256;
     constexpr int PAL_OFFSET  = 28;
     constexpr int NTSC_OFFSET = 0;
 
@@ -55,8 +56,8 @@ namespace NEONengine
                 TRUE,
                 TAG_END);
 
-            screen->pFade
-                = fadeCreate(screen->pView, screen->pView->pFirstVPort->pPalette, MAX_COLORS);
+            screen->pFade = fadeCreate(
+                screen->pView, screen->pView->pFirstVPort->pPalette, MAX_COLORS, 0, 0);
         }
 
         return screen;

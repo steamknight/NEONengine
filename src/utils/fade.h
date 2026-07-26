@@ -21,16 +21,34 @@ namespace NEONengine
 
     typedef struct _tFade {
         tFadeState eState;
-        UBYTE ubColorCount;
+        UWORD uwColorCount;
         UBYTE ubCnt;
         UBYTE ubCntEnd;
         UBYTE isMusic;
+        UWORD uwExemptFirst;  ///< First palette entry the fade leaves alone.
+        UWORD uwExemptCount;  ///< How many it leaves alone; 0 fades everything.
         UWORD* pPaletteRef;
         tCbFadeOnDone cbOnDone;
         tView *pView;
     } tFade;
 
-    tFade *fadeCreate(tView *pView, UWORD *pPalette, UBYTE ubColorCount);
+    /**
+     * @brief Creates a fade over @p pView's palette.
+     *
+     * AGA only: @p pView must have been created with TAG_VIEW_USES_AGA, so its
+     * palette entries are 24-bit ULONGs behind a UWORD*.
+     *
+     * @param uwColorCount Entries the fade owns. A UWORD so the full 256-entry
+     *                     AGA palette is expressible; a UBYTE stranded entry 255
+     *                     at full brightness through every fade.
+     * @param uwExemptFirst First entry to leave untouched.
+     * @param uwExemptCount How many entries to leave untouched, 0 for none.
+     *                      The hardware pointer draws from its own band and has
+     *                      to stay readable exactly when the screen is black, so
+     *                      that band is stepped over rather than dimmed.
+     */
+    tFade *fadeCreate(tView *pView, UWORD *pPalette, UWORD uwColorCount,
+                      UWORD uwExemptFirst, UWORD uwExemptCount);
 
     void fadeDestroy(tFade *pFade);
 
@@ -48,6 +66,13 @@ namespace NEONengine
      * - FADE_STATE_IDLE if fade is done.
      */
     tFadeState fadeProcess(tFade *pFade);
+
+    /**
+     * @brief Chooses the window of palette entries the fade leaves alone.
+     *
+     * @param uwCount Entries to skip, 0 to fade the whole palette.
+     */
+    void fadeSetExempt(tFade *pFade, UWORD uwFirst, UWORD uwCount);
 }
 
 #endif // _GERMZ_FADE_H_
