@@ -43,13 +43,17 @@ namespace NEONengine
     void mousePointerSwitch(mouse_pointer newPointer);
 
     /**
-     * @brief Forces the cursor's colors back into the live palette.
+     * @brief Shows or hides the hardware pointer.
      *
-     * A fade dims every entry, so the pointer disappears during the blacked-out
-     * stretch of a scene load. Call this when the pointer has to stay readable
-     * through work that blocks the game loop; the next fade undoes it.
+     * A scene that shows no UI shows no cursor either, which is what SCEN's
+     * flags bit 1 describes. Hiding matters beyond taste there: such a scene may
+     * author its background across the pointer's palette band, so a cursor left
+     * on screen would draw itself in the background's colors.
+     *
+     * The sprites are published by the next mousePointerUpdate(), so nothing has
+     * to be done here to make it take effect.
      */
-    void mousePointerLightColors();
+    void mousePointerSetVisible(bool visible);
 
     /**
      * @brief Moves the pointer to the mouse. Call once per frame.

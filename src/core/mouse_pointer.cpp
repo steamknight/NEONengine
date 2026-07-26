@@ -31,13 +31,7 @@ namespace NEONengine
     static data::point<uint16_t> s_hotspots[POINTER_COUNT];
     static mouse_pointer s_current = mouse_pointer::DEFAULT;
     static bool s_ready            = false;
-
-    /// An attached sprite pair draws from palette entries 16..31.
-    static constexpr UWORD SPRITE_COLOR_FIRST = 16;
-    static constexpr UWORD SPRITE_COLOR_COUNT = 16;
-
-    /// The cursor's own colors, taken before any scene overwrites the band.
-    static ULONG s_spriteColors[SPRITE_COLOR_COUNT];
+    static bool s_visible          = false;  ///< Tracks spriteSetEnabled to avoid needless regens.
 
 #define POINTER_WIDTH  16
 #define POINTER_HEIGHT 16
@@ -142,16 +136,10 @@ namespace NEONengine
         spriteManagerCreate(screenGetView(g_mainScreen), 0, NULL);
         systemSetDmaBit(DMAB_SPRITE, 1);
 
-        // Taken now, while the reference palette still holds the UI colors the
-        // engine loaded at boot. Every scene load overwrites this band with its
-        // background's colors, so there is no later chance to read them.
-        auto const* pRef = mtl::force_to<ULONG const*>(screenGetPalette(g_mainScreen));
-        for (UWORD i = 0; i < SPRITE_COLOR_COUNT; ++i)
-        {
-            s_spriteColors[i] = pRef[SPRITE_COLOR_FIRST + i];
-        }
-
         s_current          = mouse_pointer::DEFAULT;
+        // An attached pair indexes a 16-aligned bank, here entries 16..31. The
+        // sheet only names values 8..15, so the pointer reads 24..31 and the
+        // lower half of the bank stays free for the UI.
         s_pCurrentPointer0 = spriteAdd(0, s_pPointersLo[0]);
         spriteSetEnabled(s_pCurrentPointer0, 1);
 
@@ -161,7 +149,8 @@ namespace NEONengine
 
         systemUnuse();
 
-        s_ready = true;
+        s_ready   = true;
+        s_visible = true;
         NE_LOG("mouse_pointer: %hu cursor role(s) ready", count);
         return true;
     }
@@ -176,21 +165,16 @@ namespace NEONengine
         spriteSetBitmap(s_pCurrentPointer1, s_pPointersHi[idx]);
     }
 
-    void mousePointerLightColors(void)
+    void mousePointerSetVisible(bool visible)
     {
-        if (!s_ready) return;
+        // spriteSetEnabled() schedules a copper regeneration for both buffers,
+        // so this is guarded rather than left idempotent: every scene load would
+        // otherwise pay for a regeneration it does not need.
+        if (!s_ready || visible == s_visible) return;
 
-        // A fade dims every palette entry, cursor colors included, so the
-        // pointer vanishes exactly while a blacked-out load is running. Writing
-        // the saved colors straight into the live palette brings it back; the
-        // next fade recomputes the whole band from the reference and undoes it.
-        tView* pView = screenGetView(g_mainScreen);
-        auto* pLive  = mtl::force_to<ULONG*>(pView->pFirstVPort->pPalette);
-        for (UWORD i = 0; i < SPRITE_COLOR_COUNT; ++i)
-        {
-            pLive[SPRITE_COLOR_FIRST + i] = s_spriteColors[i];
-        }
-        viewUpdateGlobalPalette(pView);
+        s_visible = visible;
+        spriteSetEnabled(s_pCurrentPointer0, visible ? 1 : 0);
+        spriteSetEnabled(s_pCurrentPointer1, visible ? 1 : 0);
     }
 
     void mousePointerUpdate(void)

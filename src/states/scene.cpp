@@ -40,19 +40,15 @@ namespace NEONengine
         /**
          * @brief Puts the pointer into its WAIT role and makes it visible.
          *
-         * Three things have to happen before the loop blocks, because none of
-         * them reach the hardware on their own: the sprite has to be published
-         * (spriteProcessChannel only writes the copper back buffer, so without
-         * copProcessBlocks the swap never happens and the old cursor stays), the
-         * cursor's colors have to be forced back over the fade that blacked
-         * them, and the pointer has to be positioned. scene_hotspots_update()
-         * puts the real role back once the loop resumes, and the next fade the
-         * colors.
+         * Two things have to happen before the loop blocks: the sprite has to be
+         * published (spriteProcessChannel only writes the copper back buffer, so
+         * without copProcessBlocks the swap never happens and the old cursor
+         * stays), and the pointer has to be positioned. Its colors need nothing
+         * - the fade steps over the cursor band, so they are always lit.
          */
         void show_wait_pointer()
         {
             mousePointerSwitch(mouse_pointer::WAIT);
-            mousePointerLightColors();
             mousePointerUpdate();
             copProcessBlocks();
         }
@@ -147,11 +143,20 @@ namespace NEONengine
                 // colors loaded at boot. A scene that shows UI needs them back,
                 // so reload the band over the top; a scene that does not keeps
                 // the background's own colors there.
-                if ((sc.flags & SCENE_FLAG_SHOW_UI) != 0)
+                bool const showsUi = (sc.flags & SCENE_FLAG_SHOW_UI) != 0;
+                if (showsUi)
                 {
                     ace::paletteLoadFromFd(gd.open_asset(gd.ui_state().ui_palette_hash),
                         screenGetPalette(g_mainScreen), UI_PALETTE_COLORS);
                 }
+
+                // Only a scene that shows the pointer holds its band out of the
+                // fade. A scene without UI is free to author its background across
+                // those entries, so there they have to dim like everything else -
+                // and the pointer has to go, or it would draw itself in whatever
+                // colors the background put in its band.
+                screenSetCursorBandExempt(g_mainScreen, showsUi);
+                mousePointerSetVisible(showsUi);
 
                 // Mirror the freshly drawn background into the other buffer so the
                 // bob manager has an intact background to undraw against in both
@@ -209,6 +214,9 @@ namespace NEONengine
             mtl::system_use_guard guard;  // OS on for the pak read.
             mousePointerCreate();
         }
+        // The boot load blocks for over a second with the pointer on screen, and
+        // load_scene only settles the band once it has the scene in hand.
+        screenSetCursorBandExempt(g_mainScreen, true);
         show_wait_pointer();
         load_scene(g_pEngine->data().config().boot_scene_id);
     }

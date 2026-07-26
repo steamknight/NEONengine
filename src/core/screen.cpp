@@ -56,8 +56,11 @@ namespace NEONengine
                 TRUE,
                 TAG_END);
 
-            screen->pFade = fadeCreate(
-                screen->pView, screen->pView->pFirstVPort->pPalette, MAX_COLORS, 0, 0);
+            screen->pFade = fadeCreate(screen->pView,
+                screen->pView->pFirstVPort->pPalette,
+                MAX_COLORS,
+                CURSOR_PALETTE_FIRST,
+                CURSOR_PALETTE_COUNT);
         }
 
         return screen;
@@ -138,6 +141,24 @@ namespace NEONengine
         tCbFadeOnDone cbOnDone)
     {
         fadeSet(screen->pFade, FADE_STATE_IN, ubDuration, ubFadeMusic, cbOnDone);
+    }
+
+    void screenSetCursorBandExempt(Screen* screen, bool exempt)
+    {
+        fadeSetExempt(
+            screen->pFade, CURSOR_PALETTE_FIRST, exempt ? CURSOR_PALETTE_COUNT : UWORD(0));
+        if (!exempt) return;
+
+        // Held out of the fade from here on, so the live entries have to be
+        // given their colors now: nothing else writes them, and they would
+        // otherwise keep whatever brightness the last fade happened to leave.
+        auto const* pRef = reinterpret_cast<ULONG const*>(screen->pFade->pPaletteRef);
+        auto* pLive      = reinterpret_cast<ULONG*>(screen->pView->pFirstVPort->pPalette);
+        for (UWORD i = 0; i < CURSOR_PALETTE_COUNT; ++i)
+        {
+            pLive[CURSOR_PALETTE_FIRST + i] = pRef[CURSOR_PALETTE_FIRST + i];
+        }
+        viewUpdateGlobalPalette(screen->pView);
     }
 
     void screenVwait(Screen* screen)

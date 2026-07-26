@@ -13,7 +13,34 @@ namespace NEONengine
     constexpr int SCREEN_WIDTH  = 320;
     constexpr int SCREEN_HEIGHT = 200;
 
+    /**
+     * @brief The palette band the hardware pointer draws from.
+     *
+     * An attached sprite pair indexes a 16-aligned bank, here entries 16..31,
+     * but it only reads the entries its art actually names. The cursor sheet is
+     * authored in the top half, so 24..31 belong to the pointer alone: nothing
+     * else may use them, and the fade leaves them lit so the cursor stays
+     * readable while a load blocks the loop on a blacked-out screen.
+     *
+     * Text regions and the rest of the UI therefore have entries 0..23.
+     */
+    constexpr UWORD CURSOR_PALETTE_FIRST = 24;
+    constexpr UWORD CURSOR_PALETTE_COUNT = 8;
+
     struct Screen;
+
+    /**
+     * @brief Chooses whether the pointer's palette band takes part in fades.
+     *
+     * A scene that shows the pointer holds the band out of the fade so the
+     * cursor stays readable while a load blocks the loop on a blacked-out
+     * screen. Because the fade then never writes those live entries again, this
+     * refreshes them from the reference palette on the way in.
+     *
+     * A scene that shows no UI may author its background right across the band,
+     * so there it fades with everything else and the cursor is not special.
+     */
+    void screenSetCursorBandExempt(Screen* screen, bool exempt);
 
     /**
      * @brief Create the a full screen view.
