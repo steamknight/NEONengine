@@ -359,21 +359,47 @@ namespace NEONengine::data
     static_assert(__builtin_offsetof(keyframe, payload) == 4, "payload must be at offset 4");
 
     /**
-     * @brief 'TIME' element: a scene timeline over a range of keyframes.
+     * @brief 'TRAK' element: one independently playable track of a scene timeline.
      *
-     * A Collection element, 8 bytes.
+     * A Collection element, 12 bytes. A track owns a contiguous run of keyframes
+     * and its own clock, so several tracks in one timeline run concurrently and
+     * independently. Duration, loop mode and loop count belong here rather than
+     * to the timeline because each track loops on its own terms.
+     */
+    struct track
+    {
+        range keyframe_range;  ///< 0:  KEYS range.
+        uint16_t duration;     ///< 4:  Duration in PAL frames.
+        uint8_t loop_mode;     ///< 6:  0 None, 1 Restart, 2 PingPong.
+        uint8_t loop_count;    ///< 7:  Complete cycles; 0 = infinite.
+        uint8_t flags;         ///< 8:  bit0 auto_start.
+        uint8_t reserved0;     ///< 9:  Reserved, zero.
+        uint16_t name_id;      ///< 10: Track name id, shared by tracks of the same name.
+    };
+
+    /// track::flags bit 0: the track starts by itself when the scene loads.
+    constexpr uint8_t TRACK_FLAG_AUTO_START = 1 << 0;
+
+    static_assert(sizeof(track) == 12, "track must be exactly 12 bytes");
+    static_assert(__builtin_offsetof(track, duration) == 4, "duration must be at offset 4");
+    static_assert(__builtin_offsetof(track, loop_mode) == 6, "loop_mode must be at offset 6");
+    static_assert(__builtin_offsetof(track, flags) == 8, "flags must be at offset 8");
+    static_assert(__builtin_offsetof(track, name_id) == 10, "name_id must be at offset 10");
+
+    /**
+     * @brief 'TIME' element: a scene timeline, grouping its tracks.
+     *
+     * A Collection element, 8 bytes. The timeline is only a container: every
+     * playable property lives on the track.
      */
     struct timeline
     {
-        range keyframe_range;           ///< 0: KEYS range.
-        uint16_t duration;              ///< 4: Duration in PAL frames.
-        uint8_t loop_mode;              ///< 6: 0 None, 1 Restart, 2 PingPong.
-        uint8_t loop_count;             ///< 7: Complete cycles; 0 = infinite.
+        range track_range;   ///< 0: TRAK range.
+        uint32_t reserved0;  ///< 4: Reserved, zero.
     };
 
     static_assert(sizeof(timeline) == 8, "timeline must be exactly 8 bytes");
-    static_assert(__builtin_offsetof(timeline, duration) == 4, "duration must be at offset 4");
-    static_assert(__builtin_offsetof(timeline, loop_mode) == 6, "loop_mode must be at offset 6");
+    static_assert(__builtin_offsetof(timeline, reserved0) == 4, "reserved0 must be at offset 4");
 
     /**
      * @brief 'CHOC' element: one selectable dialogue response.
@@ -477,7 +503,7 @@ namespace NEONengine::data
     // initial bits; both are variable Data chunks accessed without a record type.
 
     /**
-     * @brief Identifies each of the 22 known chunks, in catalog order.
+     * @brief Identifies each of the 23 known chunks, in catalog order.
      *
      * Used to index the loaded chunk table. Each chunk's on-disk big-endian
      * FourCC is given by fourcc_of(); the four-character codes appear only as
@@ -498,6 +524,7 @@ namespace NEONengine::data
         graphic_instances,   ///< 'GFXI' Collection: graphic instances.
         scene_descriptions,  ///< 'SDES' Collection: scene-description string ids.
         keyframes,           ///< 'KEYS' Collection: timeline keyframes.
+        tracks,              ///< 'TRAK' Collection: timeline tracks.
         timelines,           ///< 'TIME' Collection: timelines.
         function_offsets,    ///< 'FUNC' Collection: SCRP function offsets.
         bytecode,            ///< 'SCRP' Data: NoirVM bytecode.
@@ -522,9 +549,9 @@ namespace NEONengine::data
         make_fourcc("CONF"), make_fourcc("UIST"), make_fourcc("CURS"), make_fourcc("BMPS"),
         make_fourcc("INVC"), make_fourcc("INVT"), make_fourcc("SPKR"), make_fourcc("HOTS"),
         make_fourcc("TXTR"), make_fourcc("GFXS"), make_fourcc("GFXI"), make_fourcc("SDES"),
-        make_fourcc("KEYS"), make_fourcc("TIME"), make_fourcc("FUNC"), make_fourcc("SCRP"),
-        make_fourcc("FLGS"), make_fourcc("VALS"), make_fourcc("CHOC"), make_fourcc("PAGS"),
-        make_fourcc("DLGS"), make_fourcc("SCEN"),
+        make_fourcc("KEYS"), make_fourcc("TRAK"), make_fourcc("TIME"), make_fourcc("FUNC"),
+        make_fourcc("SCRP"), make_fourcc("FLGS"), make_fourcc("VALS"), make_fourcc("CHOC"),
+        make_fourcc("PAGS"), make_fourcc("DLGS"), make_fourcc("SCEN"),
     };
 
     static_assert(sizeof(KNOWN_CHUNK_FOURCCS) / sizeof(uint32_t) == mtl::to<uint32_t>(known_chunk::count),
@@ -556,6 +583,7 @@ namespace NEONengine::data
         sizeof(graphic_instance),  // GFXI
         sizeof(uint16_t),          // SDES
         sizeof(keyframe),          // KEYS
+        sizeof(track),             // TRAK
         sizeof(timeline),          // TIME
         sizeof(uint32_t),          // FUNC
         0,                         // SCRP

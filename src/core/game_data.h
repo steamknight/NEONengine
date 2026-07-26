@@ -165,6 +165,9 @@ namespace NEONengine
         /** @brief The 'KEYS' timeline keyframes. */
         mtl::span<data::keyframe> keyframes() const noexcept { return chunk_span<data::keyframe>(data::known_chunk::keyframes); }
 
+        /** @brief The 'TRAK' timeline tracks. */
+        mtl::span<data::track> tracks() const noexcept { return chunk_span<data::track>(data::known_chunk::tracks); }
+
         /** @brief The 'TIME' timelines. */
         mtl::span<data::timeline> timelines() const noexcept { return chunk_span<data::timeline>(data::known_chunk::timelines); }
 

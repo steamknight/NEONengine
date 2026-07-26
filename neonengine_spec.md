@@ -505,7 +505,7 @@ string, is normative.
 Populated at load time with pointer/count views into the one owning GameData
 block. It exposes `CONF`, `UIST`, `INVC`, and FLGS metadata; pointer/count views
 for `CURS`, `BMPS`, `INVT`, `SPKR`, `HOTS`, `TXTR`, `GFXS`, `GFXI`, `SDES`,
-`KEYS`, `TIME`, `FUNC`, `VALS`, `CHOC`, `PAGS`, `DLGS`, and `SCEN`; plus
+`KEYS`, `TRAK`, `TIME`, `FUNC`, `VALS`, `CHOC`, `PAGS`, `DLGS`, and `SCEN`; plus
 pointer/byte-size views for `SCRP` and the packed FLGS bytes. No TOC member owns
 or copies chunk memory.
 
@@ -740,8 +740,8 @@ base/size block.
 - None requires count zero and plays one forward pass
 - Restart count zero is infinite; finite N counts complete forward passes
 - Ping-pong count zero is infinite; finite N counts complete out-and-back cycles
-- Standalone/concurrent timelines and script-controlled timeline management are
-  deferred
+- Loop mode, count and duration belong to the track, so tracks of one timeline
+  loop on their own terms
 
 ### Keyframe Data
 
@@ -755,9 +755,27 @@ Each keyframe (12 bytes): time, type enum, flags (interpolation/fire-once), 8-by
 
 ### Timeline Data
 
-Each optional scene timeline is an 8-byte TIME record containing its keyframe
-range, duration, loop mode, and loop count. Scene-level `goto_scene`, rather
-than a keyframe, runs when the timeline completes.
+A scene's optional timeline is an 8-byte TIME record holding only a range of
+TRAK records. Each 12-byte TRAK is one independently playable track: its
+keyframe range, duration, loop mode, loop count, an `auto_start` flag, and a
+build-assigned track-name id.
+
+Tracks of one timeline run concurrently on independent clocks. An `auto_start`
+track begins when the scene loads; any other waits for a script to play it, and
+a track started later begins at its own time zero rather than joining a track
+already running. Tracks do not outlive their scene.
+
+`ANIM_PLAY`, `ANIM_STOP` and `ANIM_WAIT` take a track-name id, written in NNASM
+as `&track.Name`, and resolve it against the current scene's tracks only. Names
+are deliberately reused across scenes so a script that is not owned by any scene
+can still address "my scene's Flicker". `ANIM_WAIT` releases after one completed
+cycle, and immediately if the track is not running.
+
+Scene-level `goto_scene`, rather than a keyframe, runs when a track completes
+its finite playback. The track need not be `auto_start` — an elevator that
+departs four seconds after the player presses the button is a script-started
+goto track, and the scene simply stays put until it runs. Where several tracks
+could complete, the first one wins and the goto fires once.
 
 ---
 
