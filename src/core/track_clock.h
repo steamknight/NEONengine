@@ -27,6 +27,7 @@
 
 #include <stdint.h>
 
+#include <mtl/span.h>
 #include <mtl/utility.h>
 
 #include "game_data_format.h"
@@ -42,6 +43,18 @@ namespace NEONengine
         RUNNING,    ///< The playhead advanced within the current cycle.
         LOOPED,     ///< A cycle completed and the next one began at position 0.
         FINISHED,   ///< The last cycle completed and the track stopped.
+    };
+
+    /**
+     * @brief The run of keyframes a playhead is sitting on.
+     *
+     * Keyframes sharing a time are contiguous, because KEYS are stored
+     * nondecreasing by time within a track.
+     */
+    struct key_run
+    {
+        uint16_t first;  ///< Index of the first keyframe at the playhead.
+        uint16_t count;  ///< How many share that position; 0 when none do.
     };
 
     /**
@@ -89,6 +102,29 @@ namespace NEONengine
 
         /// @brief Whether a ping-pong playhead is on its way back to the start.
         bool is_reversing() const { return m_reverse; }
+
+        /**
+         * @brief The run of @p keys the playhead is standing on.
+         *
+         * @param keys The owning track's keyframes, in stored order.
+         *
+         * The playhead moves one position at a time and never skips, so a
+         * keyframe is on the playhead exactly when its time equals the current
+         * position; there is no need to sweep a range of elapsed time. The
+         * caller plays the run forwards, or backwards when is_reversing(),
+         * because a track played in reverse is played in reverse all the way
+         * down to the ordering of keyframes that share a time.
+         */
+        key_run keys_at(mtl::span<data::keyframe> keys) const
+        {
+            uint16_t first = 0;
+            while (first < keys.size() && keys[first].time < m_position) ++first;
+
+            uint16_t last = first;
+            while (last < keys.size() && keys[last].time == m_position) ++last;
+
+            return key_run{ first, mtl::to<uint16_t>(last - first) };
+        }
 
         /**
          * @brief Moves the playhead on by one frame.

@@ -309,6 +309,109 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Finding what the playhead stands on ─────────────────────────────────────
+
+    TEST_IMPL(test_keys_at_finds_nothing_in_an_empty_track)
+    {
+        track_clock clock;
+        clock.start();
+
+        auto const found = clock.keys_at(mtl::span<data::keyframe>(nullptr, 0));
+        TEST_ASSERT(found.count == 0, "an empty track should put nothing under the playhead");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_keys_at_finds_a_lone_keyframe)
+    {
+        auto const track = clock_track(4, data::loop_mode::RESTART, 0);
+        data::keyframe keys[3]{};
+        keys[0].time = 0;
+        keys[1].time = 2;
+        keys[2].time = 4;
+        mtl::span<data::keyframe> const span(keys, 3);
+
+        track_clock clock;
+        clock.start();
+
+        auto found = clock.keys_at(span);
+        TEST_ASSERT(found.first == 0 && found.count == 1, "position 0 should find the first keyframe");
+
+        clock.tick(track);
+        found = clock.keys_at(span);
+        TEST_ASSERT(found.count == 0, "a position with no keyframe should find nothing");
+
+        clock.tick(track);
+        found = clock.keys_at(span);
+        TEST_ASSERT(found.first == 1 && found.count == 1, "position 2 should find the middle keyframe");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_keys_at_finds_every_keyframe_sharing_a_time)
+    {
+        // Keys sharing a time are contiguous, because KEYS are stored
+        // nondecreasing by time within a track.
+        data::keyframe keys[5]{};
+        keys[0].time = 0;
+        keys[1].time = 3;
+        keys[2].time = 3;
+        keys[3].time = 3;
+        keys[4].time = 9;
+        mtl::span<data::keyframe> const span(keys, 5);
+
+        auto const track = clock_track(9, data::loop_mode::RESTART, 0);
+        track_clock clock;
+        clock.start();
+        run(clock, track, 3);
+
+        auto const found = clock.keys_at(span);
+        TEST_ASSERT(found.first == 1, "the run should start at the first key of the group");
+        TEST_ASSERT(found.count == 3, "every key sharing the position should be in the run");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_keys_at_finds_nothing_past_the_last_keyframe)
+    {
+        data::keyframe keys[2]{};
+        keys[0].time = 0;
+        keys[1].time = 1;
+        mtl::span<data::keyframe> const span(keys, 2);
+
+        auto const track = clock_track(6, data::loop_mode::RESTART, 0);
+        track_clock clock;
+        clock.start();
+        run(clock, track, 4);
+
+        auto const found = clock.keys_at(span);
+        TEST_ASSERT(found.count == 0, "a playhead beyond the last key should find nothing");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_keys_at_finds_the_same_run_on_the_way_back)
+    {
+        // A ping-pong passes each position twice per cycle, and the run it finds
+        // is the same one; only the order it plays them in differs.
+        data::keyframe keys[3]{};
+        keys[0].time = 1;
+        keys[1].time = 1;
+        keys[2].time = 2;
+        mtl::span<data::keyframe> const span(keys, 3);
+
+        auto const track = clock_track(2, data::loop_mode::PING_PONG, 0);
+        track_clock clock;
+        clock.start();
+
+        clock.tick(track);
+        auto const outward = clock.keys_at(span);
+        TEST_ASSERT(!clock.is_reversing(), "the playhead should still be heading out");
+        TEST_ASSERT(outward.first == 0 && outward.count == 2, "the outward pass should find both keys");
+
+        run(clock, track, 2);
+        auto const homeward = clock.keys_at(span);
+        TEST_ASSERT(clock.is_reversing(), "the playhead should be heading home");
+        TEST_ASSERT(homeward.first == 0 && homeward.count == 2, "the return pass should find the same keys");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(track_clock)
         TEST(test_clock_starts_idle)
         TEST(test_clock_start_rewinds_to_zero)
@@ -332,6 +435,12 @@ namespace NEONengine
         TEST(test_clock_zero_duration_restart_stays_in_range)
         TEST(test_clock_zero_duration_ping_pong_does_not_wrap_below_zero)
         TEST(test_clock_cycle_count_saturates)
+
+        TEST(test_keys_at_finds_nothing_in_an_empty_track)
+        TEST(test_keys_at_finds_a_lone_keyframe)
+        TEST(test_keys_at_finds_every_keyframe_sharing_a_time)
+        TEST(test_keys_at_finds_nothing_past_the_last_keyframe)
+        TEST(test_keys_at_finds_the_same_run_on_the_way_back)
     TEST_SUITE_END
 }  // namespace NEONengine
 

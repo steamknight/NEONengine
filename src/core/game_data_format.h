@@ -372,6 +372,48 @@ namespace NEONengine::data
     };
 
     /**
+     * @brief What a keyframe does when the playhead reaches it.
+     *
+     * The enumerators are the record's own ids, so keyframe::type converts
+     * straight to one of these.
+     */
+    enum class keyframe_type : uint8_t
+    {
+        GFX_MOVE            = 0,
+        GFX_VISIBILITY      = 1,
+        PALETTE_CYCLE_START = 2,
+        PALETTE_CYCLE_END   = 3,
+        SFX_PLAY            = 4,
+        SFX_STOP            = 5,
+        MUSIC_PLAY          = 6,
+        MUSIC_STOP          = 7,
+        EXECUTE_SCRIPT      = 8,
+    };
+
+    /// One past the highest keyframe_type this build knows about.
+    constexpr uint8_t KEYFRAME_TYPE_COUNT = 9;
+
+    /// keyframe::flags bit 0: the keyframe fires only on its first encounter.
+    constexpr uint8_t KEYFRAME_FLAG_FIRE_ONCE = 1 << 0;
+
+    /// keyframe::flags bit 1: GFX_MOVE interpolates towards its position.
+    constexpr uint8_t KEYFRAME_FLAG_INTERPOLATE = 1 << 1;
+
+    /**
+     * @brief 'KEYS' EXECUTE_SCRIPT payload: the function to run.
+     *
+     * Overlaid on keyframe::payload, which sits at offset 4 of a 12-byte
+     * record, so function_id is always 2-byte aligned.
+     */
+    struct execute_script_payload
+    {
+        uint16_t function_id;  ///< 0: FUNC id to execute.
+        uint16_t reserved[3];  ///< 2: Reserved, zero.
+    };
+
+    static_assert(sizeof(execute_script_payload) == 8, "a keyframe payload is exactly 8 bytes");
+
+    /**
      * @brief 'TRAK' element: one independently playable track of a scene timeline.
      *
      * A Collection element, 12 bytes. A track owns a contiguous run of keyframes

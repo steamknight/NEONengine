@@ -13,9 +13,11 @@
  * scene_timeline_load() and dropped by scene_timeline_clear().
  *
  * Scope of the current slice: the scene's tracks are resolved, the ones marked
- * auto-start begin at their own position zero, and every running track's
- * playhead is advanced once per frame. Deliberately not handled yet: firing
- * keyframes, and the ANIM_PLAY / ANIM_STOP / ANIM_WAIT opcodes.
+ * auto-start begin at their own position zero, every running track's playhead is
+ * advanced once per frame, and the keyframes it lands on are fired. Only
+ * EXECUTE_SCRIPT is implemented; the other keyframe types are reported once when
+ * the scene loads and skipped. Deliberately not handled yet: the ANIM_PLAY /
+ * ANIM_STOP / ANIM_WAIT opcodes.
  */
 
 #ifndef __SCENE_TIMELINE_H__INCLUDED__
@@ -53,6 +55,9 @@ namespace NEONengine
      * exactly once per PAL frame, so one call is one frame of track time; the
      * clock therefore counts frames processed rather than time passed, and a
      * blocking pak read stalls it rather than being skipped over.
+     *
+     * A track fires whatever its playhead is standing on before moving, so the
+     * first frame of a run plays position zero rather than stepping over it.
      */
     void scene_timeline_update();
 
