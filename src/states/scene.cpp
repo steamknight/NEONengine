@@ -18,6 +18,7 @@
 #include "core/scene_bobs.h"
 #include "core/scene_hotspots.h"
 #include "core/scene_text.h"
+#include "core/scene_timeline.h"
 #include "core/screen.h"
 #include "core/string_table.h"
 
@@ -228,6 +229,7 @@ namespace NEONengine
                 draw_backdrop(sc);
                 scene_bobs_load(sc);
                 scene_hotspots_load(sc);
+                scene_timeline_load(sc);
 
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
@@ -340,6 +342,7 @@ namespace NEONengine
     {
         s_backdropStale = false;
         scene_hotspots_clear();
+        scene_timeline_clear();
         mousePointerDestroy();
         scene_bobs_destroy();
         musicFree();
