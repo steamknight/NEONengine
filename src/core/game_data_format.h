@@ -457,6 +457,12 @@ namespace NEONengine::data
         range graphic_instance_range;           ///< 40: GFXI range.
     };
 
+    /// scene::flags bit 0: the mouse is held inside the scene rectangle.
+    constexpr uint16_t SCENE_FLAG_CONSTRAIN_MOUSE = 1 << 0;
+
+    /// scene::flags bit 1: the scene shows the game UI overlay and the pointer.
+    constexpr uint16_t SCENE_FLAG_SHOW_UI = 1 << 1;
+
     static_assert(sizeof(scene) == 44, "scene must be exactly 44 bytes");
     static_assert(__builtin_offsetof(scene, background_bitmap_id) == 4, "background_bitmap_id must be at offset 4");
     static_assert(__builtin_offsetof(scene, offset) == 16, "offset must be at offset 16");
