@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.14.0)
+
+# Must precede project(): the toolchain file is processed during project() and
+# bakes -m${M68K_CPU} into CMAKE_<LANG>_FLAGS_INIT. Setting this afterwards
+# updates the cache but leaves the already-initialised flags on 68000.
+set(M68K_CPU "68020" CACHE STRING "Target CPU model" FORCE)
+
 project(NEONengine VERSION 1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-
-set(M68K_CPU "68020" CACHE STRING "Target CPU model" FORCE)
 
 # Lowercase project name for binaries and packaging
 string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
@@ -59,6 +63,10 @@ endif()
 # -fno-optimize-sibling-calls: Prevents tail-call optimization that generates invalid branches
 target_compile_options(${GAME_LINKED} PRIVATE -fno-optimize-sibling-calls)
 target_compile_options(ace PRIVATE -fno-optimize-sibling-calls)
+
+# logWrite() takes char*, so every string literal passed to it trips
+# -Wwrite-strings. Kept out of the toolchain flags so a fresh configure gets it.
+target_compile_options(${GAME_LINKED} PRIVATE -Wall -Wno-write-strings)
 add_custom_command(
     TARGET ${GAME_LINKED}
     PRE_BUILD
