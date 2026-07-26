@@ -70,12 +70,10 @@ namespace NEONengine
             simpleBufferDestroy(screen->pBuffer);
             viewDestroy(screen->pView);
             fadeDestroy(screen->pFade);
+            // Nothing may touch the struct past this point. Clearing the
+            // caller's own pointer is the caller's job; doing it here only ever
+            // cleared this function's copy of it.
             memFree(screen, sizeof(Screen));
-
-            screen->pBuffer = NULL;
-            screen->pView   = NULL;
-            screen->pFade   = NULL;
-            screen          = NULL;
         }
     }
 
