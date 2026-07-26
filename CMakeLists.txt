@@ -26,13 +26,15 @@ file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS src/*.h?? src/core/*.h?? src/states/
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
-# Debugging flag exposed via CMake specifically for your game code
+# Debugging flag exposed via CMake specifically for your game code.
+# add_compile_definitions rather than CMAKE_C_FLAGS: every engine source is C++,
+# so a C-only flag never reaches them.
 if(GAME_DEBUG)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DGAME_DEBUG")
+    add_compile_definitions(GAME_DEBUG)
 endif()
 
 if(ACE_TEST_RUNNER)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DACE_TEST_RUNNER")
+    add_compile_definitions(ACE_TEST_RUNNER)
 endif()
 
 # ACE

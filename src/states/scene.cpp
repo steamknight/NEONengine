@@ -333,6 +333,15 @@ namespace NEONengine
         // Hotspots stay inert for the length of a transition; letting them run
         // would put the hovered role back and undo the WAIT pointer.
         if (!transitioning) scene_hotspots_update();
+
+        // Timelines are held for the same span, and for a stronger reason: a
+        // transition is the scene ending, so anything a track did would be
+        // thrown away, and a keyframe running a script while a scene change is
+        // already pending could queue a second one. Ticked before the bobs so
+        // that whatever a later slice's keyframes move or show is drawn in the
+        // frame it happened.
+        if (!transitioning) scene_timeline_update();
+
         mousePointerUpdate();
         scene_bobs_update();
         scene_bobs_draw();

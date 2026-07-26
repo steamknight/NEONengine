@@ -1,4 +1,3 @@
-#define ACE_TEST_RUNNER
 #ifdef ACE_TEST_RUNNER
 
 #include "neonengine.h"
@@ -29,6 +28,7 @@
 #include "tests/noir_vm_tests.h"
 #include "tests/noir_vm_timeline_tests.h"
 #include "tests/noir_vm_value_ops_tests.h"
+#include "tests/track_clock_tests.h"
 
 namespace NEONengine::tests
 {
@@ -50,6 +50,7 @@ namespace NEONengine::tests
         RUN_SUITE(mtl_vector);
         RUN_SUITE(mtl_expected);
         RUN_SUITE(game_data);
+        RUN_SUITE(track_clock);
         RUN_SUITE(noir_vm);
         RUN_SUITE(noir_vm_data_move);
         RUN_SUITE(noir_vm_arithmetic);

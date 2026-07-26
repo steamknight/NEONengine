@@ -359,18 +359,34 @@ namespace NEONengine::data
     static_assert(__builtin_offsetof(keyframe, payload) == 4, "payload must be at offset 4");
 
     /**
+     * @brief What a track does when its playhead reaches the end of a cycle.
+     *
+     * The enumerators are the record's own ids, so track::loop_mode converts
+     * straight to one of these.
+     */
+    enum class loop_mode : uint8_t
+    {
+        NONE      = 0,  ///< Play once and stop.
+        RESTART   = 1,  ///< Jump back to the start and play forwards again.
+        PING_PONG = 2,  ///< Play back to the start in reverse, then forwards again.
+    };
+
+    /**
      * @brief 'TRAK' element: one independently playable track of a scene timeline.
      *
      * A Collection element, 12 bytes. A track owns a contiguous run of keyframes
      * and its own clock, so several tracks in one timeline run concurrently and
      * independently. Duration, loop mode and loop count belong here rather than
      * to the timeline because each track loops on its own terms.
+     *
+     * @c duration is a playhead *position*, not a count of frames: a keyframe may
+     * sit exactly on it, so it is reached and occupied like any other position.
      */
     struct track
     {
         range keyframe_range;  ///< 0:  KEYS range.
-        uint16_t duration;     ///< 4:  Duration in PAL frames.
-        uint8_t loop_mode;     ///< 6:  0 None, 1 Restart, 2 PingPong.
+        uint16_t duration;     ///< 4:  Last playhead position, in PAL frames.
+        uint8_t loop_mode;     ///< 6:  A data::loop_mode.
         uint8_t loop_count;    ///< 7:  Complete cycles; 0 = infinite.
         uint8_t flags;         ///< 8:  bit0 auto_start.
         uint8_t reserved0;     ///< 9:  Reserved, zero.
