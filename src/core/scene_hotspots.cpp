@@ -30,6 +30,7 @@ namespace NEONengine
         uint16_t s_hovered = NO_HOTSPOT;  ///< Scene-local index under the pointer.
         uint16_t s_pressed = NO_HOTSPOT;  ///< Scene-local index the press latched onto.
         bool s_was_down    = false;       ///< Last frame's button state, for edges.
+        bool s_resyncButton = false;      ///< Adopt the button state, skip edges.
 
         /// Scene-space box enclosing every hotspot; maxima are exclusive.
         uint16_t s_min_x = 0;
@@ -110,7 +111,11 @@ namespace NEONengine
         s_count   = 0;
         s_hovered = NO_HOTSPOT;
         s_pressed = NO_HOTSPOT;
+        // The loop was blocked through the load, so whatever the button did in
+        // that time went unseen; the next update resamples instead of guessing.
+        s_resyncButton = true;
         s_enabled.clear();
+        scene_bobs_hide_caption();
     }
 
     void scene_hotspots_load(data::scene const& scene)
@@ -187,7 +192,27 @@ namespace NEONengine
 
     void scene_hotspots_update()
     {
-        if (s_count == 0) return;
+        auto const is_down = mouseCheck(MOUSE_PORT_1, MOUSE_LMB) != 0;
+
+        // A transition blocks or skips this update for many frames, so the
+        // button may have moved unseen. Adopt its state without inventing an
+        // edge, or a press begun during a load would activate in the new scene.
+        if (s_resyncButton)
+        {
+            s_resyncButton = false;
+            s_was_down     = is_down;
+        }
+
+        // A scene with nothing interactive still has to release the pointer:
+        // the transition that loaded it left the WAIT role showing, and nothing
+        // below runs to put the default back.
+        if (s_count == 0)
+        {
+            scene_bobs_hide_caption();
+            mousePointerSwitch(mouse_pointer::DEFAULT);
+            s_was_down = is_down;
+            return;
+        }
 
         // Bounds are authored in scene space while the pointer reports display
         // space, so shift the one pointer rather than every hotspot.
@@ -227,6 +252,17 @@ namespace NEONengine
         auto const prev_hovered = s_hovered;
         s_hovered = hit;
 
+        // The caption names what the pointer is over, so it follows the pointer
+        // for as long as the hover lasts and disappears with it.
+        if (hit != NO_HOTSPOT)
+        {
+            scene_bobs_show_caption(hit, pointer_x, pointer_y);
+        }
+        else
+        {
+            scene_bobs_hide_caption();
+        }
+
         // The pointer shows what the hotspot under it would do, and falls back
         // to the plain arrow over open scenery.
         auto const role = (hit != NO_HOTSPOT)
@@ -234,7 +270,6 @@ namespace NEONengine
             : mouse_pointer::DEFAULT;
         mousePointerSwitch(role);
 
-        auto const is_down       = mouseCheck(MOUSE_PORT_1, MOUSE_LMB) != 0;
         bool const pressed_edge  = is_down && !s_was_down;
         bool const released_edge = !is_down && s_was_down;
         s_was_down               = is_down;

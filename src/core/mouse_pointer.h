@@ -43,6 +43,15 @@ namespace NEONengine
     void mousePointerSwitch(mouse_pointer newPointer);
 
     /**
+     * @brief Forces the cursor's colors back into the live palette.
+     *
+     * A fade dims every entry, so the pointer disappears during the blacked-out
+     * stretch of a scene load. Call this when the pointer has to stay readable
+     * through work that blocks the game loop; the next fade undoes it.
+     */
+    void mousePointerLightColors();
+
+    /**
      * @brief Moves the pointer to the mouse. Call once per frame.
      */
     void mousePointerUpdate();

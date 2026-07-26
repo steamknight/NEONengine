@@ -9,11 +9,12 @@
  * hotspot's state, which scene_hotspots reports through
  * scene_bobs_set_hotspot_frame().
  *
- * Scope of the current slice: instances are drawn in GFXI order and hotspot
- * graphics on top of them. Deliberately not handled yet: z-order sorting and
- * runtime move/visibility. ACE also does no off-screen clipping and tracks bob
- * counts/undraw size in 8-/16-bit fields, so scenes must be validated/capped
- * (editor side) before many or off-screen bobs are used.
+ * Scope of the current slice: instances are drawn in GFXI order, hotspot
+ * graphics on top of them, and the hover caption above everything. Deliberately
+ * not handled yet: z-order sorting and runtime move/visibility. ACE also does no
+ * off-screen clipping and tracks bob counts/undraw size in 8-/16-bit fields, so
+ * scenes must be validated/capped (editor side) before many or off-screen bobs
+ * are used.
  */
 
 #ifndef __SCENE_BOBS_H__INCLUDED__
@@ -85,6 +86,32 @@ namespace NEONengine
      * Call from the scene loop each frame, before the screen is flipped.
      */
     void scene_bobs_draw();
+
+    /**
+     * @brief Shows the hotspot @p index's hover caption anchored near the pointer.
+     *
+     * @p anchorX and @p anchorY are the pointer position in display space; the
+     * caption is centred on it and pushed inside the screen edges, flipping
+     * above the pointer when it would not fit below. Hotspots without a hover
+     * string, or whose string is empty, show nothing.
+     *
+     * @param index Scene-local hotspot index, as scene_hotspots numbers them.
+     */
+    void scene_bobs_show_caption(uint16_t index, uint16_t anchorX, uint16_t anchorY);
+
+    /**
+     * @brief Stops drawing the hover caption.
+     */
+    void scene_bobs_hide_caption();
+
+    /**
+     * @brief Re-renders every caption from the language now in force.
+     *
+     * Captions are rendered once per scene from the active string table, so a
+     * language change must rebuild them. Reads nothing from disk but allocates
+     * through ACE's font helpers, so call under a system-use guard.
+     */
+    void scene_bobs_reload_captions();
 }  // namespace NEONengine
 
 #endif  // __SCENE_BOBS_H__INCLUDED__

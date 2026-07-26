@@ -58,6 +58,18 @@ namespace NEONengine
     void screenClear(Screen* screen, UBYTE ubColorIndex);
 
     /**
+     * @brief Whether the screen is part-way through fading out.
+     *
+     * A scene transition spans the script's fade-out and the load that follows,
+     * with the two separated by frames in which nothing is pending. Callers that
+     * must treat the whole span as one event can ask here instead of tracking
+     * the script's progress themselves.
+     *
+     * @param screen The screen to query.
+     */
+    bool screenIsFadingOut(Screen* screen);
+
+    /**
      * @brief Fades the screen to black
      *
      * @param screen The screen to fade

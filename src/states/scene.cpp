@@ -1,6 +1,7 @@
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
+#include <ace/managers/copper.h>
 #include <ace/managers/log.h>
 #include <ace/managers/system.h>
 
@@ -25,10 +26,36 @@ namespace NEONengine
         constexpr uint32_t MUSIC_KEEP    = 0xFFFFFFFF;
         constexpr uint32_t MUSIC_SILENCE = 0xFFFFFFFE;
 
-        // These scenes are full-screen (no UI overlay yet), so the background
-        // palette is loaded straight into indices 0.. rather than the 80..255
-        // scene band; revisit when UI-overlay scenes arrive.
+        constexpr uint16_t SCENE_FLAG_SHOW_UI = 1 << 1;  ///< scene.flags bit 1.
+
+        /// UI colors occupy palette indices 0..31.
+        constexpr UWORD UI_PALETTE_COLORS = 32;
+
+        // Backgrounds are authored against all 256 entries rather than the
+        // 80..255 scene band, so the whole palette is loaded and the UI band is
+        // restored afterwards for scenes that show UI. Revisit if a background
+        // ever needs to keep its own colors in 0..31 alongside the UI.
         constexpr UWORD SCENE_PALETTE_COLORS = 256;
+
+        /**
+         * @brief Puts the pointer into its WAIT role and makes it visible.
+         *
+         * Three things have to happen before the loop blocks, because none of
+         * them reach the hardware on their own: the sprite has to be published
+         * (spriteProcessChannel only writes the copper back buffer, so without
+         * copProcessBlocks the swap never happens and the old cursor stays), the
+         * cursor's colors have to be forced back over the fade that blacked
+         * them, and the pointer has to be positioned. scene_hotspots_update()
+         * puts the real role back once the loop resumes, and the next fade the
+         * colors.
+         */
+        void show_wait_pointer()
+        {
+            mousePointerSwitch(mouse_pointer::WAIT);
+            mousePointerLightColors();
+            mousePointerUpdate();
+            copProcessBlocks();
+        }
 
         /**
          * @brief Apply a script's SET_LANG request, reporting what took effect.
@@ -40,6 +67,15 @@ namespace NEONengine
         {
             auto const requested = g_pEngine->take_pending_language();
             g_pEngine->set_language(requested);
+
+            // Captions were rendered from the table that just went away, so
+            // rebuild them; ACE's font helpers call systemUse() to allocate.
+            // A pending scene is about to rebuild them anyway.
+            if (!g_pEngine->has_pending_scene())
+            {
+                mtl::system_use_guard guard;
+                scene_bobs_reload_captions();
+            }
 
             // The language's own name proves the table really swapped. Records
             // always carry a terminator, so the view goes straight to "%s".
@@ -81,7 +117,9 @@ namespace NEONengine
                     ace::paletteLoadFromFd(gd.open_asset(ref.palette_hash),
                         screenGetPalette(g_mainScreen),
                         SCENE_PALETTE_COLORS);
+
                     auto bg = ace::bitmapCreateFromFd(gd.open_asset(ref.bitmap_hash), 0);
+
                     if (bg)
                     {
                         // A planar blit only writes the source's own bitplanes, so a
@@ -103,6 +141,16 @@ namespace NEONengine
                             mtl::to<WORD>(sc.height),
                             MINTERM_COPY);
                     }
+                }
+
+                // The background claims all 256 entries, which buries the UI
+                // colors loaded at boot. A scene that shows UI needs them back,
+                // so reload the band over the top; a scene that does not keeps
+                // the background's own colors there.
+                if ((sc.flags & SCENE_FLAG_SHOW_UI) != 0)
+                {
+                    ace::paletteLoadFromFd(gd.open_asset(gd.ui_state().ui_palette_hash),
+                        screenGetPalette(g_mainScreen), UI_PALETTE_COLORS);
                 }
 
                 // Mirror the freshly drawn background into the other buffer so the
@@ -161,23 +209,45 @@ namespace NEONengine
             mtl::system_use_guard guard;  // OS on for the pak read.
             mousePointerCreate();
         }
+        show_wait_pointer();
         load_scene(g_pEngine->data().config().boot_scene_id);
     }
 
     void sceneProcess(void)
     {
         g_pEngine->vm().update();
+
+        // A transition runs from the script's fade-out through the load that
+        // follows it, and in the frames between the two nothing is pending.
+        // Treating the whole span as one event keeps the pointer on WAIT instead
+        // of flicking back to its normal role in that gap.
+        bool const transitioning = g_pEngine->has_pending_language()
+            || g_pEngine->has_pending_scene() || screenIsFadingOut(g_mainScreen);
+
+        // Cheap and idempotent: the frame's own mousePointerUpdate() and
+        // screenProcess() publish it, so the fade needs nothing special.
+        if (transitioning) mousePointerSwitch(mouse_pointer::WAIT);
+
         // Language before scene: a script that switches language and then leaves
         // should present the next scene in the language it just chose.
         if (g_pEngine->has_pending_language())
         {
+            // Re-renders every caption under a system-use guard, so it blocks
+            // for long enough to need the pointer published first.
+            show_wait_pointer();
             apply_pending_language();
         }
         if (g_pEngine->has_pending_scene())
         {
+            // The one case that cannot wait for the end of the frame, because
+            // loading blocks the loop and the fade left the palette black.
+            show_wait_pointer();
             load_scene(g_pEngine->take_pending_scene());
         }
-        scene_hotspots_update();
+
+        // Hotspots stay inert for the length of a transition; letting them run
+        // would put the hovered role back and undo the WAIT pointer.
+        if (!transitioning) scene_hotspots_update();
         mousePointerUpdate();
         scene_bobs_update();
         scene_bobs_draw();

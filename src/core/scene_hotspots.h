@@ -3,9 +3,9 @@
  * @brief Runs a scene's HOTS interaction regions against the mouse.
  *
  * Scope of the current slice: hit-testing by z-order, the hover/press/activate
- * state machine, and dispatching a click to its script and scene transition.
- * Deliberately not handled yet: the per-hotspot state graphic, the hover
- * caption, and driving the cursor from the CURS sheet.
+ * state machine, dispatching a click to its script and scene transition, and
+ * showing the hovered hotspot's caption. Deliberately not handled yet: driving
+ * the cursor from the CURS sheet.
  */
 
 #ifndef __SCENE_HOTSPOTS_H__INCLUDED__

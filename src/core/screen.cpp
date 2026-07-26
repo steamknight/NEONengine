@@ -126,6 +126,11 @@ namespace NEONengine
         fadeSet(screen->pFade, FADE_STATE_OUT, ubDuration, ubFadeMusic, cbOnDone);
     }
 
+    bool screenIsFadingOut(Screen* screen)
+    {
+        return screen->pFade->eState == FADE_STATE_OUT;
+    }
+
     void screenFadeFromBlack(Screen* screen,
         UBYTE ubDuration,
         UBYTE ubFadeMusic,
