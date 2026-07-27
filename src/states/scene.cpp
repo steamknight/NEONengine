@@ -75,6 +75,15 @@ namespace NEONengine
         {
             auto& gd = g_pEngine->data();
 
+            // The palette about to be loaded lands on top of whatever the
+            // timeline's palette cycles have turned, and their record of how far
+            // they have turned would then describe colors that are no longer
+            // there. Handing the bands back first keeps the two in agreement.
+            // This runs for a language repaint as well as a scene load, and it
+            // has to: that repaint reloads the very same palette, mid-scene,
+            // with cycles still running.
+            scene_timeline_restore_palette();
+
             if (sc.background_bitmap_id != data::NO_ID)
             {
                 auto const& ref = gd.bitmaps()[sc.background_bitmap_id];

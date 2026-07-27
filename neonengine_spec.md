@@ -749,7 +749,36 @@ Each keyframe (12 bytes): time, type enum, flags (interpolation/fire-once), 8-by
 
 - **GFX_MOVE** — Move graphic instance (with optional linear interpolation)
 - **GFX_VISIBILITY** — Show/hide graphic instance
-- **PALETTE_CYCLE_START/END** — Start/stop palette rotation
+- **PALETTE_CYCLE_START/END** — Rotate a band of palette entries. The pair is a
+  *span*, not two events: the band belongs to the cycle for as long as the
+  playhead stands within `[start, end)`, and the rotation is read off the
+  playhead's position rather than stepped by a counter, exactly as an
+  interpolated `GFX_MOVE` is. That has three consequences worth relying on. A
+  ping-pong track's return leg walks its positions backwards, so the band
+  rotates backwards with it, at no cost and with no direction flag in the
+  format. A band outside its span holds where the span left it rather than
+  snapping back, so a ping-pong goes out, holds, and returns the way it came
+  with no jump anywhere. And a cycle costs no color arithmetic at all, because
+  it moves colors the scene already has: one rotation of a band of entries,
+  toward the higher index, with the last wrapping round to the first.
+
+  The one discontinuity left is a `Restart` loop whose span is not a whole
+  number of revolutions: it lands back on offset zero at the position the span
+  opens at. A restart is a discontinuity by definition, and authoring the span
+  so that `end - start == n * width * delay` removes even that one.
+
+  A cycle rotates the *reference* palette (`screenGetPalette()`, which is what
+  the scene looks like at full brightness) rather than the display, so a fade
+  composes with a running cycle for free — the fade already rebuilds the display
+  from the reference every frame and picks the rotation up on its way past.
+  Where no fade is running, `palette_cycle_commit()` carries the turned bands
+  across itself, scaled to the brightness the screen currently stands at, and
+  rebuilds the hardware palette once per frame however many bands moved.
+
+  Two bands of one track may not overlap, which Build enforces. Two bands of
+  *different* tracks may, because their clocks are independent and Build cannot
+  know where either playhead will be; overlapping rotations do not commute, so
+  an authored overlap scrambles both and is left to do so.
 - **SFX_PLAY** — Play a sound effect. There is no stop: an effect is a one-shot
   that is over long before anything could ask it to stop, so the replayer picks
   the channel and hands it back to the music when the sound ends. Type id 5 was

@@ -45,6 +45,12 @@ namespace NEONengine
         pFade->uwColorCount  = uwColorCount;
         pFade->uwExemptFirst = uwExemptFirst;
         pFade->uwExemptCount = uwExemptCount;
+
+        // The display is created holding the palette it was handed, so it starts
+        // at full brightness. Anything that writes the display outside a fade has
+        // to scale by this or it would paint at a brightness the rest of the
+        // screen is not at.
+        pFade->ubRatio = 255;
         pFade->pPaletteRef
             = (UWORD *)memAlloc(sizeof(ULONG) * uwMaxColors, MEMF_FAST | MEMF_CLEAR);
 
@@ -93,6 +99,7 @@ namespace NEONengine
             if (pFade->eState == FADE_STATE_OUT) { ubCnt = pFade->ubCntEnd - pFade->ubCnt; }
 
             UBYTE ubRatio = (255 * ubCnt) / pFade->ubCntEnd;
+            pFade->ubRatio = ubRatio;
             auto *pRef    = (ULONG *)pFade->pPaletteRef;
             auto *pLive   = (ULONG *)pFade->pView->pFirstVPort->pPalette;
 

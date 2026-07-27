@@ -9,6 +9,7 @@
 
 #include "core/game_data.h"
 #include "core/music.h"
+#include "core/palette_cycle.h"
 #include "core/scene_audio.h"
 #include "core/scene_bobs.h"
 
@@ -64,6 +65,58 @@ namespace NEONengine
 
         /// One slot per graphic instance the scene owns.
         mtl::vector<glide> s_glides;
+
+        /**
+         * @brief A band of palette entries one track turns while its playhead
+         *        stands inside a span.
+         *
+         * A cycle is a span, not a pair of events. Reading it off the playhead's
+         * position rather than firing it on a crossing is what makes it behave
+         * on a ping-pong track: the return leg walks the positions backwards, so
+         * the band turns backwards with it, and it re-enters the span at exactly
+         * the offset it left on, so the whole out-and-back is continuous. Fired
+         * as events, a reverse leg would meet the END first and leave the band
+         * turning everywhere except inside its own span.
+         *
+         * @c offset is the only state that has to be kept, because it describes
+         * the palette as it actually stands: a rotation is a permutation, so
+         * turning the rest of the way round restores the authored order exactly
+         * and no copy of it is needed.
+         */
+        struct cycle_span
+        {
+            uint16_t track  = 0;  ///< Scene-local track whose playhead drives it.
+            uint16_t t0     = 0;  ///< Position the span opens at.
+            uint16_t t1     = 0;  ///< Position it closes at; always > t0.
+            uint16_t delay  = 1;  ///< Frames each step of the turn is held for.
+            uint16_t width  = 0;  ///< Entries in the band; always >= 2.
+            uint16_t offset = 0;  ///< How far the band currently stands turned.
+            uint8_t first   = 0;  ///< First palette entry of the band.
+            uint8_t last    = 0;  ///< Last entry of the band, inclusive.
+
+            /// Whether the band turns for one traversal of its span only.
+            bool fire_once = false;
+
+            /// Whether the playhead stood inside the span last frame.
+            bool inside = false;
+
+            /// Whether a fire_once band has had its one traversal.
+            bool spent = false;
+        };
+
+        /**
+         * @brief Every band this scene's timeline turns, in no particular order.
+         *
+         * Two bands of one track may not overlap, which Build enforces. Two
+         * bands of different tracks may, because their clocks are independent
+         * and Build cannot know where either playhead will be. Overlapping
+         * rotations do not commute, so an authored overlap scrambles both bands
+         * and neither offset describes the palette any more. That is left to
+         * happen: it costs nothing that matters - the next scene load replaces
+         * the palette outright - and correcting it would mean undoing and
+         * reapplying every band on every frame any one of them stepped.
+         */
+        mtl::vector<cycle_span> s_cycles;
 
         /**
          * @brief The ANIM_WAIT a blocked script is sitting on, if any.
@@ -124,6 +177,8 @@ namespace NEONengine
             {
                 case data::keyframe_type::GFX_MOVE:
                 case data::keyframe_type::GFX_VISIBILITY:
+                case data::keyframe_type::PALETTE_CYCLE_START:
+                case data::keyframe_type::PALETTE_CYCLE_END:
                 case data::keyframe_type::SFX_PLAY:
                 case data::keyframe_type::MUSIC_PLAY:
                 case data::keyframe_type::MUSIC_STOP:
@@ -151,6 +206,36 @@ namespace NEONengine
          * the two are read the same way where only the id is wanted.
          */
         uint16_t instance_of(data::keyframe const& key)
+        {
+            return *mtl::force_to<uint16_t const*>(key.payload);
+        }
+
+        /// @brief Whether @p key opens a palette cycle's span.
+        bool is_cycle_start(data::keyframe const& key)
+        {
+            return mtl::to<data::keyframe_type>(key.type)
+                == data::keyframe_type::PALETTE_CYCLE_START;
+        }
+
+        /// @brief Whether @p key closes one.
+        bool is_cycle_end(data::keyframe const& key)
+        {
+            return mtl::to<data::keyframe_type>(key.type) == data::keyframe_type::PALETTE_CYCLE_END;
+        }
+
+        /// @brief @p key read as a PALETTE_CYCLE_START; only when is_cycle_start() holds.
+        data::palette_cycle_start_payload const& cycle_start_of(data::keyframe const& key)
+        {
+            return *mtl::force_to<data::palette_cycle_start_payload const*>(key.payload);
+        }
+
+        /**
+         * @brief The cycle id @p key names, for the two types that name one.
+         *
+         * Both palette cycle payloads open with the id, so a START and an END
+         * are read the same way where only the id is wanted.
+         */
+        uint16_t cycle_id_of(data::keyframe const& key)
         {
             return *mtl::force_to<uint16_t const*>(key.payload);
         }
@@ -410,6 +495,103 @@ namespace NEONengine
         }
 
         /**
+         * @brief Turns every palette band to where its track's playhead says.
+         *
+         * Read off the playhead for the same reasons the glides are, and with
+         * one more: a ping-pong's return leg walks the positions backwards, so
+         * the band simply turns backwards with it, and re-enters its span on
+         * exactly the offset it left on.
+         *
+         * Only the difference from where the band already stands is applied, so
+         * the usual frame turns it by one step or not at all, and a playhead
+         * that jumped costs one pass over the band rather than one per step.
+         */
+        void update_cycles()
+        {
+            for (auto& span : s_cycles)
+            {
+                auto const& clock       = s_clocks[span.track];
+                uint16_t const position = clock.position();
+
+                // Half-open: the band is the START's to turn right up to the
+                // END's position, and the END's position itself belongs to
+                // whatever comes next.
+                bool const inside = clock.is_running() && position >= span.t0 && position < span.t1;
+
+                // A fire_once band turns for one traversal and no more, so it is
+                // spent by leaving the span rather than by entering it: leaving
+                // is the point at which the traversal is over.
+                if (span.fire_once && span.inside && !inside) span.spent = true;
+                span.inside = inside;
+
+                // A band outside its span is left standing where the span left
+                // it rather than being put back. Putting it back would be a jump
+                // in the middle of the track: the offset the span ends on is
+                // wherever the rotation had got to, and a ping-pong re-enters at
+                // exactly that offset on its way back, so snapping to authored
+                // order at the end would throw the band home and then straight
+                // back out again a moment later. Holding makes a ping-pong
+                // continuous everywhere: out, hold, and back the way it came.
+                //
+                // The one place a jump remains is a RESTART loop whose span is
+                // not a whole number of revolutions, which lands back on offset
+                // zero at the position the span opens at. A restart is a
+                // discontinuity by definition, and authoring the span as
+                // (t1 - t0) == n * width * delay removes even that one.
+                uint16_t const wanted = (inside && !span.spent)
+                    ? mtl::to<uint16_t>(((position - span.t0) / span.delay) % span.width)
+                    : span.offset;
+
+                if (wanted == span.offset) continue;
+
+                // Always forwards, because a rotation is cyclic: turning the
+                // rest of the way round is how the band goes back, and it is the
+                // same one pass either way.
+                uint16_t const steps
+                    = mtl::to<uint16_t>((wanted + span.width - span.offset) % span.width);
+                palette_cycle_rotate(span.first, span.last, steps);
+                span.offset = wanted;
+            }
+        }
+
+        /**
+         * @brief Leaves every band of this scene standing as it was authored.
+         *
+         * A rotation is a permutation, so turning each band the rest of the way
+         * round restores it exactly. Worth doing on the way out because a scene
+         * without a background of its own loads no palette and would otherwise
+         * inherit the last scene's bands mid-turn.
+         */
+        void restore_cycles()
+        {
+            for (auto& span : s_cycles)
+            {
+                if (span.offset == 0) continue;
+                palette_cycle_rotate(
+                    span.first, span.last, mtl::to<uint16_t>(span.width - span.offset));
+                span.offset = 0;
+            }
+        }
+
+        /**
+         * @brief Offers the bands of the track at @p index their traversal again.
+         *
+         * The counterpart to clear_fired(): a run is the unit a fire_once band
+         * turns once within. The offset is left alone, because it describes the
+         * palette as it actually stands rather than a policy; the band picks up
+         * from there when the playhead next reaches the span.
+         */
+        void clear_cycles(uint16_t index)
+        {
+            for (auto& span : s_cycles)
+            {
+                if (span.track != index) continue;
+                span.inside = false;
+                span.spent  = false;
+            }
+        }
+
+        /**
          * @brief Runs @p key as a GFX_MOVE and works out what comes next.
          *
          * The instance lands exactly on the keyframe's position, and the span
@@ -553,6 +735,15 @@ namespace NEONengine
                     NE_LOG("timeline: MUSIC_STOP");
                     return true;
 
+                case data::keyframe_type::PALETTE_CYCLE_START:
+                case data::keyframe_type::PALETTE_CYCLE_END:
+                    // A palette cycle is a span the playhead stands inside, not
+                    // an event it crosses: update_cycles() reads it off the
+                    // position every frame, and these two records only say where
+                    // the span begins and ends. Nothing fires, so nothing here
+                    // spends a fire_once either - the span keeps that itself.
+                    return false;
+
                 default:
                     // Every other type is reported once at load and ignored
                     // here, so that an unimplemented keyframe on a looping track
@@ -625,6 +816,82 @@ namespace NEONengine
         }
 
         /**
+         * @brief Collects the palette bands the track at @p index turns.
+         *
+         * A START and its END are paired here rather than at fire time, so that
+         * a band whose records do not make a span is complained about once at
+         * load instead of fifty times a second. The two are always in the same
+         * track, which is why an END can name nothing but a cycle id and still
+         * be unambiguous.
+         */
+        void collect_cycles(uint16_t track_index, data::track const& track)
+        {
+            auto const keys = track_keys(track);
+            for (uint16_t offset = 0; offset < keys.size(); ++offset)
+            {
+                auto const& open = keys[offset];
+                if (!is_cycle_start(open)) continue;
+
+                auto const& payload = cycle_start_of(open);
+
+                uint16_t close = NO_KEY;
+                for (uint16_t other = 0; other < keys.size(); ++other)
+                {
+                    if (!is_cycle_end(keys[other])) continue;
+                    if (cycle_id_of(keys[other]) != payload.cycle_id) continue;
+                    if (keys[other].time <= open.time) continue;
+                    close = other;
+                    break;
+                }
+
+                // The editor pairs these and rejects the rest, so any of the
+                // following means the pak was built by something else.
+                if (close == NO_KEY)
+                {
+                    NE_LOG("  track %hu cycle %hu has no end after it; it will not turn",
+                        track_index,
+                        payload.cycle_id);
+                    continue;
+                }
+
+                // A reversed or single-entry band is not a band, and turning one
+                // would walk off the end of the palette rather than merely look
+                // wrong, so it is refused rather than clamped.
+                if (payload.last <= payload.first)
+                {
+                    NE_LOG("  track %hu cycle %hu spans entries %hhu..%hhu, which is not a band",
+                        track_index,
+                        payload.cycle_id,
+                        payload.first,
+                        payload.last);
+                    continue;
+                }
+
+                cycle_span span;
+                span.track = track_index;
+                span.t0    = open.time;
+                span.t1    = keys[close].time;
+                span.first = payload.first;
+                span.last  = payload.last;
+                span.width = mtl::to<uint16_t>(payload.last - payload.first + 1);
+
+                // Zero frames a step is no step at all, and dividing by it traps
+                // rather than misbehaving, so it becomes the fastest turn there
+                // is instead.
+                span.delay = payload.delay == 0 ? 1 : payload.delay;
+                if (payload.delay == 0)
+                {
+                    NE_LOG("  track %hu cycle %hu holds each step for 0 frames; using 1",
+                        track_index,
+                        payload.cycle_id);
+                }
+
+                span.fire_once = (open.flags & data::KEYFRAME_FLAG_FIRE_ONCE) != 0;
+                s_cycles.push_back(span);
+            }
+        }
+
+        /**
          * @brief Fires whatever the track at @p track_index has under its playhead.
          */
         void fire_keyframes(uint16_t track_index, data::track const& track)
@@ -678,6 +945,12 @@ namespace NEONengine
         s_key_base.clear();
         s_fired.clear();
         s_glides.clear();
+        s_cycles.clear();
+    }
+
+    void scene_timeline_restore_palette()
+    {
+        restore_cycles();
     }
 
     mtl::span<data::track> scene_timeline_tracks()
@@ -808,6 +1081,7 @@ namespace NEONengine
                 }
 
                 if (track.flags & data::TRACK_FLAG_AUTO_START) clock.start();
+                collect_cycles(index, track);
             }
             s_clocks.push_back(clock);
         }
@@ -870,6 +1144,11 @@ namespace NEONengine
         // a span's ends, so nothing is drawn twice differently.
         update_glides();
 
+        // Read off the playhead alongside the movements and for the same
+        // reason: a band belongs to the position the playhead stands on this
+        // frame, not the one it is about to move to.
+        update_cycles();
+
         auto const tracks = scene_timeline_tracks();
         for (uint16_t index = 0; index < s_count; ++index)
         {
@@ -916,6 +1195,10 @@ namespace NEONengine
                     break;
             }
         }
+
+        // Once every band has been turned, so that a frame which moved several
+        // of them still rebuilds the hardware palette only the once.
+        palette_cycle_commit();
     }
 
     void scene_timeline_play(uint16_t name_id)
@@ -948,6 +1231,7 @@ namespace NEONengine
         }
 
         clear_fired(index, track);
+        clear_cycles(index);
         s_clocks[index].start();
         prime_glides(index, track);
         NE_LOG("timeline: ANIM_PLAY started track %hu (name %hu)", index, name_id);

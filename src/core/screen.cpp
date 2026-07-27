@@ -135,6 +135,20 @@ namespace NEONengine
         return screen->pFade->eState == FADE_STATE_OUT;
     }
 
+    bool screenFadeOwnsPalette(Screen* screen)
+    {
+        // The two states fadeProcess() steps over. Asked before screenProcess()
+        // runs, so this is what the fade is about to do this frame, not what it
+        // did last one.
+        return screen->pFade->eState != FADE_STATE_IDLE
+            && screen->pFade->eState != FADE_STATE_EVENT_FIRED;
+    }
+
+    UBYTE screenPaletteRatio(Screen* screen)
+    {
+        return screen->pFade->ubRatio;
+    }
+
     void screenFadeFromBlack(Screen* screen,
         UBYTE ubDuration,
         UBYTE ubFadeMusic,

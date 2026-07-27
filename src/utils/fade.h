@@ -27,6 +27,7 @@ namespace NEONengine
         UBYTE isMusic;
         UWORD uwExemptFirst;  ///< First palette entry the fade leaves alone.
         UWORD uwExemptCount;  ///< How many it leaves alone; 0 fades everything.
+        UBYTE ubRatio;        ///< Brightness the display currently stands at, 0-255.
         UWORD* pPaletteRef;
         tCbFadeOnDone cbOnDone;
         tView *pView;

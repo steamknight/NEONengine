@@ -97,6 +97,36 @@ namespace NEONengine
     bool screenIsFadingOut(Screen* screen);
 
     /**
+     * @brief Whether a fade will repaint the display palette this frame.
+     *
+     * The palette has two layers: screenGetPalette() is what the scene looks
+     * like at full brightness, and the display holds that scaled by how bright
+     * the screen currently is. A fade rebuilds the whole display layer from the
+     * reference every frame it runs, so anything else that changes the
+     * reference can leave the repaint to the fade rather than doing its own and
+     * paying for a second copperlist palette rebuild.
+     *
+     * True only while a fade will actually paint: a fade that has run out and is
+     * waiting to be noticed answers false, because it repaints nothing.
+     *
+     * @param screen The screen to query.
+     */
+    bool screenFadeOwnsPalette(Screen* screen);
+
+    /**
+     * @brief How bright the display currently stands, 0 to 255.
+     *
+     * The display holds the reference palette scaled by this. A fade leaves it
+     * wherever it finished, so a screen that has faded down and been left there
+     * still reads 0 long after the fade went idle. Anything writing the display
+     * outside a fade has to scale by this, or it would paint its own entries at
+     * a brightness the rest of the screen is not at.
+     *
+     * @param screen The screen to query.
+     */
+    UBYTE screenPaletteRatio(Screen* screen);
+
+    /**
      * @brief Fades the screen to black
      *
      * @param screen The screen to fade

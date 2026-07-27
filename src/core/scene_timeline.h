@@ -55,6 +55,21 @@ namespace NEONengine
     void scene_timeline_clear();
 
     /**
+     * @brief Puts every palette band this scene turns back as it was authored.
+     *
+     * A rotation is a permutation, so turning each band the rest of the way
+     * round restores it exactly, and the bands are then held to be untouched.
+     *
+     * Call this before anything replaces the reference palette. A cycle's
+     * record of how far it has turned describes the palette as it actually
+     * stands, so loading a new one over the top of a turned band would strand
+     * that record against colors it no longer describes: the band would be
+     * corrected only by the difference from then on, and never brought back
+     * into agreement.
+     */
+    void scene_timeline_restore_palette();
+
+    /**
      * @brief Advances every running track's playhead by one frame.
      *
      * Call from the scene loop each frame. genericProcess runs the state loop

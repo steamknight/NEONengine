@@ -432,6 +432,46 @@ namespace NEONengine::data
     static_assert(sizeof(gfx_visibility_payload) == 8, "a keyframe payload is exactly 8 bytes");
 
     /**
+     * @brief 'KEYS' PALETTE_CYCLE_START payload: a rotating band of colors.
+     *
+     * @c first and @c last are inclusive, so the band is at least two entries
+     * wide, and the colors rotate towards the higher index with @c last wrapping
+     * round to @c first. @c delay is how many frames each step is held for.
+     *
+     * The pair is a span, not two events: the cycle owns its band for as long as
+     * the playhead stands within [start time, end time), and the END record only
+     * marks where that span closes. @c cycle_id ties the two records together
+     * and is dense across the whole timeline rather than per track, so that an
+     * END in one track cannot close a span another track owns.
+     */
+    struct palette_cycle_start_payload
+    {
+        uint16_t cycle_id;  ///< 0: Identifies the pair within the timeline.
+        uint8_t first;      ///< 2: First palette entry of the band.
+        uint8_t last;       ///< 3: Last palette entry of the band, inclusive.
+        uint16_t delay;     ///< 4: Frames each rotation step is held for.
+        uint16_t reserved;  ///< 6: Reserved, zero.
+    };
+
+    static_assert(sizeof(palette_cycle_start_payload) == 8, "a keyframe payload is exactly 8 bytes");
+    static_assert(
+        __builtin_offsetof(palette_cycle_start_payload, delay) == 4, "delay must be at offset 4");
+
+    /**
+     * @brief 'KEYS' PALETTE_CYCLE_END payload: where a rotating band's span ends.
+     *
+     * Names only the cycle it closes. Everything about the band itself lives on
+     * the START record.
+     */
+    struct palette_cycle_end_payload
+    {
+        uint16_t cycle_id;    ///< 0: Identifies the pair within the timeline.
+        uint8_t reserved[6];  ///< 2: Reserved, zero.
+    };
+
+    static_assert(sizeof(palette_cycle_end_payload) == 8, "a keyframe payload is exactly 8 bytes");
+
+    /**
      * @brief 'KEYS' SFX_PLAY payload: the sound to play.
      *
      * @c channel is authored but not read. Effects are one-shots, so the
