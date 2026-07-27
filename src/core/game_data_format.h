@@ -384,7 +384,9 @@ namespace NEONengine::data
         PALETTE_CYCLE_START = 2,
         PALETTE_CYCLE_END   = 3,
         SFX_PLAY            = 4,
-        SFX_STOP            = 5,
+        // 5 was SFX_STOP, and is not reused. A sound effect is a one-shot that
+        // is over long before anything could ask it to stop, so the type earned
+        // nothing; the VM never had an opcode for it either.
         MUSIC_PLAY          = 6,
         MUSIC_STOP          = 7,
         EXECUTE_SCRIPT      = 8,
@@ -428,6 +430,39 @@ namespace NEONengine::data
     };
 
     static_assert(sizeof(gfx_visibility_payload) == 8, "a keyframe payload is exactly 8 bytes");
+
+    /**
+     * @brief 'KEYS' SFX_PLAY payload: the sound to play.
+     *
+     * @c channel is authored but not read. Effects are one-shots, so the
+     * replayer is left to pick the least busy channel and hand it back to the
+     * music when the sound is done. The field stays in the format in case
+     * naming a channel ever earns its keep.
+     */
+    struct sfx_play_payload
+    {
+        uint32_t sfx_hash;    ///< 0: SFX pak-path hash.
+        int8_t channel;       ///< 4: Unused; -1 picks a channel, 0 and 1 name one.
+        uint8_t reserved[3];  ///< 5: Reserved, zero.
+    };
+
+    static_assert(sizeof(sfx_play_payload) == 8, "a keyframe payload is exactly 8 bytes");
+    static_assert(__builtin_offsetof(sfx_play_payload, channel) == 4, "channel must be at offset 4");
+
+    /**
+     * @brief 'KEYS' MUSIC_PLAY payload: the module to play.
+     */
+    struct music_play_payload
+    {
+        uint32_t music_hash;  ///< 0: MOD pak-path hash.
+        uint8_t loop;         ///< 4: Nonzero to repeat the song.
+        uint8_t reserved[3];  ///< 5: Reserved, zero.
+    };
+
+    static_assert(sizeof(music_play_payload) == 8, "a keyframe payload is exactly 8 bytes");
+    static_assert(__builtin_offsetof(music_play_payload, loop) == 4, "loop must be at offset 4");
+
+    // MUSIC_STOP carries no payload: every byte of it is reserved zero.
 
     /**
      * @brief 'KEYS' EXECUTE_SCRIPT payload: the function to run.

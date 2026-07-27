@@ -16,9 +16,9 @@
  * auto-start begin at their own position zero, every running track's playhead is
  * advanced once per frame, and the keyframes it lands on are fired. Scripts can
  * drive the rest by name through ANIM_PLAY / ANIM_STOP / ANIM_WAIT.
- * EXECUTE_SCRIPT, GFX_MOVE (with its interpolate flag) and GFX_VISIBILITY are
- * implemented; the other keyframe types are reported once when the scene loads
- * and skipped.
+ * EXECUTE_SCRIPT, GFX_MOVE (with its interpolate flag), GFX_VISIBILITY,
+ * SFX_PLAY, MUSIC_PLAY and MUSIC_STOP are implemented; the palette cycling
+ * types are reported once when the scene loads and skipped.
  *
  * A movement in progress belongs to the graphic instance rather than to the
  * track that started it, because an instance has one position: two tracks

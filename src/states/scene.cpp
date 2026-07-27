@@ -15,6 +15,7 @@
 #include "core/music.h"
 #include "core/noir_vm.h"
 #include "core/mouse_pointer.h"
+#include "core/scene_audio.h"
 #include "core/scene_bobs.h"
 #include "core/scene_hotspots.h"
 #include "core/scene_text.h"
@@ -228,6 +229,7 @@ namespace NEONengine
 
                 draw_backdrop(sc);
                 scene_bobs_load(sc);
+                scene_audio_load(sc);
                 scene_hotspots_load(sc);
                 scene_timeline_load(sc);
 
@@ -354,6 +356,11 @@ namespace NEONengine
         scene_timeline_clear();
         mousePointerDestroy();
         scene_bobs_destroy();
+        {
+            // Returns Chip RAM to the OS, so it needs the system back.
+            mtl::system_use_guard guard;
+            scene_audio_clear();
+        }
         musicFree();
         logBlockEnd("State: Scene");
     }

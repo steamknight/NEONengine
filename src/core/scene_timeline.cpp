@@ -8,6 +8,8 @@
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/music.h"
+#include "core/scene_audio.h"
 #include "core/scene_bobs.h"
 
 namespace NEONengine
@@ -108,7 +110,6 @@ namespace NEONengine
                 case data::keyframe_type::PALETTE_CYCLE_START: return "PALETTE_CYCLE_START";
                 case data::keyframe_type::PALETTE_CYCLE_END: return "PALETTE_CYCLE_END";
                 case data::keyframe_type::SFX_PLAY: return "SFX_PLAY";
-                case data::keyframe_type::SFX_STOP: return "SFX_STOP";
                 case data::keyframe_type::MUSIC_PLAY: return "MUSIC_PLAY";
                 case data::keyframe_type::MUSIC_STOP: return "MUSIC_STOP";
                 case data::keyframe_type::EXECUTE_SCRIPT: return "EXECUTE_SCRIPT";
@@ -123,6 +124,9 @@ namespace NEONengine
             {
                 case data::keyframe_type::GFX_MOVE:
                 case data::keyframe_type::GFX_VISIBILITY:
+                case data::keyframe_type::SFX_PLAY:
+                case data::keyframe_type::MUSIC_PLAY:
+                case data::keyframe_type::MUSIC_STOP:
                 case data::keyframe_type::EXECUTE_SCRIPT: return true;
                 default: return false;
             }
@@ -465,6 +469,43 @@ namespace NEONengine
             return true;
         }
 
+        /// @brief Runs @p key as an SFX_PLAY.
+        bool fire_sfx(data::keyframe const& key)
+        {
+            // Preloaded when the scene did, because a sound has to be resident
+            // in Chip RAM before it is asked for. The channel the payload names
+            // is deliberately not read; see scene_audio.
+            scene_audio_play(mtl::force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
+            return true;
+        }
+
+        /// @brief Runs @p key as a MUSIC_PLAY.
+        bool fire_music(data::keyframe const& key)
+        {
+            auto const& payload = *mtl::force_to<data::music_play_payload const*>(key.payload);
+
+            // Read here rather than preloaded with the scene: a module is far
+            // larger than a sound effect, and a scene may name several it never
+            // reaches. The cost is a hitch on the frame this fires. Nothing
+            // drifts, because the clock counts frames processed rather than
+            // time passed, but it is a stall and it is meant to be one.
+            mtl::system_use_guard guard;
+
+            auto mod = g_pEngine->data().open_asset(payload.music_hash);
+            if (!mod)
+            {
+                NE_LOG("timeline: no music asset for hash %08lx", mtl::to<ULONG>(payload.music_hash));
+                return false;
+            }
+
+            musicLoad(mtl::move(mod));
+            musicPlayCurrent(payload.loop);
+            NE_LOG("timeline: MUSIC_PLAY %08lx, loop %hu",
+                mtl::to<ULONG>(payload.music_hash),
+                mtl::to<uint16_t>(payload.loop));
+            return true;
+        }
+
         /// @brief Runs @p key as an EXECUTE_SCRIPT.
         bool fire_script(data::keyframe const& key, uint16_t track_index)
         {
@@ -503,7 +544,14 @@ namespace NEONengine
             {
                 case data::keyframe_type::GFX_MOVE: return fire_move(key, ctx);
                 case data::keyframe_type::GFX_VISIBILITY: return fire_visibility(key);
+                case data::keyframe_type::SFX_PLAY: return fire_sfx(key);
+                case data::keyframe_type::MUSIC_PLAY: return fire_music(key);
                 case data::keyframe_type::EXECUTE_SCRIPT: return fire_script(key, ctx.track);
+
+                case data::keyframe_type::MUSIC_STOP:
+                    musicStop();
+                    NE_LOG("timeline: MUSIC_STOP");
+                    return true;
 
                 default:
                     // Every other type is reported once at load and ignored

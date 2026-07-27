@@ -61,6 +61,14 @@ namespace NEONengine
         ptplayerEnableMusic(1);
     }
 
+    void musicStop(void)
+    {
+        // Not ptplayerStop(), which needs the module loading again afterwards
+        // and would take the sound effects down with it. Disabling music leaves
+        // the replayer running, so effects carry on and the song can resume.
+        ptplayerEnableMusic(0);
+    }
+
     void musicFree(void)
     {
         systemUse();

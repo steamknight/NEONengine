@@ -750,7 +750,12 @@ Each keyframe (12 bytes): time, type enum, flags (interpolation/fire-once), 8-by
 - **GFX_MOVE** — Move graphic instance (with optional linear interpolation)
 - **GFX_VISIBILITY** — Show/hide graphic instance
 - **PALETTE_CYCLE_START/END** — Start/stop palette rotation
-- **SFX/MUSIC_PLAY/STOP** — Audio control
+- **SFX_PLAY** — Play a sound effect. There is no stop: an effect is a one-shot
+  that is over long before anything could ask it to stop, so the replayer picks
+  the channel and hands it back to the music when the sound ends. Type id 5 was
+  once SFX_STOP and is not reused.
+- **MUSIC_PLAY / MUSIC_STOP** — Replace the song, or silence it while leaving
+  sound effects playing
 - **EXECUTE_SCRIPT** — Run a script function
 
 ### Timeline Data
