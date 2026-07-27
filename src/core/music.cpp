@@ -8,15 +8,31 @@ namespace NEONengine
 {
     static tPtplayerMod *s_currentMod;
 
+    /**
+     * @brief Stops whatever is playing and releases the current MOD.
+     *
+     * Clearing the pointer is the whole point: every caller tests it before
+     * destroying, so leaving it set behind a destroy hands the next caller a
+     * freed MOD to destroy a second time. Playback is stopped first because
+     * the replayer reads the sample data straight out of the MOD, so freeing
+     * one still being played pulls the ground out from under it.
+     *
+     * Does not touch systemUse/Unuse: one caller already holds the system and
+     * the others take it around a wider region.
+     */
+    static void musicReleaseCurrent(void)
+    {
+        if (!s_currentMod) return;
+
+        ptplayerStop();
+        ptplayerModDestroy(s_currentMod);
+        s_currentMod = 0;
+    }
+
     void musicLoad(char const *szFilePath)
     {
         systemUse();
-        if (s_currentMod)
-        {
-            ptplayerStop();
-            ptplayerModDestroy(s_currentMod);
-            s_currentMod = 0;
-        }
+        musicReleaseCurrent();
 
         s_currentMod = ptplayerModCreateFromPath(szFilePath);
 
@@ -29,18 +45,17 @@ namespace NEONengine
         // path overload this does not systemUse/Unuse: it runs inside a wider
         // system_use_guard region. ptplayerModCreateFromFd closes the file, so
         // ownership is released into it.
-        if (s_currentMod)
-        {
-            ptplayerStop();
-            ptplayerModDestroy(s_currentMod);
-            s_currentMod = 0;
-        }
+        musicReleaseCurrent();
 
         s_currentMod = ptplayerModCreateFromFd(pFile.release());
     }
 
     void musicPlayCurrent(UBYTE ubLoop)
     {
+        // A module that would not load leaves nothing to play, and
+        // ptplayerLoadMod takes the pointer without ever testing it.
+        if (!s_currentMod) return;
+
         ptplayerLoadMod(s_currentMod, NULL, 0);
         ptplayerConfigureSongRepeat(ubLoop, 0);
         ptplayerEnableMusic(1);
@@ -49,7 +64,7 @@ namespace NEONengine
     void musicFree(void)
     {
         systemUse();
-        if (s_currentMod) { ptplayerModDestroy(s_currentMod); }
+        musicReleaseCurrent();
         systemUnuse();
     }
 }  // namespace NEONengine
