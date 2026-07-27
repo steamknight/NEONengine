@@ -374,7 +374,7 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 
 | Mnemonic | Args | Blocking | Description |
 | ---------- | ------ | ---------- | ------------- |
-| `ANIM_PLAY` | D0=track name | — | Play the current scene's track of that name, from its start |
+| `ANIM_PLAY` | D0=track name | — | Play the current scene's track of that name from its start, if it is not already running |
 | `ANIM_STOP` | D0=track name | — | Halt that track where it stands |
 | `ANIM_WAIT` | D0=track name | Yes | Hold until that track completes a cycle or stops |
 
@@ -387,7 +387,16 @@ Track names come from `&track.Name` (see [Section 3.6](#36-sigils)), so the usua
     ANIM_WAIT
 ```
 
-`ANIM_PLAY` always rewinds: a track already running is taken back to position 0 and offers every one of its fire-once keyframes again. `ANIM_WAIT` ends at the first cycle boundary after it began, so waiting on a track that loops for ever costs one cycle rather than the rest of the scene, and waiting on a track that is not running at all costs a single frame. Naming a track the current scene does not own is not an error: `ANIM_PLAY` and `ANIM_STOP` do nothing, and `ANIM_WAIT` returns immediately.
+`ANIM_PLAY` begins a *run*: it rewinds the playhead to 0 and offers every fire-once keyframe again. A track that is already running is left alone rather than restarted, because a run under way cannot be begun a second time without deciding what becomes of everything it has already done. A script that means to start over stops the track first:
+
+```nnasm
+    MOV D0, &track.DoorOpen
+    ANIM_STOP
+    MOV D0, &track.DoorOpen
+    ANIM_PLAY
+```
+
+`ANIM_STOP` on a track that is not running passes quietly, so that pairing is safe to write unconditionally. `ANIM_WAIT` ends at the first cycle boundary after it began, so waiting on a track that loops for ever costs one cycle rather than the rest of the scene, and waiting on a track that is not running at all costs a single frame. Naming a track the current scene does not own is not an error: `ANIM_PLAY` and `ANIM_STOP` do nothing, and `ANIM_WAIT` returns immediately.
 
 **Scenes:**
 

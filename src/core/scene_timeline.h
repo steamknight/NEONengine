@@ -70,8 +70,11 @@ namespace NEONengine
      * and each has its own tracks. Naming a track this scene does not have is
      * therefore not a build error, only a script doing nothing.
      *
-     * Always restarts, so a track already running is taken back to position 0
-     * and offered every one of its fire-once keyframes again.
+     * A track already running is left alone. This begins a *run*, which rewinds
+     * the playhead and offers every fire-once keyframe again, and a run already
+     * under way cannot be begun a second time without deciding what becomes of
+     * everything the first one has done. A script that means to start over stops
+     * the track first.
      */
     void scene_timeline_play(uint16_t name_id);
 
@@ -79,7 +82,9 @@ namespace NEONengine
      * @brief Halts the current scene's track called @p name_id where it stands.
      *
      * Backs the ANIM_STOP opcode. Only scene_timeline_play() starts a track
-     * again, and it rewinds, so there is no resume.
+     * again, and it rewinds, so there is no resume. Stopping a track that is
+     * not running is the ordinary way to be sure of its state before playing
+     * it, and passes quietly.
      */
     void scene_timeline_stop(uint16_t name_id);
 

@@ -486,6 +486,18 @@ namespace NEONengine
             return;
         }
 
+        // A play is a new run, and a run that is already under way cannot be
+        // begun again without deciding what happens to everything the first one
+        // has already done. A script that means to start over says so: stop,
+        // then play.
+        if (s_clocks[index].is_running())
+        {
+            NE_LOG("timeline: ANIM_PLAY ignored; track %hu (name %hu) is already running",
+                index,
+                name_id);
+            return;
+        }
+
         auto const& track = scene_timeline_tracks()[index];
         if (!keys_in_range(track))
         {
@@ -507,6 +519,10 @@ namespace NEONengine
             NE_LOG("timeline: ANIM_STOP names track %hu, which this scene does not have", name_id);
             return;
         }
+
+        // Stopping a track that is not running is the ordinary way to make sure
+        // of a track's state before playing it, so it passes quietly.
+        if (!s_clocks[index].is_running()) return;
 
         // Anything waiting on this track is released by the next
         // scene_timeline_update(), which finds it no longer running.

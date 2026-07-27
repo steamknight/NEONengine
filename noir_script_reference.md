@@ -462,12 +462,12 @@ Multiple blocking ops can overlap. VM resumes only when **all** complete (counte
 
 | Opcode | Name | Args | Bridge Call | Blocking | Description |
 |--------|------|------|-------------|----------|-------------|
-| 0x90 | ANIM_PLAY | D0=track name id | `anim_play(d[0])` | No | Play the current scene's track of that name, from its start |
+| 0x90 | ANIM_PLAY | D0=track name id | `anim_play(d[0])` | No | Play the current scene's track of that name from its start, if it is not already running |
 | 0x91 | ANIM_STOP | D0=track name id | `anim_stop(d[0])` | No | Halt that track where it stands |
 | 0x92 | ANIM_WAIT | D0=track name id | `anim_wait(d[0])` | **Yes** | Hold until that track completes a cycle or stops |
 | 0x93–0x9F | — | — | — | — | Reserved |
 
-The argument is a track *name* id, not a track id: tracks cannot outlive their scene, so the engine resolves the name against the current scene's tracks and nowhere else. Naming a track the current scene does not own is not an error — play and stop do nothing, and a wait releases on the next frame.
+The argument is a track *name* id, not a track id: tracks cannot outlive their scene, so the engine resolves the name against the current scene's tracks and nowhere else. Naming a track the current scene does not own is not an error — play and stop do nothing, and a wait releases on the next frame. `ANIM_PLAY` begins a run, so it declines to act on a track that is already running; stop it first. `ANIM_STOP` on a track that is not running passes quietly, which makes that pairing safe to write unconditionally.
 
 ### Scenes (0xA0–0xAF)
 
