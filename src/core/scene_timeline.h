@@ -14,10 +14,10 @@
  *
  * Scope of the current slice: the scene's tracks are resolved, the ones marked
  * auto-start begin at their own position zero, every running track's playhead is
- * advanced once per frame, and the keyframes it lands on are fired. Only
+ * advanced once per frame, and the keyframes it lands on are fired. Scripts can
+ * drive the rest by name through ANIM_PLAY / ANIM_STOP / ANIM_WAIT. Only
  * EXECUTE_SCRIPT is implemented; the other keyframe types are reported once when
- * the scene loads and skipped. Deliberately not handled yet: the ANIM_PLAY /
- * ANIM_STOP / ANIM_WAIT opcodes.
+ * the scene loads and skipped.
  */
 
 #ifndef __SCENE_TIMELINE_H__INCLUDED__
@@ -60,6 +60,41 @@ namespace NEONengine
      * first frame of a run plays position zero rather than stepping over it.
      */
     void scene_timeline_update();
+
+    /**
+     * @brief Plays the current scene's track called @p name_id from its start.
+     *
+     * Backs the ANIM_PLAY opcode. A track name is resolved within the current
+     * scene and nowhere else, because tracks cannot outlive their scene and a
+     * script is not owned by one: the same function may run in several scenes,
+     * and each has its own tracks. Naming a track this scene does not have is
+     * therefore not a build error, only a script doing nothing.
+     *
+     * Always restarts, so a track already running is taken back to position 0
+     * and offered every one of its fire-once keyframes again.
+     */
+    void scene_timeline_play(uint16_t name_id);
+
+    /**
+     * @brief Halts the current scene's track called @p name_id where it stands.
+     *
+     * Backs the ANIM_STOP opcode. Only scene_timeline_play() starts a track
+     * again, and it rewinds, so there is no resume.
+     */
+    void scene_timeline_stop(uint16_t name_id);
+
+    /**
+     * @brief Holds the running script until the track called @p name_id comes round.
+     *
+     * Backs the ANIM_WAIT opcode, which blocks the VM. The script resumes once
+     * the track completes a cycle or stops, whichever happens first - so waiting
+     * on a track that loops for ever costs one cycle rather than the whole
+     * scene, and waiting on one that is not running at all costs a frame.
+     *
+     * Call from the opcode handler only: the VM is released through its blocking
+     * counter, so a wait nobody is blocked on would unbalance it.
+     */
+    void scene_timeline_wait(uint16_t name_id);
 
     /**
      * @brief The TRAK records the current scene owns, in timeline order.

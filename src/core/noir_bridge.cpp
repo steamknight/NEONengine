@@ -3,6 +3,7 @@
 #include "neonengine.h"
 #include "core/mouse_pointer.h"
 #include "core/scene_hotspots.h"
+#include "core/scene_timeline.h"
 #include "core/screen.h"
 #include "core/string_table.h"
 
@@ -71,10 +72,12 @@ namespace NEONengine
         void nb_stop_music() {}
         void nb_play_sfx(uint16_t) {}
 
-        // ── Timeline (stubbed for this slice) ──────────────────────────────────
-        void nb_anim_play(uint16_t) {}
-        void nb_anim_stop(uint16_t) {}
-        void nb_anim_wait(uint16_t) {}
+        // ── Timeline ───────────────────────────────────────────────────────────
+        // Track names are resolved against the current scene, so a script that
+        // names a track another scene owns simply does nothing here.
+        void nb_anim_play(uint16_t name_id) { scene_timeline_play(name_id); }
+        void nb_anim_stop(uint16_t name_id) { scene_timeline_stop(name_id); }
+        void nb_anim_wait(uint16_t name_id) { scene_timeline_wait(name_id); }
 
         // ── System (stubbed for this slice) ────────────────────────────────────
         // Records the request; the state loop applies it at a safe point. Doing

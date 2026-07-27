@@ -77,8 +77,13 @@ Escapes: `\"`, `\\`, `\n`, `\t`.
 | `%` | External value | `%money`, `%[D0]` | Project value addressing mode | Any operand accepting value modes |
 | `!` | Macro | `!say_line` | Macro expansion | Standalone instruction position |
 | `#@` | Flag as immediate | `#@talked_to_guard` | Flag index as immediate | Any operand accepting immediates |
+| `&` | Asset | `&scene.intro`, `&track.Flicker` | Asset id (immediate) | Any operand accepting immediates |
 
 `$name` resolves to a numeric immediate (the string's index), so it's valid anywhere an immediate is. `@name` is restricted to flag opcodes (SETF, CLRF, TOGF, TSTF, LDFR, STFR) since the VM has no flag addressing mode in the general mode byte system. `#@name` resolves the flag's index as a numeric immediate, allowing it in any operand position (e.g., `MOV D0, #@has_map` to load a flag's index into a register for `DBG_FLAG` or register-indexed flag operations). `%[D0]` is the only register-indexed value form (the VM only supports D0 for this; `%[D1]`–`%[D3]` are errors). `!name` invokes a macro; the `!` prefix disambiguates macro calls from local variable references and other identifiers.
+
+`&kind.name` names something the host authored rather than something NNASM declares, and resolves to its numeric id at assembly time. The recognized kinds are `scene`, whose id is the scene's position in the project, and `track`, whose id is a project-wide id for the track's *name*. Names are compared case-insensitively and must be valid NNASM identifiers. A name the project does not define anywhere is an assembly error, which is what catches misspellings.
+
+> **Note:** `&track.Name` deliberately identifies a name, not one particular track. A script is not owned by a scene — the same function can run in several — so tracks in different scenes that share a name share an id, and `ANIM_PLAY` acts on whichever of them the *current* scene owns. Naming a track the current scene does not have is not an error; it simply does nothing.
 
 > **Warning:** `#@name` resolves to the flag's numeric **index**, not its boolean value. To read a flag's value into a register, use `LDFR Dn, @name`. Do not confuse `#@flag` (loads index) with `@flag` (operates on the flag directly).
 
@@ -369,9 +374,20 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 
 | Mnemonic | Args | Blocking | Description |
 | ---------- | ------ | ---------- | ------------- |
-| `ANIM_PLAY` | D0=id | — | Start animation |
-| `ANIM_STOP` | D0=id | — | Stop animation |
-| `ANIM_WAIT` | D0=id | Yes | Wait for completion |
+| `ANIM_PLAY` | D0=track name | — | Play the current scene's track of that name, from its start |
+| `ANIM_STOP` | D0=track name | — | Halt that track where it stands |
+| `ANIM_WAIT` | D0=track name | Yes | Hold until that track completes a cycle or stops |
+
+Track names come from `&track.Name` (see [Section 3.6](#36-sigils)), so the usual form is:
+
+```nnasm
+    MOV D0, &track.DoorOpen
+    ANIM_PLAY
+    MOV D0, &track.DoorOpen
+    ANIM_WAIT
+```
+
+`ANIM_PLAY` always rewinds: a track already running is taken back to position 0 and offers every one of its fire-once keyframes again. `ANIM_WAIT` ends at the first cycle boundary after it began, so waiting on a track that loops for ever costs one cycle rather than the rest of the scene, and waiting on a track that is not running at all costs a single frame. Naming a track the current scene does not own is not an error: `ANIM_PLAY` and `ANIM_STOP` do nothing, and `ANIM_WAIT` returns immediately.
 
 **Scenes:**
 

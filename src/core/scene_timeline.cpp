@@ -15,6 +15,9 @@ namespace NEONengine
     {
         constexpr uint16_t NO_TIMELINE = 0xFFFF;
 
+        /// No track of that name in this scene.
+        constexpr uint16_t NO_TRACK = 0xFFFF;
+
         /// Cycle boundaries logged per track before the module falls silent.
         constexpr uint16_t LOGGED_CYCLES = 3;
 
@@ -28,6 +31,24 @@ namespace NEONengine
 
         /// One bit per scene-local keyframe: whether a fire_once key has fired.
         mtl::vector<uint8_t> s_fired;
+
+        /**
+         * @brief The ANIM_WAIT a blocked script is sitting on, if any.
+         *
+         * Held as a record rather than a sentinel index because "no track of
+         * that name in this scene" is a normal wait that has to be released,
+         * not the absence of a wait, and the two cannot share an encoding with
+         * a track index without eventually colliding with a real one.
+         */
+        struct wait_state
+        {
+            uint16_t name  = 0;      ///< Track name the script asked for.
+            uint16_t track = 0;      ///< Scene-local index; only valid when found.
+            uint8_t depth  = 0;      ///< Waits on the blocking counter; 0 = none.
+            bool found     = false;  ///< Whether this scene has that track.
+        };
+
+        wait_state s_wait;
 
         /**
          * @brief Names @p mode the way the editor and the format docs do.
@@ -73,6 +94,103 @@ namespace NEONengine
         void mark_fired(uint32_t index)
         {
             s_fired[index >> 3] |= mtl::to<uint8_t>(1 << (index & 7));
+        }
+
+        /**
+         * @brief Offers every fire_once key of the track at @p index again.
+         *
+         * A run is the unit a fire_once keyframe fires once within, and
+         * scene_timeline_play() always begins a new run, so the marks from the
+         * previous one are wiped rather than carried over.
+         */
+        void clear_fired(uint16_t index, data::track const& track)
+        {
+            uint32_t const base = s_key_base[index];
+            for (uint16_t offset = 0; offset < track.keyframe_range.count; ++offset)
+            {
+                uint32_t const marker = base + offset;
+                s_fired[marker >> 3] &= mtl::to<uint8_t>(0xFF ^ (1 << (marker & 7)));
+            }
+        }
+
+        /**
+         * @brief Whether @p track's keyframes really lie inside the KEYS chunk.
+         *
+         * Playing a track whose range points past the chunk would read whatever
+         * follows it, so a track that fails this is never started: not at load,
+         * and not by ANIM_PLAY either.
+         */
+        bool keys_in_range(data::track const& track)
+        {
+            auto const all = g_pEngine->data().keyframes();
+            return mtl::to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
+                <= all.size();
+        }
+
+        /**
+         * @brief The scene-local index of the track called @p name_id.
+         *
+         * @return NO_TRACK when this scene has no such track, which is an
+         *         ordinary outcome: a script is not owned by a scene, so it can
+         *         legitimately name a track that only exists in another one.
+         */
+        uint16_t find_track(uint16_t name_id)
+        {
+            auto const tracks = scene_timeline_tracks();
+            for (uint16_t index = 0; index < s_count; ++index)
+            {
+                if (tracks[index].name_id == name_id) return index;
+            }
+            return NO_TRACK;
+        }
+
+        /**
+         * @brief Lets the script blocked on ANIM_WAIT carry on.
+         *
+         * @param why How the wait came to be over, for the log.
+         */
+        void release_waiter(char const* why)
+        {
+            if (s_wait.depth == 0) return;
+
+            uint16_t const name = s_wait.name;
+            uint8_t const depth = s_wait.depth;
+            s_wait              = wait_state{};
+
+            auto& vm = g_pEngine->vm();
+
+            // Unconditional, exactly as nb_fade_done() is, and for the same
+            // reason: every wait recorded here was paired with an
+            // enter_blocked(), so skipping the decrement leaves the counter
+            // permanently one too high and wedges the *next* blocking call just
+            // as surely as an extra decrement would wrap it to 255. A hotspot
+            // click can cancel the block out from under a wait (it re-enters
+            // execute() without checking the VM is idle), and when it does this
+            // is what puts the counter back where it started.
+            for (uint8_t step = 0; step < depth; ++step) vm.decrement_blocking();
+
+            if (vm.state() != noir_state::blocked)
+            {
+                NE_LOG("timeline: the wait on track name %hu (%s) had already been cancelled",
+                    name,
+                    why);
+                return;
+            }
+            NE_LOG("timeline: the wait on track name %hu is over (%s)", name, why);
+        }
+
+        /**
+         * @brief Ends a wait that is already satisfied before any track ticks.
+         *
+         * Covers the ways a wait can be over without a cycle boundary to notice
+         * it by: a name this scene has no track for, a track that was never
+         * started or has already finished, and one stopped by ANIM_STOP.
+         */
+        void update_waiter()
+        {
+            if (s_wait.depth == 0) return;
+            if (!s_wait.found) return release_waiter("no such track in this scene");
+            if (!s_clocks[s_wait.track].is_running()) return release_waiter("it is not running");
         }
 
         /**
@@ -150,6 +268,13 @@ namespace NEONengine
 
     void scene_timeline_clear()
     {
+        // Tracks cannot outlive their scene, so neither can a wait on one: the
+        // record has to go before s_clocks is emptied, or it would index the
+        // next scene's playheads. The release itself is belt and braces, since
+        // load_scene() resets the VM straight after this and that clears the
+        // blocking counter anyway.
+        release_waiter("the scene ended");
+
         s_first = 0;
         s_count = 0;
         s_clocks.clear();
@@ -232,15 +357,13 @@ namespace NEONengine
                 NE_LOG("  track %hu has no duration; playing it as 1 frame", index);
             }
 
-            bool const keys_in_range = mtl::to<size_t>(track.keyframe_range.start)
-                    + track.keyframe_range.count
-                <= all_keyframes.size();
+            bool const in_range = keys_in_range(track);
 
             s_key_base.push_back(total_keys);
             total_keys += track.keyframe_range.count;
 
             track_clock clock;
-            if (!keys_in_range)
+            if (!in_range)
             {
                 // Playing a track whose keys point outside the chunk would read
                 // whatever follows it, so the track is left permanently idle.
@@ -278,12 +401,37 @@ namespace NEONengine
             }
         }
 
+        // The editor rejects a name repeated inside one scene, so this means the
+        // pak was built by something else. ANIM_PLAY takes the first match,
+        // which is at least deterministic, but the later one is unreachable.
+        for (uint16_t a = 0; a < count; ++a)
+        {
+            for (uint16_t b = mtl::to<uint16_t>(a + 1); b < count; ++b)
+            {
+                if (all[mtl::to<size_t>(first) + a].name_id != all[mtl::to<size_t>(first) + b].name_id)
+                {
+                    continue;
+                }
+
+                NE_LOG("  tracks %hu and %hu share name %hu; only the first can be played",
+                    a,
+                    b,
+                    all[mtl::to<size_t>(first) + a].name_id);
+                break;
+            }
+        }
+
         s_fired.reserve((total_keys + 7) / 8);
         for (uint32_t byte = 0; byte < (total_keys + 7) / 8; ++byte) s_fired.push_back(0);
     }
 
     void scene_timeline_update()
     {
+        // Ahead of the early-out, because a scene with no tracks at all can
+        // still have a script blocked on a track it does not have, and leaving
+        // that one blocked would strand it for the rest of the game.
+        update_waiter();
+
         if (s_count == 0) return;
 
         auto const tracks = scene_timeline_tracks();
@@ -299,6 +447,11 @@ namespace NEONengine
             switch (clock.tick(tracks[index]))
             {
                 case tick_result::LOOPED:
+                    // A wait ends at the first cycle boundary after it began, so
+                    // that waiting on a track that loops for ever costs one
+                    // cycle instead of the whole scene.
+                    if (s_wait.found && s_wait.track == index) release_waiter("it came round");
+
                     // A short looping track turns over dozens of times a second,
                     // which would bury everything else in the log, so only the
                     // first few of each track's cycles are reported.
@@ -313,6 +466,7 @@ namespace NEONengine
                     break;
 
                 case tick_result::FINISHED:
+                    if (s_wait.found && s_wait.track == index) release_waiter("it finished");
                     NE_LOG("timeline: track %hu finished after %hu cycle(s)", index, clock.cycles_done());
                     break;
 
@@ -321,5 +475,79 @@ namespace NEONengine
                     break;
             }
         }
+    }
+
+    void scene_timeline_play(uint16_t name_id)
+    {
+        uint16_t const index = find_track(name_id);
+        if (index == NO_TRACK)
+        {
+            NE_LOG("timeline: ANIM_PLAY names track %hu, which this scene does not have", name_id);
+            return;
+        }
+
+        auto const& track = scene_timeline_tracks()[index];
+        if (!keys_in_range(track))
+        {
+            NE_LOG("timeline: ANIM_PLAY cannot start track %hu; its keyframes are out of range",
+                index);
+            return;
+        }
+
+        clear_fired(index, track);
+        s_clocks[index].start();
+        NE_LOG("timeline: ANIM_PLAY started track %hu (name %hu)", index, name_id);
+    }
+
+    void scene_timeline_stop(uint16_t name_id)
+    {
+        uint16_t const index = find_track(name_id);
+        if (index == NO_TRACK)
+        {
+            NE_LOG("timeline: ANIM_STOP names track %hu, which this scene does not have", name_id);
+            return;
+        }
+
+        // Anything waiting on this track is released by the next
+        // scene_timeline_update(), which finds it no longer running.
+        s_clocks[index].stop();
+        NE_LOG("timeline: ANIM_STOP halted track %hu (name %hu) at position %hu",
+            index,
+            name_id,
+            s_clocks[index].position());
+    }
+
+    void scene_timeline_wait(uint16_t name_id)
+    {
+        uint16_t const index = find_track(name_id);
+        if (index == NO_TRACK)
+        {
+            NE_LOG("timeline: ANIM_WAIT names track %hu, which this scene does not have", name_id);
+        }
+
+        // Two waits can only stack if a hotspot click re-entered the VM over an
+        // already blocked script. They share the one blocking counter and the
+        // one state, so the newer wait takes over and both end together.
+        if (s_wait.depth != 0)
+        {
+            NE_LOG("timeline: ANIM_WAIT on track name %hu displaced a wait on track name %hu",
+                name_id,
+                s_wait.name);
+        }
+
+        // The opcode handler blocks the VM only after this returns, so the
+        // counter cannot be balanced here even when the wait is already
+        // satisfied; scene_timeline_update() picks it up later in the same
+        // frame. Every recorded wait is therefore owed exactly one decrement.
+        wait_state next;
+        next.name  = name_id;
+        next.found = (index != NO_TRACK);
+        next.track = next.found ? index : uint16_t(0);
+
+        // Saturating rather than wrapping, though by 255 nested waits the VM's
+        // own uint8_t counter has wrapped too and nothing is recoverable.
+        next.depth = (s_wait.depth == UINT8_MAX) ? s_wait.depth
+                                                 : mtl::to<uint8_t>(s_wait.depth + 1);
+        s_wait     = next;
     }
 }  // namespace NEONengine
