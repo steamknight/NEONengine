@@ -74,14 +74,30 @@ namespace NEONengine
 
         mtl::vector<graphic_asset> s_assets;  ///< The live bobs and their backing data.
 
+        constexpr uint16_t NO_BOB = 0xFFFF;
+
+        /// Scene-local GFXI index -> index into s_assets, or NO_BOB.
+        /// An instance naming a missing graphic, or whose frames fail to load,
+        /// registers no bob, so the two are not the same numbering.
+        mtl::vector<uint16_t> s_instanceBob;
+
         /// Hotspot state graphics, drawn above the instances.
         mtl::vector<graphic_asset> s_hotspotAssets;
-
-        constexpr uint16_t NO_BOB = 0xFFFF;
 
         /// Scene-local hotspot index -> index into s_hotspotAssets, or NO_BOB.
         /// Most hotspots carry no graphic, so the mapping is kept out of line.
         mtl::vector<uint16_t> s_hotspotBob;
+
+        /**
+         * @brief The instance bob at scene-local @p index, or nullptr.
+         */
+        graphic_asset* instance_at(uint16_t index)
+        {
+            if (index >= s_instanceBob.size()) return nullptr;
+            uint16_t const slot = s_instanceBob[index];
+            if (slot == NO_BOB) return nullptr;
+            return &s_assets[slot];
+        }
 
         bool s_managerReady = false;
 
@@ -367,6 +383,7 @@ namespace NEONengine
     void scene_bobs_destroy()
     {
         s_assets.clear();
+        s_instanceBob.clear();
         s_hotspotAssets.clear();
         s_hotspotBob.clear();
         s_captions.clear();
@@ -387,6 +404,7 @@ namespace NEONengine
         // kinds are registered below, between this reset and that single call.
         bobManagerReset();
         s_assets.clear();
+        s_instanceBob.clear();
         s_hotspotAssets.clear();
         s_hotspotBob.clear();
         s_captions.clear();
@@ -411,9 +429,14 @@ namespace NEONengine
             // both stay valid, so the storage must not move after bobInit():
             // reserve the worst case up front.
             s_assets.reserve(count);
+            s_instanceBob.reserve(count);
 
             for (uint16_t i = 0; i < count; ++i)
             {
+                // Every instance gets an entry, so a caller can index by the
+                // scene-local id whether or not this one ended up drawable.
+                s_instanceBob.push_back(NO_BOB);
+
                 data::graphic_instance const& inst = instances[first + i];
                 if (inst.graphic_id >= graphics.size()) continue;
                 data::graphic const& gfx = graphics[inst.graphic_id];
@@ -424,6 +447,7 @@ namespace NEONengine
                 asset.visible     = (inst.flags & GFXI_FLAG_VISIBLE) != 0;
                 asset.frame_delay = gfx.frame_delay;
                 s_assets.push_back(mtl::move(asset));
+                s_instanceBob[i] = mtl::to<uint16_t>(s_assets.size() - 1);
 
                 // frames/mask now live in the asset; resolve frame 0 from that
                 // stable storage and register the bob on it.
@@ -472,6 +496,35 @@ namespace NEONengine
         asset.frame_index          = wanted;
         auto const [pFrame, pMask] = frame_at(asset, wanted);
         bobSetFrame(&asset.bob, pFrame, pMask);
+    }
+
+    void scene_bobs_set_instance_pos(uint16_t index, data::point<uint16_t> pos)
+    {
+        graphic_asset* asset = instance_at(index);
+        if (!asset) return;
+
+        // ACE documents sPos as the one field a caller may write; the undraw
+        // record is taken when the bob is pushed, so a moved bob still erases
+        // itself from where it was last drawn in each buffer.
+        asset->bob.sPos.uwX = pos.x;
+        asset->bob.sPos.uwY = mtl::to<UWORD>(pos.y + screenGetVerticalOffset(g_mainScreen));
+    }
+
+    void scene_bobs_set_instance_visible(uint16_t index, bool visible)
+    {
+        graphic_asset* asset = instance_at(index);
+        if (!asset) return;
+        asset->visible = visible;
+    }
+
+    bool scene_bobs_instance_pos(uint16_t index, data::point<uint16_t>& pos)
+    {
+        graphic_asset const* asset = instance_at(index);
+        if (!asset) return false;
+
+        pos.x = asset->bob.sPos.uwX;
+        pos.y = mtl::to<uint16_t>(asset->bob.sPos.uwY - screenGetVerticalOffset(g_mainScreen));
+        return true;
     }
 
     void scene_bobs_update()

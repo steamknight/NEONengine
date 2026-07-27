@@ -400,6 +400,36 @@ namespace NEONengine::data
     constexpr uint8_t KEYFRAME_FLAG_INTERPOLATE = 1 << 1;
 
     /**
+     * @brief 'KEYS' GFX_MOVE payload: where a graphic instance is to be.
+     *
+     * @c pos is the position the instance occupies when the playhead reaches
+     * this keyframe. KEYFRAME_FLAG_INTERPOLATE says how it gets there: set, the
+     * span from the previous GFX_MOVE for the same instance is travelled a
+     * frame at a time; clear, the instance simply appears here.
+     */
+    struct gfx_move_payload
+    {
+        uint16_t instance_id;  ///< 0: Global GFXI id.
+        point<uint16_t> pos;   ///< 2: Position (Y, X).
+        uint16_t reserved;     ///< 6: Reserved, zero.
+    };
+
+    static_assert(sizeof(gfx_move_payload) == 8, "a keyframe payload is exactly 8 bytes");
+    static_assert(__builtin_offsetof(gfx_move_payload, pos) == 2, "pos must be at offset 2");
+
+    /**
+     * @brief 'KEYS' GFX_VISIBILITY payload: whether a graphic instance draws.
+     */
+    struct gfx_visibility_payload
+    {
+        uint16_t instance_id;  ///< 0: Global GFXI id.
+        uint8_t visible;       ///< 2: Nonzero to draw the instance.
+        uint8_t reserved[5];   ///< 3: Reserved, zero.
+    };
+
+    static_assert(sizeof(gfx_visibility_payload) == 8, "a keyframe payload is exactly 8 bytes");
+
+    /**
      * @brief 'KEYS' EXECUTE_SCRIPT payload: the function to run.
      *
      * Overlaid on keyframe::payload, which sits at offset 4 of a 12-byte

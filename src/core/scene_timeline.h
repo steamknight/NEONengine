@@ -15,9 +15,15 @@
  * Scope of the current slice: the scene's tracks are resolved, the ones marked
  * auto-start begin at their own position zero, every running track's playhead is
  * advanced once per frame, and the keyframes it lands on are fired. Scripts can
- * drive the rest by name through ANIM_PLAY / ANIM_STOP / ANIM_WAIT. Only
- * EXECUTE_SCRIPT is implemented; the other keyframe types are reported once when
- * the scene loads and skipped.
+ * drive the rest by name through ANIM_PLAY / ANIM_STOP / ANIM_WAIT.
+ * EXECUTE_SCRIPT, GFX_MOVE (with its interpolate flag) and GFX_VISIBILITY are
+ * implemented; the other keyframe types are reported once when the scene loads
+ * and skipped.
+ *
+ * A movement in progress belongs to the graphic instance rather than to the
+ * track that started it, because an instance has one position: two tracks
+ * moving the same instance are settled by which of them wrote last, in track
+ * order, and not by remembering both.
  */
 
 #ifndef __SCENE_TIMELINE_H__INCLUDED__

@@ -10,11 +10,14 @@
  * scene_bobs_set_hotspot_frame().
  *
  * Scope of the current slice: instances are drawn in GFXI order, hotspot
- * graphics on top of them, and the hover caption above everything. Deliberately
- * not handled yet: z-order sorting and runtime move/visibility. ACE also does no
- * off-screen clipping and tracks bob counts/undraw size in 8-/16-bit fields, so
- * scenes must be validated/capped (editor side) before many or off-screen bobs
- * are used.
+ * graphics on top of them, and the hover caption above everything. Instances
+ * can be moved and shown/hidden at runtime; the timeline drives that. ACE also
+ * does no off-screen clipping and tracks bob counts/undraw size in 8-/16-bit
+ * fields, so scenes must be validated/capped (editor side) before many or
+ * off-screen bobs are used.
+ *
+ * Deliberately not handled yet: z-order sorting, so a moving instance passing
+ * another draws in GFXI order rather than by depth.
  */
 
 #ifndef __SCENE_BOBS_H__INCLUDED__
@@ -70,6 +73,36 @@ namespace NEONengine
      *              Indices without a state graphic are ignored.
      */
     void scene_bobs_set_hotspot_frame(uint16_t index, hotspot_frame frame);
+
+    /**
+     * @brief Moves the graphic instance at scene-local @p index to @p pos.
+     *
+     * @param index Scene-local GFXI index: a global id less the scene's
+     *              graphic_instance_range.start. Indices the scene does not
+     *              have, or whose graphic failed to load, are ignored.
+     * @param pos   Position in scene space, as the GFXI record stores it. The
+     *              screen's vertical centering is added here, so callers work
+     *              in the same coordinates the data is authored in.
+     */
+    void scene_bobs_set_instance_pos(uint16_t index, data::point<uint16_t> pos);
+
+    /**
+     * @brief Shows or hides the graphic instance at scene-local @p index.
+     *
+     * A hidden instance is not drawn and its frame animation does not advance.
+     */
+    void scene_bobs_set_instance_visible(uint16_t index, bool visible);
+
+    /**
+     * @brief Where the graphic instance at scene-local @p index currently is.
+     *
+     * The live position rather than the authored one, so a caller starting an
+     * interpolation leads from where the instance actually stands.
+     *
+     * @param[out] pos Position in scene space; untouched when this returns false.
+     * @return Whether the scene has a drawable instance at that index.
+     */
+    bool scene_bobs_instance_pos(uint16_t index, data::point<uint16_t>& pos);
 
     /**
      * @brief Advances every visible graphic instance's looping frame animation.
