@@ -2,7 +2,6 @@
 
 #include "neonengine.h"
 
-
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
@@ -12,6 +11,7 @@
 #include "core/palette_cycle.h"
 #include "core/scene_audio.h"
 #include "core/scene_bobs.h"
+#include "core/track_clock.h"
 
 NE_LOG_DOMAIN(Timeline);
 
@@ -19,8 +19,6 @@ namespace NEONengine
 {
     namespace
     {
-        constexpr uint16_t NO_TIMELINE = 0xFFFF;
-
         /// No track of that name in this scene.
         constexpr uint16_t NO_TRACK = 0xFFFF;
 
@@ -961,11 +959,6 @@ namespace NEONengine
         return mtl::span<data::track>(all.data() + s_first, s_count);
     }
 
-    track_clock const& scene_timeline_clock(uint16_t index)
-    {
-        return s_clocks[index];
-    }
-
     void scene_timeline_load(data::scene const& scene)
     {
         scene_timeline_clear();
@@ -975,7 +968,7 @@ namespace NEONengine
         s_gfxi_first = scene.graphic_instance_range.start;
         s_gfxi_count = scene.graphic_instance_range.count;
 
-        if (scene.timeline_id == NO_TIMELINE) return;
+        if (scene.timeline_id == data::NO_ID) return;
 
         auto const timelines = g_pEngine->data().timelines();
         if (scene.timeline_id >= timelines.size())

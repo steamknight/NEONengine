@@ -417,11 +417,7 @@ namespace NEONengine
         scene_timeline_clear();
         mousePointerDestroy();
         scene_bobs_destroy();
-        {
-            // Returns Chip RAM to the OS, so it needs the system back.
-            mtl::system_use_guard guard;
-            scene_audio_clear();
-        }
+        scene_audio_clear();
         musicFree();
         logBlockEnd("State: Scene");
     }

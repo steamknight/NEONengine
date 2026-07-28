@@ -70,8 +70,6 @@ namespace NEONengine
          */
         bool make_room(uint32_t size)
         {
-            if (size > ASSET_CACHE_BUDGET) return false;
-
             while (s_used + size > ASSET_CACHE_BUDGET)
             {
                 size_t oldest    = s_entries.size();
@@ -268,9 +266,6 @@ namespace NEONengine
         {
             drop_entry(s_entries.size() - 1);
         }
-
-        s_entries.clear();
-        s_used = 0;
     }
 
     void asset_cache_begin_load()

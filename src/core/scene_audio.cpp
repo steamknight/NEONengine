@@ -16,8 +16,6 @@ namespace NEONengine
 {
     namespace
     {
-        constexpr uint16_t NO_TIMELINE = 0xFFFF;
-
         /// Neither volume nor priority is authored, so every effect shares one.
         /// ptplayer requires a nonzero priority; equal priorities mean the
         /// older sound gives way, which is what one-shots want.
@@ -104,7 +102,7 @@ namespace NEONengine
          */
         void load_timeline_sfx(data::scene const& scene)
         {
-            if (scene.timeline_id == NO_TIMELINE) return;
+            if (scene.timeline_id == data::NO_ID) return;
 
             auto const timelines = g_pEngine->data().timelines();
             if (scene.timeline_id >= timelines.size()) return;  // scene_timeline reports it.
