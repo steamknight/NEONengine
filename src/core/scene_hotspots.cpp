@@ -11,6 +11,7 @@
 
 #include "core/game_data.h"
 #include "core/mouse_pointer.h"
+#include "core/scene_audio.h"
 #include "core/scene_bobs.h"
 #include "core/screen.h"
 
@@ -84,9 +85,11 @@ namespace NEONengine
         /**
          * @brief Run the hotspot @p index was clicked.
          *
-         * The script runs first so it observes the state the click found, then
-         * the record's own transition is requested; a concrete goto_scene wins
-         * over whatever the script may have asked for.
+         * The sound goes first so it is heard at all: the script may block on a
+         * dialogue for as long as it likes, and a goto_scene tears this scene
+         * down. Then the script runs, so it observes the state the click found,
+         * and finally the record's own transition is requested; a concrete
+         * goto_scene wins over whatever the script may have asked for.
          */
         void activate(uint16_t index)
         {
@@ -94,6 +97,10 @@ namespace NEONengine
 
             NE_LOG("scene_hotspots: hotspot %hu clicked", mtl::to<UWORD>(s_first + index));
 
+            if (hotspot.click_sfx_hash != data::NO_ASSET)
+            {
+                scene_audio_play(hotspot.click_sfx_hash);
+            }
             if (hotspot.click_function_id != data::NO_ID)
             {
                 g_pEngine->vm().execute(hotspot.click_function_id);

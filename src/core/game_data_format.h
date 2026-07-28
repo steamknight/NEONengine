@@ -244,11 +244,14 @@ namespace NEONengine::data
     /**
      * @brief 'HOTS' element: a scene interaction region and its behavior.
      *
-     * A Collection element, 20 bytes.
+     * A Collection element, 24 bytes.
      *
      * @p graphic_id is optional. When present it names a 'GFXS' graphic whose
      * frames are drawn to show the hotspot's current state, by convention frame
      * 0 normal, 1 hovered, 2 pressed, and 3 disabled.
+     *
+     * @p click_sfx_hash is optional, and carries NO_ASSET when the hotspot
+     * makes no sound, the same way BMPS.mask_hash does.
      */
     struct hotspot
     {
@@ -260,14 +263,16 @@ namespace NEONengine::data
         uint16_t click_function_id;///< 14: Click FUNC id, or 0xFFFF.
         uint16_t goto_scene_id;    ///< 16: Goto SCEN id, or 0xFFFF.
         uint16_t graphic_id;       ///< 18: State-graphic GFXS id, or 0xFFFF.
+        uint32_t click_sfx_hash;   ///< 20: Click SFX pak-path hash, or 0xFFFFFFFF.
     };
 
-    static_assert(sizeof(hotspot) == 20, "hotspot must be exactly 20 bytes");
+    static_assert(sizeof(hotspot) == 24, "hotspot must be exactly 24 bytes");
     static_assert(__builtin_offsetof(hotspot, z_order) == 8, "z_order must be at offset 8");
     static_assert(__builtin_offsetof(hotspot, cursor) == 10, "cursor must be at offset 10");
     static_assert(__builtin_offsetof(hotspot, flags) == 11, "flags must be at offset 11");
     static_assert(__builtin_offsetof(hotspot, hover_string_id) == 12, "hover_string_id must be at offset 12");
     static_assert(__builtin_offsetof(hotspot, graphic_id) == 18, "graphic_id must be at offset 18");
+    static_assert(__builtin_offsetof(hotspot, click_sfx_hash) == 20, "click_sfx_hash must be at offset 20");
 
     /**
      * @brief 'TXTR' element: localized bitmap-font text placed in a scene.

@@ -96,6 +96,52 @@ namespace NEONengine
                 require_sfx(mtl::force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
             }
         }
+
+        /**
+         * @brief Loads the effects @p scene's timeline can play.
+         */
+        void load_timeline_sfx(data::scene const& scene)
+        {
+            if (scene.timeline_id == NO_TIMELINE) return;
+
+            auto const timelines = g_pEngine->data().timelines();
+            if (scene.timeline_id >= timelines.size()) return;  // scene_timeline reports it.
+
+            auto const& time     = timelines[scene.timeline_id];
+            auto const tracks    = g_pEngine->data().tracks();
+            uint16_t const first = time.track_range.start;
+            uint16_t const count = time.track_range.count;
+
+            if (count == 0 || mtl::to<size_t>(first) + count > tracks.size()) return;
+
+            for (uint16_t index = 0; index < count; ++index)
+            {
+                load_track_sfx(tracks[mtl::to<size_t>(first) + index]);
+            }
+        }
+
+        /**
+         * @brief Loads the effects @p scene's hotspots play when clicked.
+         *
+         * A hotspot that starts disabled is loaded all the same: a script can
+         * switch it on at any point, and the click that follows cannot stop to
+         * read the pak any more than a keyframe can.
+         */
+        void load_hotspot_sfx(data::scene const& scene)
+        {
+            auto const all       = g_pEngine->data().hotspots();
+            uint16_t const first = scene.hotspot_range.start;
+            uint16_t const count = scene.hotspot_range.count;
+
+            // scene_hotspots reports a bad range and leaves the scene inert.
+            if (count == 0 || mtl::to<size_t>(first) + count > all.size()) return;
+
+            for (uint16_t index = 0; index < count; ++index)
+            {
+                auto const hash = all[mtl::to<size_t>(first) + index].click_sfx_hash;
+                if (hash != data::NO_ASSET) require_sfx(hash);
+            }
+        }
     }  // namespace
 
     void scene_audio_clear()
@@ -111,22 +157,8 @@ namespace NEONengine
     {
         scene_audio_clear();
 
-        if (scene.timeline_id == NO_TIMELINE) return;
-
-        auto const timelines = g_pEngine->data().timelines();
-        if (scene.timeline_id >= timelines.size()) return;  // scene_timeline reports it.
-
-        auto const& time     = timelines[scene.timeline_id];
-        auto const tracks    = g_pEngine->data().tracks();
-        uint16_t const first = time.track_range.start;
-        uint16_t const count = time.track_range.count;
-
-        if (count == 0 || mtl::to<size_t>(first) + count > tracks.size()) return;
-
-        for (uint16_t index = 0; index < count; ++index)
-        {
-            load_track_sfx(tracks[mtl::to<size_t>(first) + index]);
-        }
+        load_timeline_sfx(scene);
+        load_hotspot_sfx(scene);
 
         if (!s_sfx.empty())
         {

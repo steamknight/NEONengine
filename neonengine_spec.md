@@ -370,6 +370,21 @@ Simple ProTracker MOD playback via ptplayer:
 
 Sound effects handled via game call opcodes (`PLAY_SFX`, `STOP_MUSIC`, etc.) through the NoirBridge.
 
+`scene_audio` holds the current scene's sound effects resident in Chip RAM for
+the life of the scene. ptplayer replays samples straight out of Chip RAM, and
+neither a keyframe firing at 50Hz nor a click can stop to read the pak, so every
+distinct sound the scene names — from an `SFX_PLAY` keyframe or a hotspot's
+click sound — is loaded once at scene load and freed when the scene ends. The
+table is keyed by hash, so a sound named several times is read once.
+
+Music is not held that way: a module is far larger than an effect and a scene may
+name several, so `MUSIC_PLAY` reads its module when it fires and pays for it with
+a hitch.
+
+Nothing stops an effect. A one-shot is over in a few frames, so the replayer
+picks the least busy channel and hands it back to the music when the sound ends,
+which leaves a four-voice module all four voices for all but those few frames.
+
 ---
 
 ## Nine-Patch UI Frames
@@ -560,9 +575,20 @@ Each hotspot defines a rectangular interactive area with:
 - Click script for interaction logic
 - Direct `gotoSceneId` shortcut for trivial transitions
 - Initial enabled state
+- Optional state graphic, whose frames show normal, hovered, pressed, and
+  disabled
+- Optional click sound, named by pak-path hash
 
-Per-state hotspot bitmaps are deferred and are not present in version 2
-`HOTS` records.
+A click runs the sound first, then the click script, then the transition. The
+sound leads because the script may block on a dialogue for as long as it likes
+and a `gotoSceneId` tears the scene down, so anything queued behind them may
+never be heard.
+
+Click sounds are resident for the life of the scene, loaded alongside the
+timeline's effects by `scene_audio`; see [Audio](#audio). A
+hotspot that starts disabled still contributes its sound, because a script may
+switch it on at any point and the click that follows cannot stop to read the
+pak.
 
 Overlapping hotspots are supported. Hit testing selects the enabled hotspot with
 the highest z-index; scene list order breaks equal-z ties. The editor warns
