@@ -18,6 +18,29 @@ endif()
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DAMIGA -Wall -Wextra -fomit-frame-pointer")
+
+# Silence -Wattributes.
+#
+# The toolchain builds with -flto -fwhole-program (m68k-bartman.cmake). At -O1
+# and above, LTO works out which symbols are not externally visible and promotes
+# them to hidden visibility. m68k-amiga-elf has no assemble_visibility in its
+# backend, so it warns and ignores each one: 452 lines of noise on the current
+# tree, drowning out every real warning.
+#
+# It is unactionable. Nothing in this tree, ACE, or the toolchain headers asks
+# for visibility, and an Amiga hunk executable has no dynamic linker that could
+# honour it. Debug builds never show it because -O0 skips the LTO pass that
+# assigns visibility at all, which is why it only appeared when we started
+# building RelWithDebInfo. Any optimised build has it, Release included.
+#
+# Suppressing the whole category costs nothing today: this is the only
+# -Wattributes warning the build produces. Revisit if that stops being true.
+#
+# Both languages, because ACE is C and the engine is C++; the flag has to reach
+# the link line too, since lto1 emits these during the LTO link.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-attributes")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
+
 set(ACE_TEST_RUNNER OFF CACHE BOOL "Enable the test runner")
 set(ACE_USE_AGA_FEATURES ON)
 set(ACE_USE_ECS_FEATURES ON)
