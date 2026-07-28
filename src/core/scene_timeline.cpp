@@ -673,7 +673,7 @@ namespace NEONengine
             // time passed, but it is a stall and it is meant to be one.
             mtl::system_use_guard guard;
 
-            auto mod = g_pEngine->data().open_asset(payload.music_hash);
+            auto mod = g_pEngine->data().open_asset_uncached(payload.music_hash);
             if (!mod)
             {
                 NE_LOG("timeline: no music asset for hash %08lx", mtl::to<ULONG>(payload.music_hash));

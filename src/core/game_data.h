@@ -23,6 +23,8 @@
 
 #include "game_data_format.h"
 
+#include "core/asset_cache.h"
+
 namespace NEONengine
 {
     /**
@@ -220,10 +222,30 @@ namespace NEONengine
          * which is what the .neon records reference. The returned file is
          * decompressed transparently on read. Test it for validity before use.
          *
+         * Served from the asset cache when it is held there, so a second scene
+         * wanting the same asset pays neither the open nor the unpacking. The
+         * cache is an optimization only: anything that has to stay resident to
+         * behave correctly must hold its own copy.
+         *
          * @param hash The asset's adler32 pak-path hash.
          * @return An owning file handle, or an invalid handle if not found.
          */
-        ace::file_ptr open_asset(uint32_t hash)
+        ace::file_ptr open_asset(uint32_t hash) { return asset_cache_open(_pak, hash); }
+
+        /**
+         * @brief Opens a pak asset without going through the asset cache.
+         *
+         * For music, which is deliberately left out. A module is the largest
+         * asset in the pak by a wide margin, and holding one would spend a
+         * quarter of the cache on a single asset that a scene change usually
+         * keeps anyway. Note that the cache's own size limit does not achieve
+         * this on its own - a module is large but not large enough to trip it -
+         * so the exclusion has to be stated here.
+         *
+         * @param hash The asset's adler32 pak-path hash.
+         * @return An owning file handle, or an invalid handle if not found.
+         */
+        ace::file_ptr open_asset_uncached(uint32_t hash)
         {
             return ace::pakFileGetFileByHash(_pak, hash);
         }

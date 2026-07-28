@@ -8,6 +8,7 @@
 #include <ace/managers/state.h>
 
 #include "build_number.h"
+#include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "core/music.h"
 #include "test.h"
@@ -37,6 +38,11 @@ void genericCreate(void)
 
     screenLoad(NEONengine::g_mainScreen);
     screenBindMouse(NEONengine::g_mainScreen);
+
+    // The boot scene loads the moment its state is pushed, and F4 cannot be
+    // pressed before that, so this is the only chance to see what engine
+    // startup alone left in the cache. Everything after it belongs to a scene.
+    asset_cache_log();
 
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &tests::g_stateTestRunner);
@@ -81,10 +87,28 @@ void genericProcess(void)
             anySize >> 10,
             anySize & 0x3FF);
     }
+
+    // Reporting the cache walks the game data once per entry to work out what
+    // each one is, so it stays on a key rather than running every load. A hitch
+    // when it is pressed is the point of the trade.
+    if (keyUse(KEY_F3))
+    {
+        asset_cache_log();
+    }
+
+    if (keyUse(KEY_F4))
+    {
+        asset_cache_clear();
+        NE_LOG("asset_cache: cleared on request");
+    }
 }
 
 void genericDestroy(void)
 {
+    // Before systemDestroy(), which takes ACE's memory manager with it and
+    // would report every held asset as leaked.
+    asset_cache_clear();
+
     screenDestroy(NEONengine::g_mainScreen);
     musicFree();
     stateManagerDestroy(g_gameStateManager);

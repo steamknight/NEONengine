@@ -11,6 +11,7 @@
 
 #include <mtl/utility.h>
 
+#include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "core/music.h"
 #include "core/noir_vm.h"
@@ -206,6 +207,44 @@ namespace NEONengine
         }
 
         /**
+         * @brief Free Fast RAM in bytes.
+         *
+         * ACE exposes free Chip and free total but not free Fast, and reaching
+         * for AvailMem() directly would mean pulling exec's protos into this
+         * file. Any memory that is not Chip is Fast, so the difference is it.
+         */
+        LONG free_fast_size()
+        {
+            return mtl::to<LONG>(memGetFreeSize()) - mtl::to<LONG>(memGetFreeChipSize());
+        }
+
+        /**
+         * @brief Reports what scene @p scene_id cost in Chip and Fast RAM.
+         *
+         * Measured as free memory before and after the load rather than by
+         * asking each subsystem what it allocated. That catches everything,
+         * including the bob manager's undraw buffers, which ACE sizes and
+         * allocates inside bobReallocateBuffers() where no tally of ours could
+         * see them.
+         *
+         * "used" is a net figure: the previous scene is torn down during this
+         * load, so a scene cheaper than the one before it reports a negative
+         * number. Read the free figures for whether a scene fits at all.
+         */
+        void log_scene_memory(uint16_t scene_id, LONG chipBefore, LONG fastBefore)
+        {
+            LONG const chipAfter = mtl::to<LONG>(memGetFreeChipSize());
+            LONG const fastAfter = free_fast_size();
+
+            NE_LOG("scene %hu memory: chip %ld KB free (used %ld KB), fast %ld KB free (used %ld KB)",
+                scene_id,
+                chipAfter / 1024,
+                (chipBefore - chipAfter) / 1024,
+                fastAfter / 1024,
+                (fastBefore - fastAfter) / 1024);
+        }
+
+        /**
          * @brief Present scene @p scene_id: background, music, and entry script.
          *
          * Serves both the initial boot scene and every GOTO_SCENE transition. Pak
@@ -227,6 +266,13 @@ namespace NEONengine
             auto const& sc = scenes[scene_id];
             g_pEngine->set_current_scene(scene_id);
 
+            // Everything this load asks the cache for is stamped as wanted now,
+            // which is what stops the load evicting its own assets and what
+            // makes the previous scene's leftovers the first to go.
+            asset_cache_begin_load();
+
+            LONG const chipBefore = mtl::to<LONG>(memGetFreeChipSize());
+            LONG const fastBefore = free_fast_size();
             // The load lays the whole backdrop down in the current language, so
             // any repaint a language change was still owed is settled by it.
             s_backdropStale = false;
@@ -244,7 +290,8 @@ namespace NEONengine
 
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
-                    auto mod = gd.open_asset(sc.music_hash);
+                    // Uncached on purpose: see game_data::open_asset_uncached.
+                    auto mod = gd.open_asset_uncached(sc.music_hash);
                     if (mod)
                     {
                         musicLoad(mtl::move(mod));
@@ -252,6 +299,8 @@ namespace NEONengine
                     }
                 }
             }
+
+            log_scene_memory(scene_id, chipBefore, fastBefore);
 
             if (silence) musicFree();
             if (music_started) musicPlayCurrent(1);
