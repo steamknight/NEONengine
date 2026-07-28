@@ -58,12 +58,11 @@ namespace NEONengine
             return false;
         }
 
-        auto const cursors   = gd.cursors();
-        uint16_t const first = ui.cursor_range.start;
-        uint16_t const count = ui.cursor_range.count;
-        if (count == 0 || mtl::to<size_t>(first) + count > cursors.size())
+        auto const cursors = ui.cursor_range.of(gd.cursors());
+        if (cursors.is_empty())
         {
-            NE_LOG("cursor range %hu+%hu does not resolve", first, count);
+            NE_LOG("cursor range %hu+%hu does not resolve",
+                ui.cursor_range.start, ui.cursor_range.count);
             return false;
         }
 
@@ -95,9 +94,9 @@ namespace NEONengine
             // A role the project did not configure keeps an empty frame and a
             // zero offset rather than reaching outside the sheet.
             UWORD frame = 0;
-            if (mtl::to<uint16_t>(idx) < count)
+            if (mtl::to<size_t>(idx) < cursors.size())
             {
-                auto const& record = cursors[first + idx];
+                auto const& record = cursors[idx];
                 frame           = record.frame;
                 s_hotspots[idx] = record.hotspot;
             }
@@ -154,7 +153,7 @@ namespace NEONengine
 
         s_ready   = true;
         s_visible = true;
-        NE_LOG("%hu cursor role(s) ready", count);
+        NE_LOG("%lu cursor role(s) ready", mtl::to<ULONG>(cursors.size()));
         return true;
     }
 

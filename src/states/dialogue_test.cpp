@@ -17,8 +17,6 @@
 
 namespace NEONengine
 {
-    // ace::font_ptr s_pFont{ nullptr };
-    // text_renderer_ptr s_pTextRenderer{ nullptr };
 
     void dialogueTestCreate(void)
     {

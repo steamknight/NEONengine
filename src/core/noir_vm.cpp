@@ -105,7 +105,6 @@ namespace NEONengine
             push32(mtl::force_to<uint32_t>(_pc));
         }
 
-        // Set PC to function entry
         _pc = _bytecode + _func_toc[func_id];
 
         // Set up initial stack frame (sentinel return address)
@@ -151,14 +150,12 @@ namespace NEONengine
         if (_state == noir_state::idle) return noir_status::ok;
         if (_state == noir_state::halted) return _last_error;
 
-        // Check if blocked ops have completed
         if (_state == noir_state::blocked)
         {
             if (_blocking_counter > 0) return noir_status::yielded;
             _state = noir_state::running;
         }
 
-        // Check if WAIT timer has expired
         if (_state == noir_state::waiting)
         {
             if (_wait_counter > 0)
@@ -480,7 +477,6 @@ namespace NEONengine
                 uint16_t b      = read_operand(src_mode);
                 uint32_t result = mtl::to<uint32_t>(a) - mtl::to<uint32_t>(b);
                 set_flags_nzcv_sub(a, b, result);
-                // Result is discarded
                 return noir_status::ok;
             }
 
@@ -559,7 +555,6 @@ namespace NEONengine
                 uint16_t b = read_operand(src_mode);
                 uint16_t r = a & b;
                 set_flags_nz(r);
-                // Result discarded
                 return noir_status::ok;
             }
 
@@ -838,7 +833,7 @@ namespace NEONengine
 
             case ANIM_WAIT:
                 _bridge->anim_wait(_d[0]);
-                enter_blocked();
+                increment_blocking();
                 return noir_status::ok;
 
             default: return noir_status::err_invalid_opcode;
@@ -853,7 +848,7 @@ namespace NEONengine
         {
             case GOTO_SCENE:
                 _bridge->goto_scene(_d[0]);
-                enter_blocked();
+                increment_blocking();
                 return noir_status::ok;
 
             case GET_SCENE: _d[0] = _bridge->get_scene(); return noir_status::ok;
@@ -876,12 +871,12 @@ namespace NEONengine
         {
             case SAY:
                 _bridge->say(_d[0], _d[1]);
-                enter_blocked();
+                increment_blocking();
                 return noir_status::ok;
 
             case SHOW_DIALOG:
                 _bridge->show_dialog(_d[0]);
-                enter_blocked();
+                increment_blocking();
                 return noir_status::ok;
 
             case SHOW_TEXT: _bridge->show_text(_d[0], _d[1], _d[2]); return noir_status::ok;
@@ -906,12 +901,12 @@ namespace NEONengine
         {
             case FADE_OUT:
                 _bridge->fade_out(_d[0]);
-                enter_blocked();
+                increment_blocking();
                 return noir_status::ok;
 
             case FADE_IN:
                 _bridge->fade_in(_d[0]);
-                enter_blocked();
+                increment_blocking();
                 return noir_status::ok;
 
             case SCREEN_CLR: _bridge->screen_clear(_d[0]); return noir_status::ok;
@@ -1028,7 +1023,6 @@ namespace NEONengine
 
     void noir_vm::do_ret() noexcept
     {
-        // Tear down frame
         _sp = _fp;
         _fp = mtl::force_to<uint8_t*>(pop32());
         _pc = mtl::force_to<uint8_t const*>(pop32());
@@ -1037,7 +1031,6 @@ namespace NEONengine
         if (_call_depth > 0) --_call_depth;
 #endif
 
-        // Check if this was an entry-point return
         if (_reentry_level > 1)
         {
             // Detect entry-point return by sentinel PC (null)
@@ -1112,7 +1105,7 @@ namespace NEONengine
     {
         if (_sp - bytes_needed >= _stack.data()) return;
 
-        // Calculate offsets before reallocation
+        // Offsets are taken before the reallocation because the vector moves.
         auto sp_offset = _stack.data() + _stack.size() - _sp;
         auto fp_offset = _stack.data() + _stack.size() - _fp;
 
@@ -1120,21 +1113,18 @@ namespace NEONengine
         size_t new_size = old_size * 2;
         _stack.reserve(new_size);
 
-        // Extend the vector's size to fill new capacity
         while (_stack.size() < new_size) _stack.push_back(0);
 
-        // Copy old data to top of new allocation (stack grows down)
+        // The stack grows down, so the old content belongs at the new top.
         auto new_base = _stack.data();
         auto old_top  = new_base + old_size;
         auto new_top  = new_base + new_size;
 
-        // Move old stack content to the top of the new allocation
         for (size_t i = 0; i < old_size; ++i)
         {
             new_top[-(mtl::to<int>(i)) - 1] = old_top[-(mtl::to<int>(i)) - 1];
         }
 
-        // Rebase pointers from the new top
         _sp = new_top - sp_offset;
         _fp = new_top - fp_offset;
 
@@ -1433,13 +1423,5 @@ namespace NEONengine
         if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
     }
 #endif
-
-    // ─── Blocking helper ────────────────────────────────────────────────────────
-
-    void noir_vm::enter_blocked() noexcept
-    {
-        ++_blocking_counter;
-        _state = noir_state::blocked;
-    }
 
 }  // namespace NEONengine

@@ -107,17 +107,10 @@ namespace NEONengine
             auto const timelines = g_pEngine->data().timelines();
             if (scene.timeline_id >= timelines.size()) return;  // scene_timeline reports it.
 
-            auto const& time     = timelines[scene.timeline_id];
-            auto const tracks    = g_pEngine->data().tracks();
-            uint16_t const first = time.track_range.start;
-            uint16_t const count = time.track_range.count;
+            auto const& time  = timelines[scene.timeline_id];
+            auto const tracks = time.track_range.of(g_pEngine->data().tracks());
 
-            if (count == 0 || mtl::to<size_t>(first) + count > tracks.size()) return;
-
-            for (uint16_t index = 0; index < count; ++index)
-            {
-                load_track_sfx(tracks[mtl::to<size_t>(first) + index]);
-            }
+            for (auto const& track : tracks) load_track_sfx(track);
         }
 
         /**
@@ -129,17 +122,12 @@ namespace NEONengine
          */
         void load_hotspot_sfx(data::scene const& scene)
         {
-            auto const all       = g_pEngine->data().hotspots();
-            uint16_t const first = scene.hotspot_range.start;
-            uint16_t const count = scene.hotspot_range.count;
-
             // scene_hotspots reports a bad range and leaves the scene inert.
-            if (count == 0 || mtl::to<size_t>(first) + count > all.size()) return;
+            auto const hotspots = scene.hotspot_range.of(g_pEngine->data().hotspots());
 
-            for (uint16_t index = 0; index < count; ++index)
+            for (auto const& hotspot : hotspots)
             {
-                auto const hash = all[mtl::to<size_t>(first) + index].click_sfx_hash;
-                if (hash != data::NO_ASSET) require_sfx(hash);
+                if (hotspot.click_sfx_hash != data::NO_ASSET) require_sfx(hotspot.click_sfx_hash);
             }
         }
     }  // namespace

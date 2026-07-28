@@ -29,22 +29,11 @@ namespace NEONengine
         s_currentMod = 0;
     }
 
-    void musicLoad(char const *szFilePath)
-    {
-        systemUse();
-        musicReleaseCurrent();
-
-        s_currentMod = ptplayerModCreateFromPath(szFilePath);
-
-        systemUnuse();
-    }
-
     void musicLoad(ace::file_ptr &&pFile)
     {
-        // The caller already holds the system (see scene loading), so unlike the
-        // path overload this does not systemUse/Unuse: it runs inside a wider
-        // system_use_guard region. ptplayerModCreateFromFd closes the file, so
-        // ownership is released into it.
+        // The caller holds the system for the whole scene load, so this does not
+        // take it again. ptplayerModCreateFromFd closes the file, so ownership is
+        // released into it.
         musicReleaseCurrent();
 
         s_currentMod = ptplayerModCreateFromFd(pFile.release());

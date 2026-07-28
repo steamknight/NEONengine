@@ -201,7 +201,7 @@ namespace NEONengine
                 path,
                 mtl::to<UWORD>(result.value()->language_id()),
                 mtl::to<UWORD>(lang));
-            return mtl::make_error<string_table_ptr, error_code>(error_code::LANGUAGE_MISMATCH);
+            return mtl::unexpected(error_code::LANGUAGE_MISMATCH);
         }
 
         return result;
@@ -218,13 +218,13 @@ namespace NEONengine
 
         if (!pFile)
         {
-            return mtl::make_error<string_table_ptr, error_code>(error_code::FILE_NOT_FOUND);
+            return mtl::unexpected(error_code::FILE_NOT_FOUND);
         }
 
         auto header = read_header(pFile.get());
         if (!header)
         {
-            return mtl::make_error<string_table_ptr, error_code>(header.error());
+            return mtl::unexpected(header.error());
         }
 
         auto pTable    = string_table_ptr(new (MemF::Fast) string_table());
@@ -240,7 +240,7 @@ namespace NEONengine
         {
             NE_LOG("payload is shorter than its declared %lu bytes",
                 mtl::to<ULONG>(hd.payload_size));
-            return mtl::make_error<string_table_ptr, error_code>(error_code::MALFORMED_PAYLOAD);
+            return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
         }
 
         auto const checksum = adler32(pTable->_payload.data(), hd.payload_size);
@@ -248,7 +248,7 @@ namespace NEONengine
         {
             NE_LOG("checksum %08lx does not match the header's %08lx",
                 mtl::to<ULONG>(checksum), mtl::to<ULONG>(hd.checksum));
-            return mtl::make_error<string_table_ptr, error_code>(error_code::CHECKSUM_MISMATCH);
+            return mtl::unexpected(error_code::CHECKSUM_MISMATCH);
         }
 
         // Index every record up front so lookups are a single array read. The
@@ -266,7 +266,7 @@ namespace NEONengine
             {
                 NE_LOG("record %lu has no room for its length prefix",
                     mtl::to<ULONG>(index));
-                return mtl::make_error<string_table_ptr, error_code>(error_code::MALFORMED_PAYLOAD);
+                return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
             }
 
             auto* pRecord     = pTable->_payload.data() + offset;
@@ -281,7 +281,7 @@ namespace NEONengine
             {
                 NE_LOG("record %lu of %lu bytes runs past the payload",
                     mtl::to<ULONG>(index), mtl::to<ULONG>(length));
-                return mtl::make_error<string_table_ptr, error_code>(error_code::MALFORMED_PAYLOAD);
+                return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
             }
 
             pTable->_offsets.push_back(pRecord);
@@ -294,7 +294,7 @@ namespace NEONengine
                 mtl::to<ULONG>(hd.string_count),
                 mtl::to<ULONG>(offset),
                 mtl::to<ULONG>(hd.payload_size));
-            return mtl::make_error<string_table_ptr, error_code>(error_code::MALFORMED_PAYLOAD);
+            return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
         }
 
         pTable->_string_count = to<uint16_t>(pTable->_offsets.size());

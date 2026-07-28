@@ -12,7 +12,7 @@ namespace mtl
      *
      * Usage:
      * @code
-     * auto result = mtl::make_error<int>("fail");
+     * auto result = mtl::unexpected("fail");
      * if (result) { int v = result.value(); } else { puts(result.error()); }
      * @endcode
      */
@@ -264,52 +264,6 @@ namespace mtl
         constexpr E const& error() const { return _error; }
     };
 
-    /*
-     *  _    _ _   _ _ _ _
-     * | |  | | | (_) (_) |
-     * | |  | | |_ _| |_| |_ _   _
-     * | |  | | __| | | | __| | | |
-     * | |__| | |_| | | | |_| |_| |
-     *  \____/ \__|_|_|_|\__|\__, |
-     *                        __/ |
-     *                       |___/
-     */
-
-    /**
-     * @brief Helper to construct an success result
-     */
-    template<typename T, typename E>
-    constexpr expected<T, E> make_success(T const& value)
-    {
-        return expected<T, E>(value);
-    }
-
-    /**
-     * @brief Helper to construct an success result (rvalue)
-     */
-    template<typename T, typename E>
-    constexpr expected<T, E> make_success(T&& value)
-    {
-        return expected<T, E>(static_cast<T&&>(value));
-    }
-
-    /**
-     * @brief Helper to construct an error result
-     */
-    template<typename T, typename E>
-    constexpr expected<T, E> make_error(E const& e)
-    {
-        return expected<T, E>(typename expected<T, E>::error_tag{}, e);
-    }
-
-    /**
-     * @brief Helper to construct an error result (rvalue)
-     */
-    template<typename T, typename E>
-    constexpr expected<T, E> make_error(E&& e)
-    {
-        return expected<T, E>(typename expected<T, E>::error_tag{}, static_cast<E&&>(e));
-    }
 }  // namespace mtl
 
 #endif  // __MTL__EXPECTED_H__INCLUDED__

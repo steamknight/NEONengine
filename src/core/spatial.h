@@ -2,10 +2,9 @@
  * @file spatial.h
  * @brief Shared coordinate and rectangle value types for the .neon format.
  *
- * These mirror ACE's Y,X coordinate convention so a loaded value converts to its
- * ACE counterpart with no reordering, and so a run of points sorts by row first.
- * They carry the exact big-endian, naturally-aligned layout the loader overlays
- * onto the file buffer: pure data with value semantics and no padding.
+ * These mirror ACE's Y,X order, so a loaded value converts with no reordering
+ * and a run of points sorts by row first. The layout is exactly what the loader
+ * overlays onto the file buffer: big-endian, naturally aligned, no padding.
  */
 
 #ifndef __SPATIAL_H__INCLUDED__
@@ -18,11 +17,10 @@
 namespace NEONengine::data
 {
     /**
-     * @brief Maps a coordinate scalar type to its ACE Y,X coordinate type.
+     * @brief Maps a coordinate scalar to its ACE Y,X coordinate type.
      *
-     * Only the scalars the engine actually converts are specialized. Calling
-     * point<T>::to_ace() for an unmapped T is a compile error until its mapping
-     * is added here, which keeps the ACE coupling explicit and intentional.
+     * Converting a point<T> with no mapping here is a compile error, which
+     * keeps the ACE coupling explicit.
      */
     template<typename T>
     struct ace_coord;
@@ -45,15 +43,16 @@ namespace NEONengine::data
         T x;
 
         /**
-         * @brief The equivalent ACE coordinate.
+         * @brief Converts to the ACE coordinate of the same layout.
          *
-         * A point and its ACE coord share one layout, so this reinterprets the
-         * same bytes. It compiles to a single register load without the
-         * aliasing hazard of a reinterpret_cast.
+         * The layouts match, so this reinterprets the same bytes without the
+         * aliasing hazard of a reinterpret_cast. The template parameter defers
+         * ace_coord<T>, so declaring a point<T> with no mapping stays legal.
          */
-        [[nodiscard]] auto to_ace() const noexcept
+        template<typename U = T>
+        [[nodiscard]] constexpr operator typename ace_coord<U>::type() const noexcept
         {
-            return __builtin_bit_cast(typename ace_coord<T>::type, *this);
+            return __builtin_bit_cast(typename ace_coord<U>::type, *this);
         }
 
         friend constexpr point operator+(point const& lhs, point const& rhs) noexcept
@@ -83,8 +82,8 @@ namespace NEONengine::data
         "point must be standard-layout to overlay the file buffer");
     static_assert(__is_trivially_copyable(point<uint16_t>),
         "point must be trivially copyable to overlay the file buffer");
-    static_assert(sizeof(point<uint16_t>{}.to_ace()) == sizeof(tUwCoordYX),
-        "point<uint16_t>::to_ace must yield its ACE coord type");
+    static_assert(sizeof(static_cast<tUwCoordYX>(point<uint16_t>{})) == sizeof(tUwCoordYX),
+        "point<uint16_t> must convert to its ACE coord type");
 
     /**
      * @brief An axis-aligned rectangle: a Y,X origin plus its size.
@@ -96,9 +95,9 @@ namespace NEONengine::data
         uint16_t height;
 
         /**
-         * @brief The equivalent ACE rectangle.
+         * @brief Converts to the ACE rectangle.
          */
-        [[nodiscard]] tUwRect to_ace() const noexcept
+        [[nodiscard]] constexpr operator tUwRect() const noexcept
         {
             return tUwRect{ pos.y, pos.x, width, height };
         }

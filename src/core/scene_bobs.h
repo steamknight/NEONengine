@@ -9,15 +9,10 @@
  * hotspot's state, which scene_hotspots reports through
  * scene_bobs_set_hotspot_frame().
  *
- * Scope of the current slice: instances are drawn in GFXI order, hotspot
- * graphics on top of them, and the hover caption above everything. Instances
- * can be moved and shown/hidden at runtime; the timeline drives that. ACE also
- * does no off-screen clipping and tracks bob counts/undraw size in 8-/16-bit
- * fields, so scenes must be validated/capped (editor side) before many or
- * off-screen bobs are used.
+ * ACE does no off-screen clipping and holds bob counts and undraw size in 8-
+ * and 16-bit fields, so the editor caps both.
  *
- * Deliberately not handled yet: z-order sorting, so a moving instance passing
- * another draws in GFXI order rather than by depth.
+ * Instances draw in GFXI order, not by depth.
  */
 
 #ifndef __SCENE_BOBS_H__INCLUDED__

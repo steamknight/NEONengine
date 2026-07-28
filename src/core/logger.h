@@ -2,27 +2,22 @@
  * @file logger.h
  * @brief Engine logging, with one switchable domain per source file.
  *
- * ACE gates its own logWrite on ACE_DEBUG, so routing engine lines through it
- * tied the two together: silencing ACE's chatter meant silencing ours, and
- * keeping ours meant keeping every ACE block and allocation line with it. This
- * writes to the UAE debug console directly, through the same door ACE knocks
- * on, so the two are independent. ACE_DEBUG can stay on for the safety checks
- * that scene_bobs relies on while ACE itself says nothing.
+ * Writes to the UAE debug console directly rather than through ACE's logWrite,
+ * so ACE_DEBUG does not gate engine output. ACE_DEBUG can stay on for the
+ * checks scene_bobs relies on while ACE itself says nothing.
  *
- * Each source file names its domain once and then just logs:
+ * Each source file names its domain once and then logs:
  *
  *     NE_LOG_DOMAIN(Scene);
  *     ...
  *     NE_LOG("transition to scene %hu", id);   // [Scene] transition to scene 3
  *
- * A file that logs without naming a domain does not compile, which is the right
- * way to find out. NE_LOG_ALWAYS() writes whether or not the domain is on, for
- * the handful of lines that must never be missed.
+ * Logging without naming a domain does not compile. NE_LOG_ALWAYS() writes
+ * whether or not the domain is on.
  *
- * There are two switches. NE_LOGGING is a build flag: with it off every macro
- * here expands to nothing and the format strings leave the executable. The
- * domain mask is a runtime word, so a disabled domain costs one AND and its
- * arguments are never evaluated.
+ * NE_LOGGING is a build flag: off, every macro here expands to nothing and the
+ * format strings leave the executable. The domain mask is a runtime word, so a
+ * disabled domain costs one AND and never evaluates its arguments.
  */
 
 #ifndef __LOGGER_H__INCLUDED__
@@ -35,13 +30,10 @@ namespace NEONengine
     /**
      * @brief Every logging domain in the engine.
      *
-     * This list is the only place a domain exists. It gives out the bit, the
-     * enumerator and the printed name together, so no file has to pick a bit by
-     * hand, two files cannot claim the same one, and a name cannot drift from
-     * what it switches. Order sets the bit, so appending is free and reordering
-     * only changes which bit a mask literal refers to.
+     * The only place a domain exists. Order sets the bit, so appending is free
+     * and reordering changes what a mask literal means.
      *
-     * The mask is 32 bits wide, so there is room for 32 domains.
+     * The mask is 32 bits wide.
      */
 #define NE_LOG_DOMAIN_LIST(X) \
     X(Core)                   \
@@ -81,24 +73,19 @@ namespace NEONengine
      * @brief The domains that print when the engine starts.
      *
      * Clear a bit to silence a domain, as in ~log_bit(log_domain::Timeline).
-     * This belongs in the project eventually, next to the other debug settings,
-     * but a constant costs the editor nothing meanwhile and g_logMask can be
-     * changed at runtime by anything that wants to.
+     * g_logMask can also be changed at runtime.
      */
     constexpr ULONG NE_LOG_MASK_DEFAULT = 0xFFFFFFFFUL;
 
     /**
      * @brief Whether ACE's own log output starts silenced.
      *
-     * ACE keeps a mute flag its writers check first, so this costs nothing and
-     * needs no ACE patch. Turning it on leaves ACE_DEBUG in place, which
-     * matters: it also enables bobCheckGood and the bob buffer auto-correction
-     * that scene_bobs_draw depends on.
+     * ACE's writers check a mute flag first, so this needs no ACE patch and
+     * leaves ACE_DEBUG in place. ACE_DEBUG also enables bobCheckGood and the
+     * bob buffer auto-correction scene_bobs_draw depends on.
      *
-     * Some engine code still writes through ACE rather than through here: the
-     * script VM's diagnostics are the largest part, and the assert and fatal
-     * error paths are the ones worth remembering. Muting ACE takes those with
-     * it.
+     * The script VM's diagnostics and the assert and fatal paths still write
+     * through ACE. Muting takes those with it.
      */
     constexpr bool NE_LOG_MUTE_ACE = false;
 
@@ -133,13 +120,11 @@ namespace NEONengine
     /**
      * @brief Writes one line, prefixed with the name of @p domain.
      *
-     * The newline is added here. Every line is emitted in a single write
-     * because the UAE console ends a line on each one, so a message split
-     * across two calls arrives as two lines.
+     * The newline is added here. The UAE console ends a line on every write, so
+     * a message must leave in one call.
      *
-     * A line longer than the buffer is truncated rather than overrunning it.
-     * The buffer is static and shared, so this must not be called from an
-     * interrupt.
+     * Over-long lines are truncated. The buffer is static, so this must not be
+     * called from an interrupt.
      */
     void log_write(log_domain domain, const char* szFormat, ...)
         __attribute__((format(printf, 2, 3)));

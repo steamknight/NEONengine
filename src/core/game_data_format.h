@@ -16,7 +16,7 @@
 #define __GAME_DATA_FORMAT_H__INCLUDED__
 
 #include <stdint.h>
-
+#include <mtl/span.h>
 #include <mtl/utility.h>
 
 #include "spatial.h"
@@ -104,6 +104,22 @@ namespace NEONengine::data
     {
         uint16_t start;  ///< 0: Index of the first element.
         uint16_t count;  ///< 2: Number of elements.
+
+        /**
+         * @brief The elements of @p all this range addresses.
+         *
+         * Empty when the range is empty or runs past the end of @p all.
+         */
+        template<class T>
+        [[nodiscard]] constexpr mtl::span<T> of(mtl::span<T> all) const noexcept
+        {
+            if (count == 0 || static_cast<size_t>(start) + count > all.size())
+            {
+                return mtl::span<T>();
+            }
+
+            return mtl::span<T>(all.data() + start, count);
+        }
 
         friend constexpr bool operator==(range const& lhs, range const& rhs) noexcept
         {
@@ -389,9 +405,7 @@ namespace NEONengine::data
         PALETTE_CYCLE_START = 2,
         PALETTE_CYCLE_END   = 3,
         SFX_PLAY            = 4,
-        // 5 was SFX_STOP, and is not reused. A sound effect is a one-shot that
-        // is over long before anything could ask it to stop, so the type earned
-        // nothing; the VM never had an opcode for it either.
+        // 5 (SFX_STOP) is retired and must not be reused.
         MUSIC_PLAY          = 6,
         MUSIC_STOP          = 7,
         EXECUTE_SCRIPT      = 8,

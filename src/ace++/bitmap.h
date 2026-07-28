@@ -29,11 +29,6 @@ namespace ace
         // it so the file_ptr does not double-close the same handle.
         return bitmap_ptr(::bitmapCreateFromFd(pFile.release(), isFast));
     }
-
-    inline void bitmapDestroy(bitmap_ptr& pBitmap)
-    {
-        ::bitmapDestroy(pBitmap.release());
-    }
 }  // namespace ace
 
 #endif  // __ACEPP__BITMAP_H___INCLUDED__

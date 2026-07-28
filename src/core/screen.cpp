@@ -217,9 +217,9 @@ namespace NEONengine
         return screen->pFade->pPaletteRef;
     }
 
-    UWORD screenGetVerticalOffset(Screen* screen)
+    data::point<uint16_t> screenGetOffset(Screen* screen)
     {
-        return screen->uwOffset;
+        return data::point<uint16_t>{ screen->uwOffset, 0 };
     }
 
     void screenDuplicateBackToFront(Screen* screen)

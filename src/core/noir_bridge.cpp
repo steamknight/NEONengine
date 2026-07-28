@@ -59,14 +59,14 @@ namespace NEONengine
             }
         }
 
-        // ── Inventory (stubbed for this slice) ─────────────────────────────────
+        // ── Inventory ────────────────────────────────────────────────────────
         void nb_inv_add(uint16_t) {}
         void nb_inv_remove(uint16_t) {}
         bool nb_inv_has(uint16_t) { return false; }
         uint16_t nb_inv_count() { return 0; }
         void nb_inv_clear() {}
 
-        // ── Dialogue / Audio (stubbed for this slice) ──────────────────────────
+        // ── Dialogue / Audio ─────────────────────────────────────────────────
         void nb_say(uint16_t, uint16_t) {}
         void nb_show_dialog(uint16_t) {}
         void nb_show_text(uint16_t, uint16_t, uint16_t) {}
@@ -75,17 +75,16 @@ namespace NEONengine
         void nb_stop_music() {}
         void nb_play_sfx(uint16_t) {}
 
-        // ── Timeline ───────────────────────────────────────────────────────────
+        // ── Timeline ─────────────────────────────────────────────────────────
         // Track names are resolved against the current scene, so a script that
         // names a track another scene owns simply does nothing here.
         void nb_anim_play(uint16_t name_id) { scene_timeline_play(name_id); }
         void nb_anim_stop(uint16_t name_id) { scene_timeline_stop(name_id); }
         void nb_anim_wait(uint16_t name_id) { scene_timeline_wait(name_id); }
 
-        // ── System (stubbed for this slice) ────────────────────────────────────
+        // ── System ───────────────────────────────────────────────────────────
         // Records the request; the state loop applies it at a safe point. Doing
-        // it here would read from disk inside a VM step, and a later slice will
-        // want to re-render the scene's text once the swap lands.
+        // it here would read from disk inside a VM step.
         void nb_set_lang(uint16_t lang)
         {
             if (lang >= mtl::to<uint16_t>(language::COUNT))

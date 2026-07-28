@@ -42,45 +42,26 @@ namespace NEONengine
      * @endcode
      */
     class text_renderer;
-    /**
-     * @brief Unique pointer to text_renderer.
-     */
     using text_renderer_ptr = mtl::unique_ptr<text_renderer>;
 
     class text_renderer
     {
         public:  ///////////////////////////////////////////////////////////////////////////////////
-        /**
-         * @enum error_code
-         * @brief Error codes for text_renderer operations.
-         */
         enum class error_code
         {
             INVALID_FONT_POINTER,
         };
 
-        /**
-         * @brief Result type for text_renderer creation.
-         */
         using result = mtl::expected<text_renderer_ptr, error_code>;
 
         public:  ///////////////////////////////////////////////////////////////////////////////////
         /**
-         * @brief Render text to a bitmap with justification and max width.
-         * @param text The text to render.
-         * @param maxWidth Maximum width of the rendered text.
-         * @param justification Horizontal justification.
-         * @return Pointer to rendered text bitmap.
+         * @brief Renders @p text into a bitmap, wrapped to @p maxWidth.
          */
         ace::text_bitmap_ptr create_text(bstr_view const& text,
                                          uint16_t maxWidth,
                                          text_justify justification);
 
-        /**
-         * @brief Create a text_renderer from a font pointer.
-         * @param pFont Pointer to .
-         * @return result (success: text_renderer_ptr, error: error_code)
-         */
         static result create(tFont* pFont);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
@@ -91,17 +72,9 @@ namespace NEONengine
             uint16_t start;
             uint16_t end;
 
-            /**
-             * @brief Get the length of the line.
-             * @return Number of characters in the line.
-             */
             size_t length() const { return end - start; }
         };
 
-        /**
-         * @brief Construct a text_renderer from a font pointer.
-         * @param pFont Pointer to ace font.
-         */
         text_renderer(tFont* pFont);
 
         bool break_text_into_lines(bstr_view const& text,

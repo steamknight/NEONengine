@@ -123,10 +123,8 @@ namespace NEONengine
     extern engine_ptr g_pEngine;
 
     extern tStateManager* g_gameStateManager;
-    extern tState g_stateFontTest,  //
-        g_stateDebugView,           //
-        g_stateSplash,              //
-        g_stateScene,               //
+    extern tState g_stateDebugView,  //
+        g_stateScene,                //
         g_stateDialogueTest;
 
 #ifdef ACE_TEST_RUNNER
@@ -137,11 +135,6 @@ namespace NEONengine
 #endif
 
     extern Screen* g_mainScreen;
-
-#if !defined(SAFE_CB_CALL)
-#define SAFE_CB_CALL(fn, ...) \
-    if (fn) fn(__VA_ARGS__);
-#endif  // !defined (SAFE_CB_CALL)
 
 }  // namespace NEONengine
 

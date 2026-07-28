@@ -338,7 +338,7 @@ namespace NEONengine
 
             // Unconditional, exactly as nb_fade_done() is, and for the same
             // reason: every wait recorded here was paired with an
-            // enter_blocked(), so skipping the decrement leaves the counter
+            // increment_blocking(), so skipping the decrement leaves the counter
             // permanently one too high and wedges the *next* blocking call just
             // as surely as an extra decrement would wrap it to 255. A hotspot
             // click can cancel the block out from under a wait (it re-enters
@@ -638,7 +638,6 @@ namespace NEONengine
             return true;
         }
 
-        /// @brief Runs @p key as a GFX_VISIBILITY.
         bool fire_visibility(data::keyframe const& key)
         {
             auto const& payload =
@@ -651,7 +650,6 @@ namespace NEONengine
             return true;
         }
 
-        /// @brief Runs @p key as an SFX_PLAY.
         bool fire_sfx(data::keyframe const& key)
         {
             // Preloaded when the scene did, because a sound has to be resident
@@ -661,7 +659,6 @@ namespace NEONengine
             return true;
         }
 
-        /// @brief Runs @p key as a MUSIC_PLAY.
         bool fire_music(data::keyframe const& key)
         {
             auto const& payload = *mtl::force_to<data::music_play_payload const*>(key.payload);
@@ -688,7 +685,6 @@ namespace NEONengine
             return true;
         }
 
-        /// @brief Runs @p key as an EXECUTE_SCRIPT.
         bool fire_script(data::keyframe const& key, uint16_t track_index)
         {
             auto const& payload = *mtl::force_to<data::execute_script_payload const*>(key.payload);
@@ -979,28 +975,27 @@ namespace NEONengine
             return;
         }
 
-        auto const& time     = timelines[scene.timeline_id];
-        auto const all       = g_pEngine->data().tracks();
-        uint16_t const first = time.track_range.start;
-        uint16_t const count = time.track_range.count;
+        auto const& time = timelines[scene.timeline_id];
+        auto const all   = g_pEngine->data().tracks();
 
         // An empty or out-of-bounds range simply leaves the scene inert.
-        if (count == 0 || mtl::to<size_t>(first) + count > all.size())
+        auto const tracks = time.track_range.of(all);
+        if (tracks.is_empty())
         {
-            if (count != 0)
+            if (time.track_range.count != 0)
             {
                 NE_LOG("track range %hu+%hu exceeds %lu tracks",
-                    first,
-                    count,
+                    time.track_range.start,
+                    time.track_range.count,
                     mtl::to<ULONG>(all.size()));
             }
             return;
         }
 
-        s_first = first;
-        s_count = count;
-        s_clocks.reserve(count);
-        s_key_base.reserve(count);
+        s_first = time.track_range.start;
+        s_count = mtl::to<uint16_t>(tracks.size());
+        s_clocks.reserve(tracks.size());
+        s_key_base.reserve(tracks.size());
 
         // One movement slot per instance, whether or not any track moves it:
         // an instance's position is its own, so two tracks moving it are settled
@@ -1012,10 +1007,10 @@ namespace NEONengine
         uint16_t unimplemented   = 0;  ///< Bitmask over data::keyframe_type.
         auto const all_keyframes = g_pEngine->data().keyframes();
 
-        NE_LOG("%hu, %hu track(s)", scene.timeline_id, count);
-        for (uint16_t index = 0; index < count; ++index)
+        NE_LOG("%hu, %lu track(s)", scene.timeline_id, mtl::to<ULONG>(tracks.size()));
+        for (uint16_t index = 0; index < tracks.size(); ++index)
         {
-            auto const& track = all[mtl::to<size_t>(first) + index];
+            auto const& track = tracks[index];
             NE_LOG("  track %hu: name %hu, keys %hu+%hu, %hu frames, %s x%hu, %s",
                 index,
                 track.name_id,
@@ -1095,11 +1090,11 @@ namespace NEONengine
         // The editor rejects a name repeated inside one scene, so this means the
         // pak was built by something else. ANIM_PLAY takes the first match,
         // which is at least deterministic, but the later one is unreachable.
-        for (uint16_t a = 0; a < count; ++a)
+        for (uint16_t a = 0; a < tracks.size(); ++a)
         {
-            for (uint16_t b = mtl::to<uint16_t>(a + 1); b < count; ++b)
+            for (uint16_t b = mtl::to<uint16_t>(a + 1); b < tracks.size(); ++b)
             {
-                if (all[mtl::to<size_t>(first) + a].name_id != all[mtl::to<size_t>(first) + b].name_id)
+                if (tracks[a].name_id != tracks[b].name_id)
                 {
                     continue;
                 }
@@ -1107,7 +1102,7 @@ namespace NEONengine
                 NE_LOG("  tracks %hu and %hu share name %hu; only the first can be played",
                     a,
                     b,
-                    all[mtl::to<size_t>(first) + a].name_id);
+                    tracks[a].name_id);
                 break;
             }
         }
@@ -1118,9 +1113,9 @@ namespace NEONengine
         // After s_fired exists, because priming has to see which fire_once keys
         // are spent, and after scene_bobs_load(), because a movement with no
         // earlier one to lead it starts from where its instance already stands.
-        for (uint16_t index = 0; index < count; ++index)
+        for (uint16_t index = 0; index < tracks.size(); ++index)
         {
-            if (s_clocks[index].is_running()) prime_glides(index, all[mtl::to<size_t>(first) + index]);
+            if (s_clocks[index].is_running()) prime_glides(index, tracks[index]);
         }
     }
 

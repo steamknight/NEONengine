@@ -3,6 +3,7 @@
 
 #include <ace/managers/viewport/simplebuffer.h>
 
+#include "core/spatial.h"
 #include "utils/fade.h"
 
 typedef struct _tTextBitMap tTextBitMap;
@@ -142,14 +143,12 @@ namespace NEONengine
                            tCbFadeOnDone cbOnDone);
 
     /**
-     * @brief
+     * @brief Fades @p screen up from black.
      *
      * @param screen The screen to fade
      * @param ubDuration The duration time, in frames
      * @param ubFadeMusic If set to 1, it will fade the music
      * @param cbOnDone Callback called when done
-     *
-     * @see screenFadeToBlack()
      */
     void screenFadeFromBlack(Screen* screen,
                              UBYTE ubDuration,
@@ -172,55 +171,25 @@ namespace NEONengine
     void screenBindMouse(Screen* screen);
 
     /**
-     * @brief Converts the coordinates of a rectangle from screen space to screen space.
-     *
-     * @param screen A pointer to a Screen object.
-     * @param pRect A pointer to a tUwRect object.
+     * @brief Shifts @p pRect from scene space down into display space.
      */
     void screenToScreenSpace(Screen* screen, tUwRect* pRect);
 
-    /**
-     * @brief Returns a pointer to the view associated with the screen.
-     *
-     * @param screen A pointer to a Screen object.
-     * @return tVPort* A pointer to the view.
-     */
     tView* screenGetView(Screen* screen);
 
-    /**
-     * @brief Returns a pointer to the back buffer associated with the screen.
-     *
-     * @param screen A pointer to a Screen object.
-     * @return tBitMap* A pointer to the back buffer.
-     */
     tBitMap* screenGetBackBuffer(Screen* screen);
 
-    /**
-     * @brief Returns a pointer to the front buffer associated with the screen.
-     *
-     * @param screen A pointer to a Screen object.
-     * @return tBitMap* A pointer to the front buffer.
-     */
     tBitMap* screenGetFrontBuffer(Screen* screen);
 
-    /**
-     * @brief Returns a pointer to the palette associated with the screen.
-     *
-     * @param screen A pointer to a Screen object.
-     * @return UWORD* A pointer to the palette.
-     */
     UWORD* screenGetPalette(Screen* screen);
 
     /**
-     * @brief The screen's vertical centering offset, in scanlines.
+     * @brief The offset that moves scene space into display space.
      *
-     * Content drawn straight into a buffer (e.g. bobs) must add this so it lines
-     * up with the background, which screenBlitCopy already shifts down by it.
-     *
-     * @param screen A pointer to a Screen object.
-     * @return The vertical offset applied to on-screen content.
+     * Content drawn straight into a buffer, bobs for one, must add this.
+     * screenBlitCopy already does. Only y is ever non-zero.
      */
-    UWORD screenGetVerticalOffset(Screen* screen);
+    data::point<uint16_t> screenGetOffset(Screen* screen);
 
     /**
      * @brief Copies the whole back buffer into the front buffer.

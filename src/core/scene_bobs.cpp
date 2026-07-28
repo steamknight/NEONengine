@@ -183,24 +183,22 @@ namespace NEONengine
         void load_hotspot_graphics(data::scene const& scene,
             mtl::span<data::graphic> graphics,
             ULONG* pPalette,
-            UWORD screenOffsetY)
+            data::point<uint16_t> screenOffset)
         {
-            auto const all       = g_pEngine->data().hotspots();
-            uint16_t const first = scene.hotspot_range.start;
-            uint16_t const count = scene.hotspot_range.count;
-            if (count == 0 || mtl::to<size_t>(first) + count > all.size()) return;
+            auto const hotspots = scene.hotspot_range.of(g_pEngine->data().hotspots());
+            if (hotspots.is_empty()) return;
 
             // Sized to every hotspot so the mapping is indexed directly; the
             // assets themselves are reserved for the worst case so that neither
             // vector moves after bobInit() has taken pointers into them.
-            s_hotspotBob.reserve(count);
-            s_hotspotAssets.reserve(count);
+            s_hotspotBob.reserve(hotspots.size());
+            s_hotspotAssets.reserve(hotspots.size());
 
-            for (uint16_t i = 0; i < count; ++i)
+            for (uint16_t i = 0; i < hotspots.size(); ++i)
             {
                 s_hotspotBob.push_back(NO_BOB);
 
-                data::hotspot const& hotspot = all[first + i];
+                data::hotspot const& hotspot = hotspots[i];
                 if (hotspot.graphic_id == data::NO_ID) continue;
                 if (hotspot.graphic_id >= graphics.size()) continue;
 
@@ -212,7 +210,7 @@ namespace NEONengine
                 if (gfx.frame_count < HOTSPOT_STATE_FRAMES)
                 {
                     NE_LOG("hotspot %hu graphic has %hhu frame(s), needs %hhu",
-                        mtl::to<UWORD>(first + i),
+                        mtl::to<UWORD>(scene.hotspot_range.start + i),
                         gfx.frame_count,
                         HOTSPOT_STATE_FRAMES);
                     continue;
@@ -227,14 +225,15 @@ namespace NEONengine
 
                 graphic_asset& stored      = s_hotspotAssets.back();
                 auto const [pFrame, pMask] = frame_at(stored, 0);
+                auto const at              = hotspot.bounds.pos + screenOffset;
                 bobInit(&stored.bob,
                     gfx.frame_width,
                     gfx.frame_height,
                     1,
                     pFrame,
                     pMask,
-                    hotspot.bounds.pos.x,
-                    mtl::to<UWORD>(hotspot.bounds.pos.y + screenOffsetY));
+                    at.x,
+                    at.y);
             }
         }
 
@@ -269,22 +268,20 @@ namespace NEONengine
         {
             s_captions.clear();
 
-            auto const all       = g_pEngine->data().hotspots();
-            uint16_t const first = scene.hotspot_range.start;
-            uint16_t const count = scene.hotspot_range.count;
-            if (count == 0 || mtl::to<size_t>(first) + count > all.size()) return false;
+            auto const hotspots = scene.hotspot_range.of(g_pEngine->data().hotspots());
+            if (hotspots.is_empty()) return false;
 
             // Reserved up front: the bob holds a pointer into a caption's mask,
             // so the storage must not move once a caption is shown.
-            s_captions.reserve(count);
+            s_captions.reserve(hotspots.size());
 
             bool any          = false;
             UBYTE const depth = screenGetBackBuffer(g_mainScreen)->Depth;
-            for (uint16_t i = 0; i < count; ++i)
+            for (uint16_t i = 0; i < hotspots.size(); ++i)
             {
                 s_captions.push_back(caption{});
 
-                data::hotspot const& hotspot = all[first + i];
+                data::hotspot const& hotspot = hotspots[i];
                 if (hotspot.hover_string_id == data::NO_ID) continue;
 
                 auto const text = g_pEngine->strings().get_string(hotspot.hover_string_id);
@@ -411,35 +408,32 @@ namespace NEONengine
         s_hotspotBob.clear();
         s_captions.clear();
 
-        game_data& gd        = g_pEngine->data();
-        auto instances       = gd.graphic_instances();
-        auto graphics        = gd.graphics();
-        uint16_t const first = scene.graphic_instance_range.start;
-        uint16_t const count = scene.graphic_instance_range.count;
+        game_data& gd  = g_pEngine->data();
+        auto instances = scene.graphic_instance_range.of(gd.graphic_instances());
+        auto graphics  = gd.graphics();
 
         // AGA palette entries are ULONG; screenGetPalette() types the buffer
         // as UWORD* for the ACE API, so index it with ULONG stride to land on
         // the right entry.
         ULONG* pPalette           = mtl::force_to<ULONG*>(screenGetPalette(g_mainScreen));
-        UWORD const screenOffsetY = screenGetVerticalOffset(g_mainScreen);
+        auto const screenOffset = screenGetOffset(g_mainScreen);
 
-        // Build the set only for a valid, non-empty range; an empty or
-        // out-of-bounds range simply yields no bobs.
-        if (count > 0 && mtl::to<size_t>(first) + count <= instances.size())
+        // An empty or out-of-bounds range simply yields no bobs.
+        if (!instances.is_empty())
         {
             // The bob's frame pointer and the manager's pointer to the bob must
             // both stay valid, so the storage must not move after bobInit():
             // reserve the worst case up front.
-            s_assets.reserve(count);
-            s_instanceBob.reserve(count);
+            s_assets.reserve(instances.size());
+            s_instanceBob.reserve(instances.size());
 
-            for (uint16_t i = 0; i < count; ++i)
+            for (uint16_t i = 0; i < instances.size(); ++i)
             {
                 // Every instance gets an entry, so a caller can index by the
                 // scene-local id whether or not this one ended up drawable.
                 s_instanceBob.push_back(NO_BOB);
 
-                data::graphic_instance const& inst = instances[first + i];
+                data::graphic_instance const& inst = instances[i];
                 if (inst.graphic_id >= graphics.size()) continue;
                 data::graphic const& gfx = graphics[inst.graphic_id];
 
@@ -455,18 +449,19 @@ namespace NEONengine
                 // stable storage and register the bob on it.
                 graphic_asset& stored      = s_assets.back();
                 auto const [pFrame, pMask] = frame_at(stored, 0);
+                auto const at              = inst.pos + screenOffset;
                 bobInit(&stored.bob,
                     gfx.frame_width,
                     gfx.frame_height,
                     1,
                     pFrame,
                     pMask,
-                    inst.pos.x,
-                    mtl::to<UWORD>(inst.pos.y + screenOffsetY));
+                    at.x,
+                    at.y);
             }
         }
 
-        load_hotspot_graphics(scene, graphics, pPalette, screenOffsetY);
+        load_hotspot_graphics(scene, graphics, pPalette, screenOffset);
         load_captions(scene);
 
         // ACE sizes its bob queues and undraw buffers from what was registered,
@@ -508,8 +503,7 @@ namespace NEONengine
         // ACE documents sPos as the one field a caller may write; the undraw
         // record is taken when the bob is pushed, so a moved bob still erases
         // itself from where it was last drawn in each buffer.
-        asset->bob.sPos.uwX = pos.x;
-        asset->bob.sPos.uwY = mtl::to<UWORD>(pos.y + screenGetVerticalOffset(g_mainScreen));
+        asset->bob.sPos = pos + screenGetOffset(g_mainScreen);
     }
 
     void scene_bobs_set_instance_visible(uint16_t index, bool visible)
@@ -524,8 +518,8 @@ namespace NEONengine
         graphic_asset const* asset = instance_at(index);
         if (!asset) return false;
 
-        pos.x = asset->bob.sPos.uwX;
-        pos.y = mtl::to<uint16_t>(asset->bob.sPos.uwY - screenGetVerticalOffset(g_mainScreen));
+        pos = data::point<uint16_t>{ asset->bob.sPos.uwY, asset->bob.sPos.uwX }
+            - screenGetOffset(g_mainScreen);
         return true;
     }
 
@@ -591,7 +585,7 @@ namespace NEONengine
         // Bobs are placed in display space, which the screen shifts down in PAL.
         // The box is always the full height even when the text is shorter, so it
         // is the box that has to stay on screen.
-        WORD const top    = mtl::to<WORD>(screenGetVerticalOffset(g_mainScreen));
+        WORD const top    = mtl::to<WORD>(screenGetOffset(g_mainScreen).y);
         WORD const bottom = mtl::to<WORD>(top + SCREEN_HEIGHT - s_captionBoxHeight);
 
         // Below the pointer by preference, above it when that would run off the

@@ -28,23 +28,12 @@ namespace NEONengine
         , _patch_height(_source->Rows)
     {}
 
-    /**
-     * Renders a nine-patch bitmap with the specified dimensions and flags.
-     *
-     * @param patch Pointer to the NinePatch structure containing source and border sizes.
-     * @param uwWidth Desired width of the resulting bitmap.
-     * @param uwHeight Desired height of the resulting bitmap.
-     * @param ulFlags Bitmap creation flags.
-     * @return Pointer to the newly created tBitMap, or NULL on failure.
-     */
-
     ace::bitmap_ptr nine_patch::render(uint16_t width, uint16_t height, uint32_t flags)
     {
         auto result = ace::bitmapCreate(
             width, height, NINE_PATCH_BITPLANES, BMF_CLEAR | BMF_INTERLEAVED | flags);
         if (!result) return nullptr;
 
-        // Aliases for easier reading
         uint16_t l = _left;
         uint16_t t = _top;
         uint16_t r = _right;

@@ -140,29 +140,27 @@ namespace NEONengine
 
     void scene_text_draw(data::scene const& scene)
     {
-        uint16_t const first = scene.text_region_range.start;
-        uint16_t const count = scene.text_region_range.count;
-        if (count == 0) return;
+        if (scene.text_region_range.count == 0) return;
 
-        auto const all = g_pEngine->data().text_regions();
-        if (mtl::to<size_t>(first) + count > all.size())
+        auto const all     = g_pEngine->data().text_regions();
+        auto const regions = scene.text_region_range.of(all);
+        if (regions.is_empty())
         {
             NE_LOG("TXTR range %hu+%hu is outside the %lu region(s) loaded",
-                first,
-                count,
+                scene.text_region_range.start,
+                scene.text_region_range.count,
                 mtl::to<ULONG>(all.size()));
             return;
         }
 
-        auto regions = mtl::span<data::text_region>(all.data() + first, count);
-        auto order   = mtl::vector<uint16_t>(count);
+        auto order = mtl::vector<uint16_t>(regions.size());
         build_draw_order(regions, order);
 
         text_renderer* pRenderer = g_pEngine->default_text_renderer();
         if (!pRenderer) return;
 
         uint16_t drawn = 0;
-        for (uint16_t slot = 0; slot < count; ++slot)
+        for (uint16_t slot = 0; slot < regions.size(); ++slot)
         {
             uint16_t const index            = order[slot];
             data::text_region const& region = regions[index];
@@ -212,6 +210,6 @@ namespace NEONengine
             ++drawn;
         }
 
-        NE_LOG("%hu of %hu text region(s) drawn", drawn, count);
+        NE_LOG("%hu of %lu text region(s) drawn", drawn, mtl::to<ULONG>(regions.size()));
     }
 }  // namespace NEONengine

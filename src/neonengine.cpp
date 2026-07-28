@@ -41,7 +41,7 @@ namespace NEONengine
         if (!gameData)
         {
             NE_LOG("Could not load game data. Error %d", mtl::to<int>(gameData.error()));
-            return mtl::make_error<engine_ptr, error_code>(error_code::GAME_DATA_LOAD_FAILED);
+            return mtl::unexpected(error_code::GAME_DATA_LOAD_FAILED);
         }
         auto& gd = gameData.value();
 
@@ -51,20 +51,20 @@ namespace NEONengine
         if (!uiFontFd)
         {
             NE_LOG("Could not open UI font asset %08lx", mtl::to<ULONG>(gd->ui_state().font_hash));
-            return mtl::make_error<engine_ptr, error_code>(error_code::UI_FONT_LOAD_FAILED);
+            return mtl::unexpected(error_code::UI_FONT_LOAD_FAILED);
         }
         auto uiFont = ace::fontCreateFromFd(mtl::move(uiFontFd));
         if (!uiFont)
         {
             NE_LOG("Could not create UI font from asset");
-            return mtl::make_error<engine_ptr, error_code>(error_code::UI_FONT_LOAD_FAILED);
+            return mtl::unexpected(error_code::UI_FONT_LOAD_FAILED);
         }
 
         auto uiPaletteFd = gd->open_asset(gd->ui_state().ui_palette_hash);
         if (!uiPaletteFd)
         {
             NE_LOG("Could not open UI palette asset %08lx", mtl::to<ULONG>(gd->ui_state().ui_palette_hash));
-            return mtl::make_error<engine_ptr, error_code>(error_code::UI_PALETTE_LOAD_FAILED);
+            return mtl::unexpected(error_code::UI_PALETTE_LOAD_FAILED);
         }
         ace::paletteLoadFromFd(
             mtl::move(uiPaletteFd), screenGetPalette(g_mainScreen), UI_PALETTE_COLOR_COUNT);
@@ -81,7 +81,7 @@ namespace NEONengine
         {
             NE_LOG("Could not create text renderer. Error %d.",
                    mtl::to<int>(textRenderer.error()));
-            return mtl::make_error<engine_ptr, error_code>(
+            return mtl::unexpected(
                 error_code::FAILED_TO_CREATE_TEXT_RENDERER);
         }
 
@@ -92,13 +92,13 @@ namespace NEONengine
         {
             NE_LOG("Could not load the English string table. Error %d.",
                    mtl::to<int>(strings.error()));
-            return mtl::make_error<engine_ptr, error_code>(error_code::STRING_TABLE_LOAD_FAILED);
+            return mtl::unexpected(error_code::STRING_TABLE_LOAD_FAILED);
         }
 
         if (!matches_build(*gd, *strings.value()))
         {
             NE_LOG("The English string table is from another build than the pak.");
-            return mtl::make_error<engine_ptr, error_code>(error_code::STRING_TABLE_LOAD_FAILED);
+            return mtl::unexpected(error_code::STRING_TABLE_LOAD_FAILED);
         }
 
         auto result            = engine_ptr(new (mtl::MemF::Fast) engine());

@@ -131,16 +131,13 @@ namespace NEONengine
     {
         scene_hotspots_clear();
 
-        auto const all       = g_pEngine->data().hotspots();
-        uint16_t const first = scene.hotspot_range.start;
-        uint16_t const count = scene.hotspot_range.count;
-
         // An empty or out-of-bounds range simply leaves the scene inert.
-        if (count == 0 || mtl::to<size_t>(first) + count > all.size()) return;
+        auto const hotspots = scene.hotspot_range.of(g_pEngine->data().hotspots());
+        if (hotspots.is_empty()) return;
 
-        s_first = first;
-        s_count = count;
-        s_enabled.reserve(count);
+        s_first = scene.hotspot_range.start;
+        s_count = mtl::to<uint16_t>(hotspots.size());
+        s_enabled.reserve(hotspots.size());
 
         uint16_t min_x = 0xFFFF;
         uint16_t min_y = 0xFFFF;
@@ -225,7 +222,7 @@ namespace NEONengine
 
         // Bounds are authored in scene space while the pointer reports display
         // space, so shift the one pointer rather than every hotspot.
-        auto const offset_y = screenGetVerticalOffset(g_mainScreen);
+        auto const offset_y = screenGetOffset(g_mainScreen).y;
         auto const pointer_x = mouseGetX(MOUSE_PORT_1);
         auto const pointer_y = mouseGetY(MOUSE_PORT_1);
 

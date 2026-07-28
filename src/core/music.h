@@ -7,7 +7,6 @@
 
 namespace NEONengine
 {
-    void musicLoad(char const *szFilePath);
     void musicLoad(ace::file_ptr &&pFile);
     void musicPlayCurrent(UBYTE ubLoop);
 

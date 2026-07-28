@@ -153,23 +153,6 @@ TEST_IMPL(test_swap_value_error)
     TEST_SUCCESS;
 }
 
-// Test utility functions
-TEST_IMPL(test_make_success)
-{
-    auto result = mtl::make_success<int, char const*>(42);
-    TEST_ASSERT(result.has_value(), "make_success should create value expected");
-    TEST_ASSERT(result.value() == 42, "make_success should set correct value");
-    TEST_SUCCESS;
-}
-
-TEST_IMPL(test_make_error)
-{
-    auto result = mtl::make_error<int, char const*>("failed");
-    TEST_ASSERT(!result.has_value(), "make_error should create error expected");
-    TEST_ASSERT(str_equal(result.error(), "failed"), "make_error should set correct error");
-    TEST_SUCCESS;
-}
-
 // Test with custom types
 TEST_IMPL(test_custom_value_type)
 {
@@ -322,8 +305,6 @@ TEST_SUITE_BEGIN(mtl_expected)
     TEST(test_swap_both_values)
     TEST(test_swap_both_errors)
     TEST(test_swap_value_error)
-    TEST(test_make_success)
-    TEST(test_make_error)
     TEST(test_custom_value_type)
     TEST(test_custom_error_type)
     TEST(test_unexpected_helper_lvalue)

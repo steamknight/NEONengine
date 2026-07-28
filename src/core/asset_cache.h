@@ -2,21 +2,15 @@
  * @file asset_cache.h
  * @brief A Fast RAM cache of decompressed pak assets, keyed by pak-path hash.
  *
- * Reading an asset out of the pak is expensive twice over: a compressed entry
- * has to be unpacked a byte at a time, and every entry pays a fixed cost for
- * the open itself that dwarfs the read for anything small. Both are paid again
- * every time a scene is entered, even when the previous scene had just finished
- * with the very same asset.
+ * A pak read costs a fixed open plus, for a compressed entry, a byte-at-a-time
+ * unpack. Holding the decompressed bytes means a later scene pays neither.
  *
- * This holds the decompressed bytes so the second visit pays neither. It stores
- * raw bytes rather than built objects, which keeps one implementation serving
- * bitmaps, masks, palettes and sound effects, and keeps the whole cache in Fast
- * RAM where there is room for it. Bytes are handed back through a memory-backed
- * tFile, so every caller loads from the cache exactly as it loaded from the pak.
+ * Entries are raw bytes, not built objects, so one implementation serves
+ * bitmaps, masks, palettes and sound effects. Bytes come back through a
+ * memory-backed tFile, so callers load from the cache exactly as from the pak.
  *
- * The cache is an optimization and never a guarantee. Anything that must be
- * resident to be correct - the scene's sound effects, for one - has to keep its
- * own resident copy, because any entry here can be evicted at any load.
+ * Any entry can be evicted at any load, so anything that must stay resident
+ * keeps its own copy.
  */
 
 #ifndef __ASSET_CACHE_H__INCLUDED__
@@ -32,9 +26,7 @@ namespace NEONengine
     /**
      * @brief How much Fast RAM the cache may hold, in bytes.
      *
-     * Sized for the 4 MB A1200 the engine targets. This belongs in the project
-     * eventually, clamped to what the machine actually has free, but a constant
-     * is enough to measure the idea and costs the editor nothing meanwhile.
+     * Sized for the 4 MB A1200 the engine targets.
      */
     constexpr uint32_t ASSET_CACHE_BUDGET = 2u * 1024u * 1024u;
 
@@ -42,9 +34,7 @@ namespace NEONengine
      * @brief The largest single asset the cache will hold, in bytes.
      *
      * One asset is not allowed to crowd out every other, so nothing above a
-     * quarter of the budget is ever stored. This is what keeps a module out
-     * without needing to know anything about asset types: a MOD runs to
-     * hundreds of kilobytes and nothing else comes close.
+     * quarter of the budget is ever stored.
      */
     constexpr uint32_t ASSET_CACHE_MAX_ENTRY = ASSET_CACHE_BUDGET / 4u;
 
@@ -56,34 +46,27 @@ namespace NEONengine
     /**
      * @brief Starts a new load, so entries touched from here are the newest.
      *
-     * Eviction works off which load last wanted an entry, and every asset a
-     * scene needs is asked for exactly once while it loads. So one counter per
-     * load is a complete record of use, and it costs a single stamp per entry
-     * rather than a list that has to be reordered on every access.
+     * Eviction picks the oldest load, not the oldest entry. A scene asks for
+     * each asset exactly once while loading, so one counter per load records
+     * use completely.
      *
-     * It also fixes the one case eviction must never get wrong. Entries stamped
-     * with the current load are refused to the evictor, so a scene whose assets
-     * do not all fit can never throw away the ones it has already been given.
+     * Entries stamped with the current load are never evicted, so a scene whose
+     * assets do not all fit cannot discard what it has already been given.
      *
-     * Assets read before the first load - the UI font and palette at boot - keep
-     * generation zero and are therefore the first to go. That is the right
-     * answer for them: they are built into objects that live for the whole run
-     * and are never read a second time, so holding their bytes earns nothing.
+     * Boot assets keep generation zero and go first. They are built into
+     * objects that live for the whole run and are never read again.
      */
     void asset_cache_begin_load();
 
     /**
      * @brief Opens the asset @p hash names, from the cache when it is held.
      *
-     * On a miss the asset is read from @p pak, stored when it fits, and handed
-     * back. An asset too large to store, or one that cannot be stored because
-     * room could not be made, is passed straight through from the pak, so a
-     * scene bigger than the whole cache still loads correctly.
+     * On a miss the asset is read from @p pak and stored when it fits. An asset
+     * too large, or one that cannot be stored, passes straight through, so a
+     * scene bigger than the whole cache still loads.
      *
-     * A file served from the cache borrows the entry's bytes and must be closed
-     * before the next asset_cache_begin_load(), because the load after this one
-     * may evict the entry underneath it. Every caller loads and closes within a
-     * single statement, which satisfies this without having to think about it.
+     * A cached file borrows the entry's bytes and must be closed before the
+     * next asset_cache_begin_load(), which may evict the entry underneath it.
      *
      * @param pak  The open game pak to read on a miss.
      * @param hash The asset's adler32 pak-path hash.
@@ -95,12 +78,9 @@ namespace NEONengine
     /**
      * @brief Writes what the cache is holding to the log.
      *
-     * Entries are grouped by what the game data says each one is. Nothing is
-     * recorded per entry to make this possible: the .neon is already in Fast
-     * RAM and already says which hash is a background, a mask, a sound and so
-     * on, so the grouping is worked out here and cannot drift from the data it
-     * describes. It costs a scan per entry, which is why it happens on request
-     * rather than on every load.
+     * Entries are grouped by kind, read from the .neon on demand rather than
+     * recorded per entry, so the grouping cannot drift. It scans once per
+     * entry, which is why it runs on request.
      */
     void asset_cache_log();
 }  // namespace NEONengine

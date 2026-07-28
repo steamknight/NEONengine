@@ -2,13 +2,8 @@
  * @file span.h
  * @brief Lightweight non-owning view over a contiguous sequence of elements.
  *
- * A span is a pure façade over memory owned elsewhere: it stores only a pointer
- * and a count. It never allocates, frees or throws (same spirit as std::span
- * and the engine's bstr_view).
- *
- * The engine uses it to expose the fixed-record collections inside the loaded
- * .neon buffer as typed, iterable views without copying. The view is read-only
- * because game data is immutable once loaded.
+ * A span stores only a pointer and a count. It never allocates, frees or
+ * throws. The view is read-only.
  */
 
 #ifndef __MTL__SPAN__INCLUDED__
@@ -23,15 +18,15 @@ namespace mtl
      *
      * Holds a pointer into memory owned elsewhere plus an element count. All
      * accessors are @c constexpr and @c noexcept. Element access is unchecked:
-     * the loader validates each view's bounds once when it is created, so
-     * steady-state access carries zero overhead.
+     * the caller is expected to have validated the bounds once when the view
+     * was created.
      *
-     * @tparam T Element type. Must match the on-disk record layout exactly.
+     * @tparam T Element type.
      *
      * @example
      * @code
-     * for (scen const& scene : gameData.scenes()) { ... }
-     * scen const& first = gameData.scenes()[0];
+     * for (int const& value : numbers) { ... }
+     * int const& first = numbers[0];
      * @endcode
      */
     template<class T>

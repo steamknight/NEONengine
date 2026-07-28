@@ -22,19 +22,19 @@ namespace NEONengine
         auto pak = ace::pakFileOpen(PAK_FILE_PATH, 1 /* uninterrupted bulk read */);
         if (!pak)
         {
-            return mtl::make_error<game_data_ptr, error>(error::PAK_NOT_FOUND);
+            return mtl::unexpected(error::PAK_NOT_FOUND);
         }
 
         auto neon = ace::pakFileGetFileByPath(pak, NEON_FILE_NAME);
         if (!neon)
         {
-            return mtl::make_error<game_data_ptr, error>(error::NEON_NOT_IN_PAK);
+            return mtl::unexpected(error::NEON_NOT_IN_PAK);
         }
 
         LONG const signed_size = fileGetSize(neon.get());
         if (signed_size < mtl::to<LONG>(sizeof(data::header)))
         {
-            return mtl::make_error<game_data_ptr, error>(error::TOO_SMALL);
+            return mtl::unexpected(error::TOO_SMALL);
         }
         auto const size = mtl::to<uint32_t>(signed_size);
 
@@ -42,21 +42,21 @@ namespace NEONengine
         image.resize(size);
         if (fileRead(neon.get(), image.data(), size) != size)
         {
-            return mtl::make_error<game_data_ptr, error>(error::READ_FAILED);
+            return mtl::unexpected(error::READ_FAILED);
         }
 
         auto const& header = *mtl::force_to<data::header const*>(image.data());
         if (header.magic != data::NEON_MAGIC)
         {
-            return mtl::make_error<game_data_ptr, error>(error::BAD_MAGIC);
+            return mtl::unexpected(error::BAD_MAGIC);
         }
         if (header.version != NEON_SUPPORTED_VERSION)
         {
-            return mtl::make_error<game_data_ptr, error>(error::UNSUPPORTED_VERSION);
+            return mtl::unexpected(error::UNSUPPORTED_VERSION);
         }
         if (header.header_size != sizeof(data::header) || header.total_size != size)
         {
-            return mtl::make_error<game_data_ptr, error>(error::BAD_HEADER);
+            return mtl::unexpected(error::BAD_HEADER);
         }
 
         NE_LOG("version %hu, build %lu, %lu bytes, %lu chunks",
@@ -70,7 +70,7 @@ namespace NEONengine
         error index_error;
         if (!index_chunks(gd->_buffer.data(), size, gd->_chunks, index_error))
         {
-            return mtl::make_error<game_data_ptr, error>(index_error);
+            return mtl::unexpected(index_error);
         }
 
         auto const conf_body = gd->_chunks[mtl::to<uint32_t>(data::known_chunk::config)]->body_size;
@@ -80,7 +80,7 @@ namespace NEONengine
         if (conf_body < sizeof(data::config) || uist_body < sizeof(data::ui_state)
             || invc_body < sizeof(data::inventory_config) || flgs_body < sizeof(uint16_t))
         {
-            return mtl::make_error<game_data_ptr, error>(error::CHUNK_TOO_SMALL);
+            return mtl::unexpected(error::CHUNK_TOO_SMALL);
         }
 
         NE_LOG("CONF %hux%hu fade=%hu; UIST palette=%08lx font=%08lx",

@@ -62,9 +62,9 @@ namespace NEONengine
      * decoupled from engine headers. All function pointers must be valid for
      * the lifetime of the VM.
      *
-     * Blocking bridge calls (marked below) should increment the VM's blocking
-     * counter via noir_vm::increment_blocking(). The engine must call
-     * noir_vm::decrement_blocking() when the operation completes.
+     * A blocking bridge call, marked below, leaves the VM blocked. The engine
+     * must call noir_vm::decrement_blocking() when the operation completes, or
+     * the script never resumes.
      *
      * @see noir_vm
      */
@@ -239,16 +239,16 @@ namespace NEONengine
         // ── Blocking counter (for engine use) ────────────────────────────────
 
         /**
-         * @brief Increment the blocking counter.
-         * Called by bridge functions that start blocking operations. The VM
-         * will not resume until the counter reaches zero.
+         * @brief Blocks the VM until decrement_blocking() balances this.
          */
-        void increment_blocking() noexcept { ++_blocking_counter; }
+        void increment_blocking() noexcept
+        {
+            ++_blocking_counter;
+            _state = noir_state::blocked;
+        }
 
         /**
-         * @brief Decrement the blocking counter.
-         * Called by the engine when a blocking operation completes.
-         * The VM resumes on the next update() when the counter reaches zero.
+         * @brief Resumes the VM on the next update() once the count hits zero.
          */
         void decrement_blocking() noexcept { --_blocking_counter; }
 
@@ -336,10 +336,6 @@ namespace NEONengine
 #ifdef GAME_DEBUG
         void update_stack_high_water() noexcept;
 #endif
-
-        // ── Blocking helper ──────────────────────────────────────────────────
-
-        void enter_blocked() noexcept;
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         // ── Borrowed memory (caller manages lifetime) ────────────────────────

@@ -12,13 +12,7 @@
  * Tracks cannot outlive their scene, so this module's state is rebuilt by
  * scene_timeline_load() and dropped by scene_timeline_clear().
  *
- * Scope of the current slice: the scene's tracks are resolved, the ones marked
- * auto-start begin at their own position zero, every running track's playhead is
- * advanced once per frame, and the keyframes it lands on are fired. Scripts can
- * drive the rest by name through ANIM_PLAY / ANIM_STOP / ANIM_WAIT. Every
- * keyframe type the format defines is implemented. A track carrying a type this
- * build does not know, whether retired or from a later format, has it reported
- * once when the scene loads and skipped thereafter.
+ * Unknown keyframe types are logged once at load and skipped.
  *
  * A movement in progress belongs to the graphic instance rather than to the
  * track that started it, because an instance has one position: two tracks
