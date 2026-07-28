@@ -13,6 +13,7 @@
 
 #include "core/asset_cache.h"
 #include "core/game_data.h"
+#include "core/logger.h"
 #include "core/music.h"
 #include "core/noir_vm.h"
 #include "core/mouse_pointer.h"
@@ -23,6 +24,8 @@
 #include "core/scene_timeline.h"
 #include "core/screen.h"
 #include "core/string_table.h"
+
+NE_LOG_DOMAIN(Scene);
 
 namespace NEONengine
 {
@@ -201,7 +204,7 @@ namespace NEONengine
 
             // The language's own name proves the table really swapped. Records
             // always carry a terminator, so the view goes straight to "%s".
-            NE_LOG("scene: language is now '%s' (%s)",
+            NE_LOG("language is now '%s' (%s)",
                 language_code(g_pEngine->current_language()),
                 g_pEngine->strings().language_name().data());
         }
@@ -257,7 +260,7 @@ namespace NEONengine
             auto const scenes = gd.scenes();
             if (scene_id >= scenes.size())
             {
-                NE_LOG("scene: invalid scene id %hu (%lu scenes)",
+                NE_LOG("invalid scene id %hu (%lu scenes)",
                     scene_id,
                     mtl::to<ULONG>(scenes.size()));
                 return;

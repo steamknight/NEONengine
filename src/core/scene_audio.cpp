@@ -2,13 +2,15 @@
 
 #include "neonengine.h"
 
-#include <ace/managers/log.h>
 #include <ace/managers/ptplayer.h>
 
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/logger.h"
+
+NE_LOG_DOMAIN(Audio);
 
 namespace NEONengine
 {
@@ -55,7 +57,7 @@ namespace NEONengine
             auto file = g_pEngine->data().open_asset(hash);
             if (!file)
             {
-                NE_LOG("scene_audio: no sfx asset for hash %08lx", mtl::to<ULONG>(hash));
+                NE_LOG("no sfx asset for hash %08lx", mtl::to<ULONG>(hash));
                 return;
             }
 
@@ -64,7 +66,7 @@ namespace NEONengine
             tPtplayerSfx* sfx = ptplayerSfxCreateFromFd(file.release(), 0);
             if (!sfx)
             {
-                NE_LOG("scene_audio: sfx %08lx would not load", mtl::to<ULONG>(hash));
+                NE_LOG("sfx %08lx would not load", mtl::to<ULONG>(hash));
                 return;
             }
 
@@ -162,7 +164,7 @@ namespace NEONengine
 
         if (!s_sfx.empty())
         {
-            NE_LOG("scene_audio: %lu sound effect(s)", mtl::to<ULONG>(s_sfx.size()));
+            NE_LOG("%lu sound effect(s)", mtl::to<ULONG>(s_sfx.size()));
         }
     }
 

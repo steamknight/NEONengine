@@ -13,7 +13,10 @@
 #include <mtl/utility.h>
 
 #include "core/game_data.h"
+#include "core/logger.h"
 #include "core/screen.h"
+
+NE_LOG_DOMAIN(Cursor);
 
 namespace NEONengine
 {
@@ -50,7 +53,7 @@ namespace NEONengine
             || ui.cursor_frame_width != POINTER_WIDTH
             || ui.cursor_frame_height != POINTER_HEIGHT)
         {
-            NE_LOG("mouse_pointer: no usable cursor sheet (id %hu, %hux%hu)",
+            NE_LOG("no usable cursor sheet (id %hu, %hux%hu)",
                 ui.cursor_bitmap_id, ui.cursor_frame_width, ui.cursor_frame_height);
             return false;
         }
@@ -60,7 +63,7 @@ namespace NEONengine
         uint16_t const count = ui.cursor_range.count;
         if (count == 0 || mtl::to<size_t>(first) + count > cursors.size())
         {
-            NE_LOG("mouse_pointer: cursor range %hu+%hu does not resolve", first, count);
+            NE_LOG("cursor range %hu+%hu does not resolve", first, count);
             return false;
         }
 
@@ -68,7 +71,7 @@ namespace NEONengine
         auto pSheet = ace::bitmapCreateFromFd(gd.open_asset(bitmaps[ui.cursor_bitmap_id].bitmap_hash), 0);
         if (!pSheet)
         {
-            NE_LOG("mouse_pointer: could not load the cursor sheet");
+            NE_LOG("could not load the cursor sheet");
             systemUnuse();
             return false;
         }
@@ -151,7 +154,7 @@ namespace NEONengine
 
         s_ready   = true;
         s_visible = true;
-        NE_LOG("mouse_pointer: %hu cursor role(s) ready", count);
+        NE_LOG("%hu cursor role(s) ready", count);
         return true;
     }
 

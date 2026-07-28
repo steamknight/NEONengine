@@ -10,6 +10,10 @@
 #include <mtl/utility.h>
 #include <mtl/expected.h>
 
+#include "core/logger.h"
+
+NE_LOG_DOMAIN(Text);
+
 namespace NEONengine
 {
     using namespace mtl;
@@ -99,7 +103,7 @@ namespace NEONengine
 
         if (!pFont)
         {
-            NE_LOG("Text Renderer: Invalid font pointer. Skipping construction.");
+            NE_LOG("Invalid font pointer. Skipping construction.");
             return;
         }
 
@@ -115,7 +119,7 @@ namespace NEONengine
     {
         if (!pFont)
         {
-            NE_LOG("Text Renderer: Invalid font pointer.");
+            NE_LOG("Invalid font pointer.");
             return mtl::unexpected(text_renderer::error_code::INVALID_FONT_POINTER);
         }
 
@@ -141,13 +145,13 @@ namespace NEONengine
     {
         if (text.is_empty())
         {
-            NE_LOG("Text Renderer: text is empty.");
+            NE_LOG("text is empty.");
             return ace::text_bitmap_ptr(nullptr);
         }
 
         if (!_pFont)
         {
-            NE_LOG("Text Renderer: Default font is not initialized.");
+            NE_LOG("Default font is not initialized.");
             return ace::text_bitmap_ptr(nullptr);
         }
 
@@ -189,7 +193,7 @@ namespace NEONengine
             _scratchArea[lineLength] = '\0';
 
             fontFillTextBitMap(_pFont, _pLineBitmap.get(), _scratchArea.data());
-            NE_LOG("Text Renderer: -> %s", _scratchArea.data());
+            NE_LOG("-> %s", _scratchArea.data());
 
             uint16_t x = 0;
             switch (justification)

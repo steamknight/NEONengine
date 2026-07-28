@@ -143,12 +143,6 @@ namespace NEONengine
     if (fn) fn(__VA_ARGS__);
 #endif  // !defined (SAFE_CB_CALL)
 
-#ifdef ACE_DEBUG
-#define NE_LOG(fmt, ...) logWrite("NEONengine: " fmt, ##__VA_ARGS__)
-#else
-#define NE_LOG(fmt, ...)
-#endif
-
 }  // namespace NEONengine
 
 #endif  //__NEONENGINE_H__INCLUDED__

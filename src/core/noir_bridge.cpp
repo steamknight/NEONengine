@@ -1,6 +1,7 @@
 #include "core/noir_bridge.h"
 
 #include "neonengine.h"
+#include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/scene_hotspots.h"
 #include "core/scene_timeline.h"
@@ -8,6 +9,8 @@
 #include "core/string_table.h"
 
 #include <mtl/utility.h>
+
+NE_LOG_DOMAIN(Script);
 
 namespace NEONengine
 {
@@ -87,11 +90,11 @@ namespace NEONengine
         {
             if (lang >= mtl::to<uint16_t>(language::COUNT))
             {
-                NE_LOG("noir_bridge: SET_LANG %hu is not a known language id", lang);
+                NE_LOG("SET_LANG %hu is not a known language id", lang);
                 return;
             }
 
-            NE_LOG("noir_bridge: SET_LANG %hu ('%s') requested", lang,
+            NE_LOG("SET_LANG %hu ('%s') requested", lang,
                 language_code(mtl::to<language>(lang)));
             if (g_pEngine) g_pEngine->request_language(mtl::to<language>(lang));
         }

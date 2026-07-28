@@ -2,16 +2,18 @@
 
 #include "neonengine.h"
 
-#include <ace/managers/log.h>
 
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/logger.h"
 #include "core/music.h"
 #include "core/palette_cycle.h"
 #include "core/scene_audio.h"
 #include "core/scene_bobs.h"
+
+NE_LOG_DOMAIN(Timeline);
 
 namespace NEONengine
 {
@@ -348,12 +350,12 @@ namespace NEONengine
 
             if (vm.state() != noir_state::blocked)
             {
-                NE_LOG("timeline: the wait on track name %hu (%s) had already been cancelled",
+                NE_LOG("the wait on track name %hu (%s) had already been cancelled",
                     name,
                     why);
                 return;
             }
-            NE_LOG("timeline: the wait on track name %hu is over (%s)", name, why);
+            NE_LOG("the wait on track name %hu is over (%s)", name, why);
         }
 
         /**
@@ -676,13 +678,13 @@ namespace NEONengine
             auto mod = g_pEngine->data().open_asset_uncached(payload.music_hash);
             if (!mod)
             {
-                NE_LOG("timeline: no music asset for hash %08lx", mtl::to<ULONG>(payload.music_hash));
+                NE_LOG("no music asset for hash %08lx", mtl::to<ULONG>(payload.music_hash));
                 return false;
             }
 
             musicLoad(mtl::move(mod));
             musicPlayCurrent(payload.loop);
-            NE_LOG("timeline: MUSIC_PLAY %08lx, loop %hu",
+            NE_LOG("MUSIC_PLAY %08lx, loop %hu",
                 mtl::to<ULONG>(payload.music_hash),
                 mtl::to<uint16_t>(payload.loop));
             return true;
@@ -702,14 +704,14 @@ namespace NEONengine
             // two execute() calls in one frame would run in reverse order.
             if (vm.state() != noir_state::idle)
             {
-                NE_LOG("timeline: track %hu cannot run script %hu, the VM is busy",
+                NE_LOG("track %hu cannot run script %hu, the VM is busy",
                     track_index,
                     payload.function_id);
                 return false;
             }
 
             vm.execute(payload.function_id);
-            NE_LOG("timeline: track %hu ran script %hu", track_index, payload.function_id);
+            NE_LOG("track %hu ran script %hu", track_index, payload.function_id);
             return true;
         }
 
@@ -732,7 +734,7 @@ namespace NEONengine
 
                 case data::keyframe_type::MUSIC_STOP:
                     musicStop();
-                    NE_LOG("timeline: MUSIC_STOP");
+                    NE_LOG("MUSIC_STOP");
                     return true;
 
                 case data::keyframe_type::PALETTE_CYCLE_START:
@@ -978,7 +980,7 @@ namespace NEONengine
         auto const timelines = g_pEngine->data().timelines();
         if (scene.timeline_id >= timelines.size())
         {
-            NE_LOG("timeline: scene names timeline %hu of %lu",
+            NE_LOG("scene names timeline %hu of %lu",
                 scene.timeline_id,
                 mtl::to<ULONG>(timelines.size()));
             return;
@@ -994,7 +996,7 @@ namespace NEONengine
         {
             if (count != 0)
             {
-                NE_LOG("timeline: track range %hu+%hu exceeds %lu tracks",
+                NE_LOG("track range %hu+%hu exceeds %lu tracks",
                     first,
                     count,
                     mtl::to<ULONG>(all.size()));
@@ -1017,7 +1019,7 @@ namespace NEONengine
         uint16_t unimplemented   = 0;  ///< Bitmask over data::keyframe_type.
         auto const all_keyframes = g_pEngine->data().keyframes();
 
-        NE_LOG("timeline: %hu, %hu track(s)", scene.timeline_id, count);
+        NE_LOG("%hu, %hu track(s)", scene.timeline_id, count);
         for (uint16_t index = 0; index < count; ++index)
         {
             auto const& track = all[mtl::to<size_t>(first) + index];
@@ -1177,17 +1179,17 @@ namespace NEONengine
                     // first few of each track's cycles are reported.
                     if (clock.cycles_done() <= LOGGED_CYCLES)
                     {
-                        NE_LOG("timeline: track %hu completed cycle %hu", index, clock.cycles_done());
+                        NE_LOG("track %hu completed cycle %hu", index, clock.cycles_done());
                     }
                     else if (clock.cycles_done() == LOGGED_CYCLES + 1)
                     {
-                        NE_LOG("timeline: track %hu is looping; further cycles are not logged", index);
+                        NE_LOG("track %hu is looping; further cycles are not logged", index);
                     }
                     break;
 
                 case tick_result::FINISHED:
                     if (s_wait.found && s_wait.track == index) release_waiter("it finished");
-                    NE_LOG("timeline: track %hu finished after %hu cycle(s)", index, clock.cycles_done());
+                    NE_LOG("track %hu finished after %hu cycle(s)", index, clock.cycles_done());
                     break;
 
                 case tick_result::IDLE:
@@ -1206,7 +1208,7 @@ namespace NEONengine
         uint16_t const index = find_track(name_id);
         if (index == NO_TRACK)
         {
-            NE_LOG("timeline: ANIM_PLAY names track %hu, which this scene does not have", name_id);
+            NE_LOG("ANIM_PLAY names track %hu, which this scene does not have", name_id);
             return;
         }
 
@@ -1216,7 +1218,7 @@ namespace NEONengine
         // then play.
         if (s_clocks[index].is_running())
         {
-            NE_LOG("timeline: ANIM_PLAY ignored; track %hu (name %hu) is already running",
+            NE_LOG("ANIM_PLAY ignored; track %hu (name %hu) is already running",
                 index,
                 name_id);
             return;
@@ -1225,7 +1227,7 @@ namespace NEONengine
         auto const& track = scene_timeline_tracks()[index];
         if (!keys_in_range(track))
         {
-            NE_LOG("timeline: ANIM_PLAY cannot start track %hu; its keyframes are out of range",
+            NE_LOG("ANIM_PLAY cannot start track %hu; its keyframes are out of range",
                 index);
             return;
         }
@@ -1234,7 +1236,7 @@ namespace NEONengine
         clear_cycles(index);
         s_clocks[index].start();
         prime_glides(index, track);
-        NE_LOG("timeline: ANIM_PLAY started track %hu (name %hu)", index, name_id);
+        NE_LOG("ANIM_PLAY started track %hu (name %hu)", index, name_id);
     }
 
     void scene_timeline_stop(uint16_t name_id)
@@ -1242,7 +1244,7 @@ namespace NEONengine
         uint16_t const index = find_track(name_id);
         if (index == NO_TRACK)
         {
-            NE_LOG("timeline: ANIM_STOP names track %hu, which this scene does not have", name_id);
+            NE_LOG("ANIM_STOP names track %hu, which this scene does not have", name_id);
             return;
         }
 
@@ -1253,7 +1255,7 @@ namespace NEONengine
         // Anything waiting on this track is released by the next
         // scene_timeline_update(), which finds it no longer running.
         s_clocks[index].stop();
-        NE_LOG("timeline: ANIM_STOP halted track %hu (name %hu) at position %hu",
+        NE_LOG("ANIM_STOP halted track %hu (name %hu) at position %hu",
             index,
             name_id,
             s_clocks[index].position());
@@ -1264,7 +1266,7 @@ namespace NEONengine
         uint16_t const index = find_track(name_id);
         if (index == NO_TRACK)
         {
-            NE_LOG("timeline: ANIM_WAIT names track %hu, which this scene does not have", name_id);
+            NE_LOG("ANIM_WAIT names track %hu, which this scene does not have", name_id);
         }
 
         // Two waits can only stack if a hotspot click re-entered the VM over an
@@ -1272,7 +1274,7 @@ namespace NEONengine
         // one state, so the newer wait takes over and both end together.
         if (s_wait.depth != 0)
         {
-            NE_LOG("timeline: ANIM_WAIT on track name %hu displaced a wait on track name %hu",
+            NE_LOG("ANIM_WAIT on track name %hu displaced a wait on track name %hu",
                 name_id,
                 s_wait.name);
         }

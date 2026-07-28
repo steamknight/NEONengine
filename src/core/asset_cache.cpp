@@ -2,7 +2,6 @@
 
 #include "neonengine.h"
 
-#include <ace/managers/log.h>
 #include <ace/managers/memory.h>
 #include <ace/utils/file.h>
 
@@ -13,6 +12,9 @@
 
 #include "core/game_data.h"
 #include "core/game_data_format.h"
+#include "core/logger.h"
+
+NE_LOG_DOMAIN(Cache);
 
 namespace NEONengine
 {
@@ -338,7 +340,7 @@ namespace NEONengine
             bytes[kind] += entry.size;
         }
 
-        NE_LOG("asset_cache: %lu entries, %lu of %lu KB, gen %lu, %lu hits / %lu misses",
+        NE_LOG("%lu entries, %lu of %lu KB, gen %lu, %lu hits / %lu misses",
             mtl::to<ULONG>(s_entries.size()),
             mtl::to<ULONG>(s_used >> 10),
             mtl::to<ULONG>(ASSET_CACHE_BUDGET >> 10),
@@ -350,7 +352,7 @@ namespace NEONengine
         {
             if (!counts[kind]) continue;
 
-            NE_LOG("asset_cache:   %s %3lu at %5lu KB",
+            NE_LOG("  %s %3lu at %5lu KB",
                 kind_name(mtl::to<asset_kind>(kind)),
                 mtl::to<ULONG>(counts[kind]),
                 mtl::to<ULONG>(bytes[kind] >> 10));

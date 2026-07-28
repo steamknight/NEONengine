@@ -2,7 +2,6 @@
 
 #include "neonengine.h"
 
-#include <ace/managers/log.h>
 #include <ace/utils/font.h>
 
 #include <ace++/font.h>
@@ -11,10 +10,13 @@
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
+#include "core/logger.h"
 #include "game_data.h"
 #include "screen.h"
 #include "string_table.h"
 #include "text_render.h"
+
+NE_LOG_DOMAIN(Text);
 
 namespace NEONengine
 {
@@ -145,7 +147,7 @@ namespace NEONengine
         auto const all = g_pEngine->data().text_regions();
         if (mtl::to<size_t>(first) + count > all.size())
         {
-            NE_LOG("scene_text: TXTR range %hu+%hu is outside the %lu region(s) loaded",
+            NE_LOG("TXTR range %hu+%hu is outside the %lu region(s) loaded",
                 first,
                 count,
                 mtl::to<ULONG>(all.size()));
@@ -180,7 +182,7 @@ namespace NEONengine
                 && region.color_index >= CURSOR_PALETTE_FIRST
                 && region.color_index < CURSOR_PALETTE_FIRST + CURSOR_PALETTE_COUNT)
             {
-                NE_LOG("scene_text: region %hu uses color %hhu, reserved for the pointer",
+                NE_LOG("region %hu uses color %hhu, reserved for the pointer",
                     index,
                     region.color_index);
             }
@@ -194,7 +196,7 @@ namespace NEONengine
             // or it runs past the box and possibly past the buffer.
             if (glyphs->uwActualHeight > box.height)
             {
-                NE_LOG("scene_text: region %hu wants %hu rows, clamped to %hu",
+                NE_LOG("region %hu wants %hu rows, clamped to %hu",
                     index,
                     glyphs->uwActualHeight,
                     box.height);
@@ -210,6 +212,6 @@ namespace NEONengine
             ++drawn;
         }
 
-        NE_LOG("scene_text: %hu of %hu text region(s) drawn", drawn, count);
+        NE_LOG("%hu of %hu text region(s) drawn", drawn, count);
     }
 }  // namespace NEONengine

@@ -1,9 +1,10 @@
 #include "noir_vm.h"
 
-#include <ace/managers/log.h>
-
+#include "core/logger.h"
 #include "core/noir_opcodes.h"
 #include "mtl/utility.h"
+
+NE_LOG_DOMAIN(Script);
 
 namespace NEONengine
 {
@@ -80,7 +81,7 @@ namespace NEONengine
     {
         if (func_id >= _func_count)
         {
-            logWrite("NoirVM: invalid func_id %u (count=%u)\n", func_id, _func_count);
+            NE_LOG("invalid func_id %u (count=%u)", func_id, _func_count);
             return noir_status::err_invalid_func;
         }
 
@@ -225,7 +226,7 @@ namespace NEONengine
             case 0xC: return op_game_menu(opcode);
             case 0xE: return op_debug(opcode);
             default:
-                logWrite("NoirVM: invalid opcode 0x%02X\n", opcode);
+                NE_LOG("invalid opcode 0x%02X", opcode);
                 return noir_status::err_invalid_opcode;
         }
     }
@@ -247,7 +248,7 @@ namespace NEONengine
             }
 
             case HALT:
-                logWrite("NoirVM: HALT executed\n");
+                NE_LOG("HALT executed");
                 _state      = noir_state::halted;
                 _last_error = noir_status::completed;
                 return noir_status::completed;
@@ -259,7 +260,7 @@ namespace NEONengine
                 uint16_t func_id = read_u16();
                 if (func_id >= _func_count)
                 {
-                    logWrite("NoirVM: CALL invalid func_id %u\n", func_id);
+                    NE_LOG("CALL invalid func_id %u", func_id);
                     return noir_status::err_invalid_func;
                 }
                 auto target = _bytecode + _func_toc[func_id];
@@ -445,7 +446,7 @@ namespace NEONengine
                 uint16_t b = read_operand(src_mode);
                 if (b == 0)
                 {
-                    logWrite("NoirVM: division by zero\n");
+                    NE_LOG("division by zero");
                     return noir_status::err_division_zero;
                 }
                 int16_t sa  = mtl::to<int16_t>(a);
@@ -462,7 +463,7 @@ namespace NEONengine
                 uint16_t b = read_operand(src_mode);
                 if (b == 0)
                 {
-                    logWrite("NoirVM: modulo by zero\n");
+                    NE_LOG("modulo by zero");
                     return noir_status::err_division_zero;
                 }
                 int16_t sa  = mtl::to<int16_t>(a);
@@ -948,26 +949,26 @@ namespace NEONengine
             }
 
             case DBG_REG:
-                logWrite("NoirVM REG: D0=%04X D1=%04X D2=%04X D3=%04X SR=%02X\n",
+                NE_LOG("REG: D0=%04X D1=%04X D2=%04X D3=%04X SR=%02X",
                     _d[0],
                     _d[1],
                     _d[2],
                     _d[3],
                     _sr);
-                logWrite("NoirVM REG: SP=%p FP=%p PC=%p\n", _sp, _fp, _pc);
+                NE_LOG("REG: SP=%p FP=%p PC=%p", _sp, _fp, _pc);
                 break;
 
             case DBG_STK:
             {
                 uint8_t const* p   = _sp;
                 uint8_t const* end = _stack.data() + _stack.size();
-                logWrite("NoirVM STK: (top → bottom, up to 16 bytes)\n");
-                for (int i = 0; i < 16 && p < end; ++i, ++p) logWrite("  [SP+%d] = %02X\n", i, *p);
+                NE_LOG("STK: (top → bottom, up to 16 bytes)");
+                for (int i = 0; i < 16 && p < end; ++i, ++p) NE_LOG("  [SP+%d] = %02X", i, *p);
                 break;
             }
 
             case DBG_STAT:
-                logWrite("NoirVM STATS: max_stack=%lu max_call=%u max_reentry=%u\n",
+                NE_LOG("STATS: max_stack=%lu max_call=%u max_reentry=%u",
                     _debug_stats.max_stack_used,
                     _debug_stats.max_call_depth,
                     _debug_stats.max_reentry_level);
@@ -978,16 +979,16 @@ namespace NEONengine
                 if (_d[0] == 0xFFFF)
                 {
                     uint16_t total = mtl::to<uint16_t>(_flags_size * 8);
-                    logWrite("NoirVM FLAGS: (all %u)\n", total);
+                    NE_LOG("FLAGS: (all %u)", total);
                     for (uint16_t i = 0; i < total; ++i)
                     {
-                        if (get_flag(i)) logWrite("  flag[%u] = 1\n", i);
+                        if (get_flag(i)) NE_LOG("  flag[%u] = 1", i);
                     }
                 }
                 else
                 {
                     if (validate_flag_index(_d[0]))
-                        logWrite("NoirVM FLAG[%u] = %u\n", _d[0], get_flag(_d[0]) ? 1 : 0);
+                        NE_LOG("FLAG[%u] = %u", _d[0], get_flag(_d[0]) ? 1 : 0);
                 }
                 break;
             }
@@ -996,14 +997,14 @@ namespace NEONengine
             {
                 if (_d[0] == 0xFFFF)
                 {
-                    logWrite("NoirVM VALUES: (all %u)\n", _values_count);
+                    NE_LOG("VALUES: (all %u)", _values_count);
                     for (uint16_t i = 0; i < _values_count; ++i)
-                        logWrite("  value[%u] = %u\n", i, _values[i]);
+                        NE_LOG("  value[%u] = %u", i, _values[i]);
                 }
                 else
                 {
                     if (validate_value_index(_d[0]))
-                        logWrite("NoirVM VALUE[%u] = %u\n", _d[0], _values[_d[0]]);
+                        NE_LOG("VALUE[%u] = %u", _d[0], _values[_d[0]]);
                 }
                 break;
             }
@@ -1138,7 +1139,7 @@ namespace NEONengine
         _fp = new_top - fp_offset;
 
 #ifdef GAME_DEBUG
-        logWrite("NoirVM: stack grown to %lu bytes\n", new_size);
+        NE_LOG("stack grown to %lu bytes", new_size);
 #endif
     }
 
@@ -1411,14 +1412,14 @@ namespace NEONengine
     bool noir_vm::validate_flag_index(uint16_t index) const noexcept
     {
         if (index < mtl::to<uint16_t>(_flags_size * 8)) return true;
-        logWrite("NoirVM: flag index %u out of bounds (max=%u)\n", index, _flags_size * 8);
+        NE_LOG("flag index %u out of bounds (max=%u)", index, _flags_size * 8);
         return false;
     }
 
     bool noir_vm::validate_value_index(uint16_t index) const noexcept
     {
         if (index < _values_count) return true;
-        logWrite("NoirVM: value index %u out of bounds (max=%u)\n", index, _values_count);
+        NE_LOG("value index %u out of bounds (max=%u)", index, _values_count);
         return false;
     }
 

@@ -2,7 +2,6 @@
 
 #include "neonengine.h"
 
-#include <ace/managers/log.h>
 #include <ace/managers/mouse.h>
 
 #include <mtl/span.h>
@@ -10,10 +9,13 @@
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/scene_audio.h"
 #include "core/scene_bobs.h"
 #include "core/screen.h"
+
+NE_LOG_DOMAIN(Hotspot);
 
 namespace NEONengine
 {
@@ -95,7 +97,7 @@ namespace NEONengine
         {
             auto const& hotspot = scene_records()[index];
 
-            NE_LOG("scene_hotspots: hotspot %hu clicked", mtl::to<UWORD>(s_first + index));
+            NE_LOG("hotspot %hu clicked", mtl::to<UWORD>(s_first + index));
 
             if (hotspot.click_sfx_hash != data::NO_ASSET)
             {
@@ -168,7 +170,7 @@ namespace NEONengine
             refresh_state_frame(index);
         }
 
-        NE_LOG("scene_hotspots: %hu hotspot(s) loaded", s_count);
+        NE_LOG("%hu hotspot(s) loaded", s_count);
     }
 
     void scene_hotspots_set_enabled(uint16_t id, bool enabled)

@@ -60,6 +60,16 @@ if(ACE_TEST_RUNNER)
     add_compile_definitions(ACE_TEST_RUNNER)
 endif()
 
+# Engine logging, independent of ACE_DEBUG on purpose. ACE gates its own
+# logWrite on ACE_DEBUG, which also turns on bobCheckGood and the bob buffer
+# auto-correction scene_bobs relies on, so the two switches have to be separate:
+# this one keeps engine lines in an optimised build while ACE says nothing.
+# Off, every NE_LOG expands to nothing and its format string leaves the binary.
+set(NE_LOGGING ON CACHE BOOL "Enable NEONengine domain logging")
+if(NE_LOGGING)
+    add_compile_definitions(NE_LOGGING)
+endif()
+
 # ACE
 set(ACE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/ace" CACHE PATH "Path to the ACE source tree (defaults to the modules/ace submodule)")
 add_subdirectory(${ACE_SOURCE_DIR} ace)

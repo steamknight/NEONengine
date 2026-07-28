@@ -2,13 +2,16 @@
 
 #include "neonengine.h"
 
-#include <ace/managers/log.h>
 #include <ace/utils/file.h>
 
 #include <ace++/pak_file.h>
 
 #include <mtl/memory.h>
 #include <mtl/utility.h>
+
+#include "core/logger.h"
+
+NE_LOG_DOMAIN(Data);
 
 namespace NEONengine
 {
@@ -56,7 +59,7 @@ namespace NEONengine
             return mtl::make_error<game_data_ptr, error>(error::BAD_HEADER);
         }
 
-        NE_LOG("game_data: version %hu, build %lu, %lu bytes, %lu chunks",
+        NE_LOG("version %hu, build %lu, %lu bytes, %lu chunks",
             mtl::to<UWORD>(header.version),
             mtl::to<ULONG>(header.build_number),
             mtl::to<ULONG>(header.total_size),
@@ -80,7 +83,7 @@ namespace NEONengine
             return mtl::make_error<game_data_ptr, error>(error::CHUNK_TOO_SMALL);
         }
 
-        NE_LOG("game_data: CONF %hux%hu fade=%hu; UIST palette=%08lx font=%08lx",
+        NE_LOG("CONF %hux%hu fade=%hu; UIST palette=%08lx font=%08lx",
             mtl::to<UWORD>(gd->config().width),
             mtl::to<UWORD>(gd->config().height),
             mtl::to<UWORD>(gd->config().default_fade_frames),

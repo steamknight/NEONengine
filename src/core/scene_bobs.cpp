@@ -4,7 +4,6 @@
 
 #include <ace/managers/blit.h>
 #include <ace/managers/bob.h>
-#include <ace/managers/log.h>
 #include <ace/utils/font.h>
 
 #include <ace++/bitmap.h>
@@ -15,10 +14,13 @@
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
+#include "core/logger.h"
 #include "game_data.h"
 #include "screen.h"
 #include "string_table.h"
 #include "text_render.h"
+
+NE_LOG_DOMAIN(Bobs);
 
 namespace NEONengine
 {
@@ -209,7 +211,7 @@ namespace NEONengine
                 // than draw an arbitrary frame.
                 if (gfx.frame_count < HOTSPOT_STATE_FRAMES)
                 {
-                    NE_LOG("scene_bobs: hotspot %hu graphic has %hhu frame(s), needs %hhu",
+                    NE_LOG("hotspot %hu graphic has %hhu frame(s), needs %hhu",
                         mtl::to<UWORD>(first + i),
                         gfx.frame_count,
                         HOTSPOT_STATE_FRAMES);
@@ -297,7 +299,7 @@ namespace NEONengine
                 // keeps the blit inside a mask sized for the box.
                 if (glyphs->uwActualHeight > maxHeight)
                 {
-                    NE_LOG("scene_bobs: caption %hu wants %hu rows, clamped to %hu",
+                    NE_LOG("caption %hu wants %hu rows, clamped to %hu",
                         i,
                         glyphs->uwActualHeight,
                         maxHeight);
@@ -477,7 +479,7 @@ namespace NEONengine
             bobReallocateBuffers();
         }
 
-        NE_LOG("scene_bobs: %lu bob(s), %lu hotspot graphic(s), caption %s",
+        NE_LOG("%lu bob(s), %lu hotspot graphic(s), caption %s",
             mtl::to<ULONG>(s_assets.size()),
             mtl::to<ULONG>(s_hotspotAssets.size()),
             s_captionReady ? "ready" : "none");

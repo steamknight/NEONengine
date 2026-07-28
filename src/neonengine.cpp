@@ -1,10 +1,13 @@
 #include "neonengine.h"
 
+#include "core/logger.h"
 #include "core/noir_bridge.h"
 
 #include <ace++/palette.h>
 
 #include <mtl/utility.h>
+
+NE_LOG_DOMAIN(Core);
 
 namespace NEONengine
 {
@@ -66,7 +69,7 @@ namespace NEONengine
         ace::paletteLoadFromFd(
             mtl::move(uiPaletteFd), screenGetPalette(g_mainScreen), UI_PALETTE_COLOR_COUNT);
 
-        NE_LOG("game_data: UI font %hux%hu, %hu chars; palette[0]=%08lx palette[1]=%08lx",
+        NE_LOG("UI font %hux%hu, %hu chars; palette[0]=%08lx palette[1]=%08lx",
             mtl::to<UWORD>(uiFont->uwWidth),
             mtl::to<UWORD>(uiFont->uwHeight),
             mtl::to<UWORD>(uiFont->ubChars),
@@ -136,7 +139,7 @@ namespace NEONengine
             &engine_bridge(),
             NOIR_STACK_SIZE));
 
-        NE_LOG("game_data: VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
+        NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
             mtl::to<ULONG>(scripts.size()),
             mtl::to<UWORD>(functions.size()),
             mtl::to<UWORD>(result->_flags.size()),

@@ -10,8 +10,11 @@
 #include "build_number.h"
 #include "core/asset_cache.h"
 #include "core/game_data.h"
+#include "core/logger.h"
 #include "core/music.h"
 #include "test.h"
+
+NE_LOG_DOMAIN(Core);
 
 using namespace NEONengine;
 
@@ -21,6 +24,8 @@ UBYTE ubDebugToggle = 1;
 
 void genericCreate(void)
 {
+    log_init();
+
     keyCreate();
     mouseCreate(MOUSE_PORT_1);
     ptplayerCreate(systemIsPal());
@@ -99,7 +104,16 @@ void genericProcess(void)
     if (keyUse(KEY_F4))
     {
         asset_cache_clear();
-        NE_LOG("asset_cache: cleared on request");
+        NE_LOG("asset cache cleared on request");
+    }
+
+    // ACE's own output buries ours on a busy frame, so it can be switched off
+    // and back on while the game runs. ACE_DEBUG stays on either way, so the
+    // checks that depend on it keep working.
+    if (keyUse(KEY_F5))
+    {
+        log_mute_ace(!log_ace_muted());
+        NE_LOG_ALWAYS("ACE logging %s", log_ace_muted() ? "muted" : "on");
     }
 }
 

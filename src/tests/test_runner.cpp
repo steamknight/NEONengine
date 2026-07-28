@@ -7,6 +7,7 @@
 
 #include <ace++/log.h>
 
+#include "core/logger.h"
 #include "core/screen.h"
 #include "tests/bstr_view_tests.h"
 #include "tests/game_data_tests.h"
@@ -29,6 +30,8 @@
 #include "tests/noir_vm_timeline_tests.h"
 #include "tests/noir_vm_value_ops_tests.h"
 #include "tests/track_clock_tests.h"
+
+NE_LOG_DOMAIN(Test);
 
 namespace NEONengine::tests
 {
@@ -85,7 +88,7 @@ namespace NEONengine::tests
             char const* szError = tests[i].test_fn();
             if (szError)
             {
-                NE_LOG("test FAIL %s.%s: %s", szSuiteName, tests[i].name, szError);
+                NE_LOG("FAIL %s.%s: %s", szSuiteName, tests[i].name, szError);
 
                 y += text->uwActualHeight;
                 snprintf(buffer, sizeof(buffer), "%s: %s", tests[i].name, szError);
@@ -101,7 +104,7 @@ namespace NEONengine::tests
             }
         }
 
-        NE_LOG("test suite %s: %lu/%lu passed", szSuiteName, (ULONG)passedTests, (ULONG)testCount);
+        NE_LOG("suite %s: %lu/%lu passed", szSuiteName, (ULONG)passedTests, (ULONG)testCount);
 
         snprintf(buffer, sizeof(buffer), "Passed %ld/%ld tests.", passedTests, testCount);
         text = pTextRenderer->create_text((char const*)buffer, 320, text_justify::RIGHT);
