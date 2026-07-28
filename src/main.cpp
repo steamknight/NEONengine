@@ -66,6 +66,21 @@ void genericProcess(void)
 
         ubDebugToggle = 1 - ubDebugToggle;
     }
+
+    if (keyUse(KEY_F2))
+    {
+        auto chipSize = memGetFreeChipSize();
+        auto fastSize = AvailMem(MEMF_FAST);
+        auto anySize  = AvailMem(MEMF_ANY);
+
+        NE_LOG("Chip: %ld.%3ld KB, Fast: %ld.%3ld KB, Any:  %ld.%3ld KB ",
+            chipSize >> 10,
+            chipSize & 0x3FF,
+            fastSize >> 10,
+            fastSize & 0x3FF,
+            anySize >> 10,
+            anySize & 0x3FF);
+    }
 }
 
 void genericDestroy(void)
