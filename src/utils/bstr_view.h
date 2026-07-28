@@ -5,7 +5,7 @@
  *
  * A bstr (in this project) is laid out in memory as:
  * @code
- * [ uint32_t length ][ char data... ][ '\0' ]
+ * [ u32 length ][ char data... ][ '\0' ]
  * @endcode
  * Where @c length is the number of character bytes (not counting the trailing
  * null).
@@ -30,6 +30,8 @@
 
 #ifndef __BSTR_VIEW__INCLUDED__
 #define __BSTR_VIEW__INCLUDED__
+
+#include "types.h"
 
 #include <stddef.h>
 
@@ -119,17 +121,17 @@ namespace NEONengine
         {
             if (!header) { return bstr_view(); }
 
-            uint8_t const* raw = mtl::to<uint8_t const*>(header);
+            u8 const* raw = to<u8 const*>(header);
 
             // Read 32-bit length (assuming native endianness matches stored
             // format) Layout: [0..3] length, [4..4+len-1] chars, [4+len] '\0'
-            uint32_t len = (mtl::to<uint32_t>(raw[0]) << 24)    //
-                           | (mtl::to<uint32_t>(raw[1]) << 16)  //
-                           | (mtl::to<uint32_t>(raw[2]) << 8)   //
-                           | (mtl::to<uint32_t>(raw[3]) << 0);
-            pointer strData = reinterpret_cast<pointer>(raw + 4);
+            u32 len = (to<u32>(raw[0]) << 24)    //
+                           | (to<u32>(raw[1]) << 16)  //
+                           | (to<u32>(raw[2]) << 8)   //
+                           | (to<u32>(raw[3]) << 0);
+            pointer strData = force_to<pointer>(raw + 4);
 
-            return bstr_view(strData, mtl::to<size_type>(len));
+            return bstr_view(strData, to<size_type>(len));
         }
 
         /*
@@ -203,8 +205,8 @@ namespace NEONengine
             size_type const n = (_length < other._length) ? _length : other._length;
             for (size_type i = 0; i < n; ++i)
             {
-                auto a = mtl::to<uint8_t>(_data[i]);
-                auto b = mtl::to<uint8_t>(other._data[i]);
+                auto a = to<u8>(_data[i]);
+                auto b = to<u8>(other._data[i]);
                 if (a < b) return -1;
                 if (a > b) return 1;
             }

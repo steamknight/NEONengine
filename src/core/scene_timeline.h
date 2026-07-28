@@ -23,6 +23,8 @@
 #ifndef __SCENE_TIMELINE_H__INCLUDED__
 #define __SCENE_TIMELINE_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <mtl/span.h>
@@ -90,7 +92,7 @@ namespace NEONengine
      * everything the first one has done. A script that means to start over stops
      * the track first.
      */
-    void scene_timeline_play(uint16_t name_id);
+    void scene_timeline_play(u16 name_id);
 
     /**
      * @brief Halts the current scene's track called @p name_id where it stands.
@@ -100,7 +102,7 @@ namespace NEONengine
      * not running is the ordinary way to be sure of its state before playing
      * it, and passes quietly.
      */
-    void scene_timeline_stop(uint16_t name_id);
+    void scene_timeline_stop(u16 name_id);
 
     /**
      * @brief Holds the running script until the track called @p name_id comes round.
@@ -113,7 +115,7 @@ namespace NEONengine
      * Call from the opcode handler only: the VM is released through its blocking
      * counter, so a wait nobody is blocked on would unbalance it.
      */
-    void scene_timeline_wait(uint16_t name_id);
+    void scene_timeline_wait(u16 name_id);
 
     /**
      * @brief The TRAK records the current scene owns, in timeline order.

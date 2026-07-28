@@ -1,6 +1,8 @@
 #ifndef __SCREEN_H__INCLUDED__
 #define __SCREEN_H__INCLUDED__
 
+#include "types.h"
+
 #include <ace/managers/viewport/simplebuffer.h>
 
 #include "core/spatial.h"
@@ -189,7 +191,7 @@ namespace NEONengine
      * Content drawn straight into a buffer, bobs for one, must add this.
      * screenBlitCopy already does. Only y is ever non-zero.
      */
-    data::point<uint16_t> screenGetOffset(Screen* screen);
+    data::point<u16> screenGetOffset(Screen* screen);
 
     /**
      * @brief Copies the whole back buffer into the front buffer.

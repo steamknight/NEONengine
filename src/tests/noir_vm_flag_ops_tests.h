@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -27,7 +29,7 @@ namespace NEONengine
     {
         // Set flag 0, then test it — should be set (Z=0)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(0);
@@ -63,7 +65,7 @@ namespace NEONengine
     {
         // Set flag 127 (highest valid in 16-byte array = 128 flags)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(127);
@@ -86,7 +88,7 @@ namespace NEONengine
     {
         // Set flags 0, 5, and 10 — verify they are independent
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(0);
@@ -134,7 +136,7 @@ namespace NEONengine
     {
         // Flag index 128 is out of bounds for 16-byte (128-bit) array
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(128);
@@ -153,7 +155,7 @@ namespace NEONengine
     {
         // Setting an already-set flag should have no effect
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(42);
@@ -181,7 +183,7 @@ namespace NEONengine
     {
         // Set then clear a flag
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(7);
@@ -207,7 +209,7 @@ namespace NEONengine
     {
         // Clear a flag that's already clear — should be fine
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLRF);
         bc.emit_u16(3);
@@ -230,7 +232,7 @@ namespace NEONengine
     {
         // Set flags 7, 8, 9 then clear 8 — verify 7 and 9 still set
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(7);
@@ -269,7 +271,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_clrf_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLRF);
         bc.emit_u16(200);
@@ -290,7 +292,7 @@ namespace NEONengine
     {
         // Set a flag then toggle it → should be clear
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(15);
@@ -316,7 +318,7 @@ namespace NEONengine
     {
         // Toggle a clear flag → should be set
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::TOGF);
         bc.emit_u16(20);
@@ -339,7 +341,7 @@ namespace NEONengine
     {
         // Toggle twice → back to original
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(30);
@@ -367,7 +369,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_togf_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::TOGF);
         bc.emit_u16(128);
@@ -388,7 +390,7 @@ namespace NEONengine
     {
         // TSTF on a set flag → Z=0, meaning BNE = "flag is set"
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(50);
@@ -410,7 +412,7 @@ namespace NEONengine
     {
         // TSTF on a clear flag → Z=1, meaning BEQ = "flag is clear"
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::TSTF);
         bc.emit_u16(50);
@@ -429,7 +431,7 @@ namespace NEONengine
     {
         // TSTF should test the flag without altering it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(60);
@@ -456,7 +458,7 @@ namespace NEONengine
     {
         // Common pattern: TSTF + BNE = "if flag is set"
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(42);
@@ -495,7 +497,7 @@ namespace NEONengine
     {
         // Common pattern: TSTF + BEQ = "if flag is clear"
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Flag 42 is clear (default)
         bc.emit(noir_op::MOV16);
@@ -530,7 +532,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_tstf_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::TSTF);
         bc.emit_u16(128);
@@ -551,7 +553,7 @@ namespace NEONengine
     {
         // D0 = 10, SETFR D0 → set flag[10]
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -578,7 +580,7 @@ namespace NEONengine
     {
         // D1 = 25, SETFR D1 → set flag[25]
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
@@ -605,7 +607,7 @@ namespace NEONengine
     {
         // D0 = 200 (OOB), SETFR D0 → err_flag_oob
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -630,7 +632,7 @@ namespace NEONengine
     {
         // Set flag 15, then D0=15, CLRFR D0 → flag 15 cleared
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(15);
@@ -662,7 +664,7 @@ namespace NEONengine
     {
         // D0=30, TOGFR D0 → flag 30 toggled (clear→set)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -689,7 +691,7 @@ namespace NEONengine
     {
         // D2=50, set flag 50, TOGFR D2 → flag 50 toggled (set→clear)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(50);
@@ -721,7 +723,7 @@ namespace NEONengine
     {
         // Set flag 40, D0=40, TSTFR D0 → Z=0 (flag is set)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(40);
@@ -747,7 +749,7 @@ namespace NEONengine
     {
         // Flag 40 is clear, D0=40, TSTFR D0 → Z=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -770,7 +772,7 @@ namespace NEONengine
     {
         // D3=100, set flag 100, TSTFR D3 → Z=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(100);
@@ -795,7 +797,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_tstfr_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -820,7 +822,7 @@ namespace NEONengine
     {
         // Set flag 5, LDFR D0, #5 → D0=1, NZ: Z=0, N=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(5);
@@ -845,7 +847,7 @@ namespace NEONengine
     {
         // Flag 5 is clear, LDFR D0, #5 → D0=0, Z=1, N=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LDFR);
         bc.emit(0);  // D0
@@ -867,7 +869,7 @@ namespace NEONengine
     {
         // LDFR D2, #80 — verify it writes to the correct register
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(80);
@@ -891,7 +893,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_ldfr_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LDFR);
         bc.emit(0);
@@ -911,7 +913,7 @@ namespace NEONengine
     {
         // D0 = 0x1234, then LDFR D0, #5 → D0 should be 0 or 1, not 0x1234
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -937,7 +939,7 @@ namespace NEONengine
     {
         // D0 = 1 (bit 0 = 1), STFR D0, #70 → flag 70 = 1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -965,7 +967,7 @@ namespace NEONengine
     {
         // D0 = 2 (bit 0 = 0), STFR D0, #70 → flag 70 = 0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(70);  // pre-set
@@ -997,7 +999,7 @@ namespace NEONengine
         // D0 = 0xFFFE (bit 0 = 0), STFR D0, #75 → flag 75 = 0
         // D0 = 0xFF01 (bit 0 = 1), STFR D0, #76 → flag 76 = 1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1038,7 +1040,7 @@ namespace NEONengine
     {
         // STFR D3, #90 — uses register D3
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
@@ -1065,7 +1067,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_stfr_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::STFR);
         bc.emit(0);
@@ -1085,7 +1087,7 @@ namespace NEONengine
     {
         // STFR should NOT modify SR flags (reference says "—")
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set up known SR state: CMP 10,10 → Z=1
         bc.emit(noir_op::MOV16);
@@ -1123,7 +1125,7 @@ namespace NEONengine
         // Flags 7 and 8 are in different bytes (byte 0 bit 7, byte 1 bit 0)
         // Setting both should work independently
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(7);
@@ -1156,9 +1158,9 @@ namespace NEONengine
     {
         // Set all 8 flags in byte 0 (flags 0-7), clear flag 3, verify the rest
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
-        for (uint16_t i = 0; i < 8; ++i)
+        for (u16 i = 0; i < 8; ++i)
         {
             bc.emit(noir_op::SETF);
             bc.emit_u16(i);
@@ -1196,7 +1198,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_flag_ops_invalid_opcode)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // 0x5F is reserved
         bc.emit(0x5F);

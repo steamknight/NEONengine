@@ -18,6 +18,8 @@
 #ifndef __SCENE_BOBS_H__INCLUDED__
 #define __SCENE_BOBS_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include "game_data_format.h"
@@ -25,10 +27,10 @@
 namespace NEONengine
 {
     /// Frames a hotspot state graphic must supply, one per hotspot state.
-    constexpr uint8_t HOTSPOT_STATE_FRAMES = 4;
+    constexpr u8 HOTSPOT_STATE_FRAMES = 4;
 
     /// Which frame of a hotspot's state graphic each state draws.
-    enum class hotspot_frame : uint8_t
+    enum class hotspot_frame : u8
     {
         NORMAL   = 0,
         HOVERED  = 1,
@@ -67,7 +69,7 @@ namespace NEONengine
      * @param index Scene-local hotspot index, as scene_hotspots numbers them.
      *              Indices without a state graphic are ignored.
      */
-    void scene_bobs_set_hotspot_frame(uint16_t index, hotspot_frame frame);
+    void scene_bobs_set_hotspot_frame(u16 index, hotspot_frame frame);
 
     /**
      * @brief Moves the graphic instance at scene-local @p index to @p pos.
@@ -79,14 +81,14 @@ namespace NEONengine
      *              screen's vertical centering is added here, so callers work
      *              in the same coordinates the data is authored in.
      */
-    void scene_bobs_set_instance_pos(uint16_t index, data::point<uint16_t> pos);
+    void scene_bobs_set_instance_pos(u16 index, data::point<u16> pos);
 
     /**
      * @brief Shows or hides the graphic instance at scene-local @p index.
      *
      * A hidden instance is not drawn and its frame animation does not advance.
      */
-    void scene_bobs_set_instance_visible(uint16_t index, bool visible);
+    void scene_bobs_set_instance_visible(u16 index, bool visible);
 
     /**
      * @brief Where the graphic instance at scene-local @p index currently is.
@@ -97,7 +99,7 @@ namespace NEONengine
      * @param[out] pos Position in scene space; untouched when this returns false.
      * @return Whether the scene has a drawable instance at that index.
      */
-    bool scene_bobs_instance_pos(uint16_t index, data::point<uint16_t>& pos);
+    bool scene_bobs_instance_pos(u16 index, data::point<u16>& pos);
 
     /**
      * @brief Advances every visible graphic instance's looping frame animation.
@@ -125,7 +127,7 @@ namespace NEONengine
      *
      * @param index Scene-local hotspot index, as scene_hotspots numbers them.
      */
-    void scene_bobs_show_caption(uint16_t index, uint16_t anchorX, uint16_t anchorY);
+    void scene_bobs_show_caption(u16 index, u16 anchorX, u16 anchorY);
 
     /**
      * @brief Stops drawing the hover caption.

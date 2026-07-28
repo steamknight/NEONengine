@@ -1,5 +1,7 @@
 #include "nine_patch.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <stdint.h>
@@ -15,10 +17,10 @@ namespace NEONengine
     constexpr UBYTE NINE_PATCH_BITPLANES = 8;
 
     nine_patch::nine_patch(ace::bitmap_ptr& source,
-                           uint16_t left,
-                           uint16_t top,
-                           uint16_t right,
-                           uint16_t bottom)
+                           u16 left,
+                           u16 top,
+                           u16 right,
+                           u16 bottom)
         : _source(mtl::move(source))
         , _left(left)
         , _top(top)
@@ -28,28 +30,28 @@ namespace NEONengine
         , _patch_height(_source->Rows)
     {}
 
-    ace::bitmap_ptr nine_patch::render(uint16_t width, uint16_t height, uint32_t flags)
+    ace::bitmap_ptr nine_patch::render(u16 width, u16 height, u32 flags)
     {
         auto result = ace::bitmapCreate(
             width, height, NINE_PATCH_BITPLANES, BMF_CLEAR | BMF_INTERLEAVED | flags);
         if (!result) return nullptr;
 
-        uint16_t l = _left;
-        uint16_t t = _top;
-        uint16_t r = _right;
-        uint16_t b = _bottom;
+        u16 l = _left;
+        u16 t = _top;
+        u16 r = _right;
+        u16 b = _bottom;
 
-        uint16_t w = _patch_width;
-        uint16_t h = _patch_height;
+        u16 w = _patch_width;
+        u16 h = _patch_height;
 
-        uint16_t pr = w - r;  // Patch right start
-        uint16_t pb = h - b;  // Patch bottom start
+        u16 pr = w - r;  // Patch right start
+        u16 pb = h - b;  // Patch bottom start
 
-        uint16_t uwMidWidth  = w - l - r;
-        uint16_t uwMidHeight = h - t - b;
+        u16 uwMidWidth  = w - l - r;
+        u16 uwMidHeight = h - t - b;
 
-        uint16_t uwMiddleEndX = width - r;
-        uint16_t uwMiddleEndY = height - b;
+        u16 uwMiddleEndX = width - r;
+        u16 uwMiddleEndY = height - b;
 
         tBitMap* src = _source.get();
         tBitMap* dst = result.get();
@@ -60,28 +62,28 @@ namespace NEONengine
         blitCopy(src, pr, pb, dst, uwMiddleEndX, uwMiddleEndY, r, b, MINTERM_COPY);  // Bottom-right
 
         // Tile top and bottom edges
-        for (uint16_t x = l; x < uwMiddleEndX; x += uwMidWidth)
+        for (u16 x = l; x < uwMiddleEndX; x += uwMidWidth)
         {
-            uint16_t tileW = MIN(uwMidWidth, uwMiddleEndX - x);
+            u16 tileW = MIN(uwMidWidth, uwMiddleEndX - x);
             blitCopy(src, l, 0, dst, x, 0, tileW, t, MINTERM_COPY);              // Top edge
             blitCopy(src, l, pb, dst, x, uwMiddleEndY, tileW, b, MINTERM_COPY);  // Bottom edge
         }
 
         // Tile left and right edges
-        for (uint16_t y = t; y < uwMiddleEndY; y += uwMidHeight)
+        for (u16 y = t; y < uwMiddleEndY; y += uwMidHeight)
         {
-            uint16_t tileH = MIN(uwMidHeight, uwMiddleEndY - y);
+            u16 tileH = MIN(uwMidHeight, uwMiddleEndY - y);
             blitCopy(src, 0, t, dst, 0, y, l, tileH, MINTERM_COPY);              // Left edge
             blitCopy(src, pr, t, dst, uwMiddleEndX, y, r, tileH, MINTERM_COPY);  // Right edge
         }
 
         // Tile center
-        for (uint16_t x = l; x < uwMiddleEndX; x += uwMidWidth)
+        for (u16 x = l; x < uwMiddleEndX; x += uwMidWidth)
         {
-            uint16_t tileW = MIN(uwMidWidth, uwMiddleEndX - x);
-            for (uint16_t y = t; y < uwMiddleEndY; y += uwMidHeight)
+            u16 tileW = MIN(uwMidWidth, uwMiddleEndX - x);
+            for (u16 y = t; y < uwMiddleEndY; y += uwMidHeight)
             {
-                uint16_t tileH = MIN(uwMidHeight, uwMiddleEndY - y);
+                u16 tileH = MIN(uwMidHeight, uwMiddleEndY - y);
                 blitCopy(src, l, t, dst, x, y, tileW, tileH, MINTERM_COPY);
             }
         }

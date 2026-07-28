@@ -1,3 +1,5 @@
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
@@ -31,8 +33,8 @@ namespace NEONengine
 {
     namespace
     {
-        constexpr uint32_t MUSIC_KEEP    = 0xFFFFFFFF;
-        constexpr uint32_t MUSIC_SILENCE = 0xFFFFFFFE;
+        constexpr u32 MUSIC_KEEP    = 0xFFFFFFFF;
+        constexpr u32 MUSIC_SILENCE = 0xFFFFFFFE;
 
         /// UI colors occupy palette indices 0..31.
         constexpr UWORD UI_PALETTE_COLORS = 32;
@@ -112,10 +114,10 @@ namespace NEONengine
                         bg.get(),
                         0,
                         0,
-                        mtl::to<WORD>(sc.offset.x),
-                        mtl::to<WORD>(sc.offset.y),
-                        mtl::to<WORD>(sc.width),
-                        mtl::to<WORD>(sc.height),
+                        to<WORD>(sc.offset.x),
+                        to<WORD>(sc.offset.y),
+                        to<WORD>(sc.width),
+                        to<WORD>(sc.height),
                         MINTERM_COPY);
                 }
             }
@@ -160,7 +162,7 @@ namespace NEONengine
         void redraw_backdrop()
         {
             auto const scenes = g_pEngine->data().scenes();
-            uint16_t const id = g_pEngine->current_scene();
+            u16 const id = g_pEngine->current_scene();
             if (id >= scenes.size()) return;
 
             // Nothing else in the backdrop is localized, so a scene without text
@@ -218,7 +220,7 @@ namespace NEONengine
          */
         LONG free_fast_size()
         {
-            return mtl::to<LONG>(memGetFreeSize()) - mtl::to<LONG>(memGetFreeChipSize());
+            return to<LONG>(memGetFreeSize()) - to<LONG>(memGetFreeChipSize());
         }
 
         /**
@@ -234,9 +236,9 @@ namespace NEONengine
          * load, so a scene cheaper than the one before it reports a negative
          * number. Read the free figures for whether a scene fits at all.
          */
-        void log_scene_memory(uint16_t scene_id, LONG chipBefore, LONG fastBefore)
+        void log_scene_memory(u16 scene_id, LONG chipBefore, LONG fastBefore)
         {
-            LONG const chipAfter = mtl::to<LONG>(memGetFreeChipSize());
+            LONG const chipAfter = to<LONG>(memGetFreeChipSize());
             LONG const fastAfter = free_fast_size();
 
             NE_LOG("scene %hu memory: chip %ld KB free (used %ld KB), fast %ld KB free (used %ld KB)",
@@ -254,7 +256,7 @@ namespace NEONengine
          * access runs under a system_use_guard; music playback and the VM run
          * afterwards with the system released (the game-loop baseline).
          */
-        void load_scene(uint16_t scene_id)
+        void load_scene(u16 scene_id)
         {
             auto& gd          = g_pEngine->data();
             auto const scenes = gd.scenes();
@@ -262,7 +264,7 @@ namespace NEONengine
             {
                 NE_LOG("invalid scene id %hu (%lu scenes)",
                     scene_id,
-                    mtl::to<ULONG>(scenes.size()));
+                    to<ULONG>(scenes.size()));
                 return;
             }
 
@@ -274,7 +276,7 @@ namespace NEONengine
             // makes the previous scene's leftovers the first to go.
             asset_cache_begin_load();
 
-            LONG const chipBefore = mtl::to<LONG>(memGetFreeChipSize());
+            LONG const chipBefore = to<LONG>(memGetFreeChipSize());
             LONG const fastBefore = free_fast_size();
             // The load lays the whole backdrop down in the current language, so
             // any repaint a language change was still owed is settled by it.
@@ -323,9 +325,9 @@ namespace NEONengine
                 // loaded palette only reaches the display through a fade). Fade in
                 // from black with the project's default so a script-less scene is
                 // still visible.
-                uint16_t const frames = gd.config().default_fade_frames;
+                u16 const frames = gd.config().default_fade_frames;
                 screenFadeFromBlack(
-                    g_mainScreen, mtl::to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
+                    g_mainScreen, to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
             }
         }
     }  // namespace

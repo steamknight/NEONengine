@@ -10,6 +10,8 @@
 #ifndef __SPATIAL_H__INCLUDED__
 #define __SPATIAL_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace/types.h>
@@ -26,7 +28,7 @@ namespace NEONengine::data
     struct ace_coord;
 
     template<>
-    struct ace_coord<uint16_t>
+    struct ace_coord<u16>
     {
         using type = tUwCoordYX;
     };
@@ -34,7 +36,7 @@ namespace NEONengine::data
     /**
      * @brief A Y,X coordinate. Y leads to match ACE and to sort by row first.
      *
-     * @tparam T Coordinate scalar; uint16_t for every position in the format.
+     * @tparam T Coordinate scalar; u16 for every position in the format.
      */
     template<typename T>
     struct point
@@ -57,12 +59,12 @@ namespace NEONengine::data
 
         friend constexpr point operator+(point const& lhs, point const& rhs) noexcept
         {
-            return point{ static_cast<T>(lhs.y + rhs.y), static_cast<T>(lhs.x + rhs.x) };
+            return point{ to<T>(lhs.y + rhs.y), to<T>(lhs.x + rhs.x) };
         }
 
         friend constexpr point operator-(point const& lhs, point const& rhs) noexcept
         {
-            return point{ static_cast<T>(lhs.y - rhs.y), static_cast<T>(lhs.x - rhs.x) };
+            return point{ to<T>(lhs.y - rhs.y), to<T>(lhs.x - rhs.x) };
         }
 
         friend constexpr bool operator==(point const& lhs, point const& rhs) noexcept
@@ -76,23 +78,23 @@ namespace NEONengine::data
         }
     };
 
-    static_assert(sizeof(point<uint16_t>) == 4, "point<uint16_t> must be exactly 4 bytes");
-    static_assert(__builtin_offsetof(point<uint16_t>, x) == 2, "point x must follow y at offset 2");
-    static_assert(__is_standard_layout(point<uint16_t>),
+    static_assert(sizeof(point<u16>) == 4, "point<u16> must be exactly 4 bytes");
+    static_assert(__builtin_offsetof(point<u16>, x) == 2, "point x must follow y at offset 2");
+    static_assert(__is_standard_layout(point<u16>),
         "point must be standard-layout to overlay the file buffer");
-    static_assert(__is_trivially_copyable(point<uint16_t>),
+    static_assert(__is_trivially_copyable(point<u16>),
         "point must be trivially copyable to overlay the file buffer");
-    static_assert(sizeof(static_cast<tUwCoordYX>(point<uint16_t>{})) == sizeof(tUwCoordYX),
-        "point<uint16_t> must convert to its ACE coord type");
+    static_assert(sizeof(to<tUwCoordYX>(point<u16>{})) == sizeof(tUwCoordYX),
+        "point<u16> must convert to its ACE coord type");
 
     /**
      * @brief An axis-aligned rectangle: a Y,X origin plus its size.
      */
     struct rect
     {
-        point<uint16_t> pos;
-        uint16_t width;
-        uint16_t height;
+        point<u16> pos;
+        u16 width;
+        u16 height;
 
         /**
          * @brief Converts to the ACE rectangle.

@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -34,7 +36,7 @@ namespace NEONengine
     {
         // DBG_LOG should complete without error
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -54,7 +56,7 @@ namespace NEONengine
     {
         // DBG_LOG must not modify any registers
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -87,7 +89,7 @@ namespace NEONengine
     {
         // DBG_LOG must not modify SR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set Z flag via CMP D0,D0 (equal → Z=1)
         bc.emit(noir_op::CMP);
@@ -109,7 +111,7 @@ namespace NEONengine
     {
         // DBG_LOG must call bridge->debug_log with D0 as string_id
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -131,7 +133,7 @@ namespace NEONengine
     {
         // DBG_LOG with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -155,7 +157,7 @@ namespace NEONengine
     {
         // DBG_LOGS must advance PC past u8 len + len bytes of inline data
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_LOGS);
         bc.emit(5);  // len = 5
@@ -183,7 +185,7 @@ namespace NEONengine
     {
         // DBG_LOGS with len=0 — no inline data to skip
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_LOGS);
         bc.emit(0);  // len = 0
@@ -205,7 +207,7 @@ namespace NEONengine
     {
         // DBG_LOGS must not modify D0–D3
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -235,7 +237,7 @@ namespace NEONengine
     {
         // DBG_LOGS must not modify SR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set N flag by loading a negative value
         bc.emit(noir_op::MOV16);
@@ -264,7 +266,7 @@ namespace NEONengine
     {
         // Multiple DBG_LOGS in a row — PC must advance correctly over each
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_LOGS);
         bc.emit(3);
@@ -296,7 +298,7 @@ namespace NEONengine
     {
         // DBG_LOGS must call bridge->debug_print with the inline string
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_LOGS);
         bc.emit(5);
@@ -326,7 +328,7 @@ namespace NEONengine
     {
         // DBG_REG should complete without error
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_REG);
         bc.emit(noir_op::RET);
@@ -342,7 +344,7 @@ namespace NEONengine
     {
         // DBG_REG must not modify any registers
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -374,7 +376,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_dbg_reg_preserves_sr)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set flags via CMP
         bc.emit(noir_op::MOV16);
@@ -402,7 +404,7 @@ namespace NEONengine
     {
         // DBG_STK should complete without error
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_STK);
         bc.emit(noir_op::RET);
@@ -418,7 +420,7 @@ namespace NEONengine
     {
         // DBG_STK must not modify D0–D3
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -447,7 +449,7 @@ namespace NEONengine
     {
         // DBG_STK with data on the stack should not corrupt it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::PUSH);
         bc.emit_mode(0, noir_mode::IMM16);
@@ -480,7 +482,7 @@ namespace NEONengine
     {
         // DBG_STK on an empty stack (no user data) should not crash
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_STK);
         bc.emit(noir_op::RET);
@@ -498,7 +500,7 @@ namespace NEONengine
     {
         // DBG_STAT should complete without error
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DBG_STAT);
         bc.emit(noir_op::RET);
@@ -513,7 +515,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_dbg_stat_preserves_registers)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -540,7 +542,7 @@ namespace NEONengine
     {
         // DBG_FLAG with D0 = valid flag index
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -560,7 +562,7 @@ namespace NEONengine
     {
         // DBG_FLAG with D0 = 0xFFFF → dump all flags
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -580,7 +582,7 @@ namespace NEONengine
     {
         // DBG_FLAG must preserve D0 (the flag index)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -600,7 +602,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_dbg_flag_preserves_sr)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set Z=1 via CMP D0,D0 (equal → Z=1)
         bc.emit(noir_op::CMP);
@@ -625,7 +627,7 @@ namespace NEONengine
     {
         // DBG_FLAG with out-of-bounds index should NOT halt — just silently skip
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // flags array is 16 bytes = 128 flags, so index 200 is OOB
         bc.emit(noir_op::MOV16);
@@ -646,7 +648,7 @@ namespace NEONengine
     {
         // Set a flag, then DBG_FLAG should report it — verify no crash
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::SETF);
         bc.emit_u16(7);
@@ -671,7 +673,7 @@ namespace NEONengine
     {
         // DBG_VAL with D0 = valid value index
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -691,7 +693,7 @@ namespace NEONengine
     {
         // DBG_VAL with D0 = 0xFFFF → dump all values
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -711,7 +713,7 @@ namespace NEONengine
     {
         // DBG_VAL must preserve D0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -732,7 +734,7 @@ namespace NEONengine
     {
         // DBG_VAL with out-of-bounds index should NOT halt — just silently skip
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // values array has 32 entries, so index 100 is OOB
         bc.emit(noir_op::MOV16);
@@ -753,7 +755,7 @@ namespace NEONengine
     {
         // Set a value, then DBG_VAL — verify no crash
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INCV);
         bc.emit_u16(3);
@@ -779,7 +781,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_dbg_val_preserves_sr)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set carry flag
         bc.emit(noir_op::MOV16);
@@ -808,7 +810,7 @@ namespace NEONengine
     {
         // Opcodes 0xE7–0xEF should be treated as NOP, not errors
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -829,7 +831,7 @@ namespace NEONengine
     {
         // Last debug opcode slot
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xEF);
         bc.emit(noir_op::RET);
@@ -847,7 +849,7 @@ namespace NEONengine
     {
         // Run all debug opcodes in sequence — verify no crash and correct completion
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -885,7 +887,7 @@ namespace NEONengine
     {
         // Debug opcodes interleaved with arithmetic — they must not interfere
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -926,7 +928,7 @@ namespace NEONengine
     {
         // Debug opcode between CMP and branch must not disturb flags
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -940,7 +942,7 @@ namespace NEONengine
         bc.emit(noir_op::DBG_REG);
 
         // BEQ should still be taken since Z=1
-        uint16_t branch_pos = bc.mark();
+        u16 branch_pos = bc.mark();
         bc.emit(noir_op::BEQ);
         bc.emit_s16(0);  // placeholder
 
@@ -951,16 +953,16 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // Taken path — set D0 = 42
-        uint16_t target = bc.mark();
+        u16 target = bc.mark();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(42);
         bc.emit(noir_op::RET);
 
         // Patch branch offset: target - (branch_pos + 3) since BEQ is 1 byte opcode + 2 byte offset
-        int16_t offset          = static_cast<int16_t>(target - (branch_pos + 3));
-        bc.code[branch_pos + 1] = static_cast<uint8_t>(static_cast<uint16_t>(offset) >> 8);
-        bc.code[branch_pos + 2] = static_cast<uint8_t>(static_cast<uint16_t>(offset) & 0xFF);
+        i16 offset          = to<i16>(target - (branch_pos + 3));
+        bc.code[branch_pos + 1] = to<u8>(to<u16>(offset) >> 8);
+        bc.code[branch_pos + 2] = to<u8>(to<u16>(offset) & 0xFF);
 
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);

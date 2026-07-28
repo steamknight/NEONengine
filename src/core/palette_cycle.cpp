@@ -1,5 +1,7 @@
 #include "palette_cycle.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/utils/extview.h>
@@ -14,11 +16,11 @@ namespace NEONengine
     namespace
     {
         /// No entry has been turned since the last commit.
-        constexpr uint16_t NO_ENTRY = 0xFFFF;
+        constexpr u16 NO_ENTRY = 0xFFFF;
 
         /// Lowest and highest entry turned since the last commit, inclusive.
-        uint16_t s_dirty_first = NO_ENTRY;
-        uint16_t s_dirty_last  = 0;
+        u16 s_dirty_first = NO_ENTRY;
+        u16 s_dirty_last  = 0;
 
         /**
          * @brief Reverses the reference palette entries [@p from, @p to].
@@ -29,36 +31,36 @@ namespace NEONengine
          * scratch buffer - which matters, because a band may be the entire
          * 256-entry palette and the stack is not the place for a copy of it.
          */
-        void reverse(ULONG* entries, uint16_t from, uint16_t to)
+        void reverse(ULONG* entries, u16 first, u16 last)
         {
-            while (from < to)
+            while (first < last)
             {
-                ULONG const held = entries[from];
-                entries[from]    = entries[to];
-                entries[to]      = held;
-                ++from;
-                --to;
+                ULONG const held = entries[first];
+                entries[first]   = entries[last];
+                entries[last]    = held;
+                ++first;
+                --last;
             }
         }
     }  // namespace
 
-    void palette_cycle_rotate(uint8_t first, uint8_t last, uint16_t steps)
+    void palette_cycle_rotate(u8 first, u8 last, u16 steps)
     {
         // Not a band. The editor rejects it, so it means the pak was built by
         // something else; rotating a reversed range would walk off the end of
         // the palette, which is worth refusing rather than reporting.
         if (last <= first) return;
 
-        uint16_t const width = mtl::to<uint16_t>(last - first + 1);
+        u16 const width = to<u16>(last - first + 1);
 
         steps %= width;
         if (steps == 0) return;
 
-        auto* entries = mtl::force_to<ULONG*>(screenGetPalette(g_mainScreen));
+        auto* entries = force_to<ULONG*>(screenGetPalette(g_mainScreen));
 
         reverse(entries, first, last);
-        reverse(entries, first, mtl::to<uint16_t>(first + steps - 1));
-        reverse(entries, mtl::to<uint16_t>(first + steps), last);
+        reverse(entries, first, to<u16>(first + steps - 1));
+        reverse(entries, to<u16>(first + steps), last);
 
         if (s_dirty_first == NO_ENTRY || first < s_dirty_first) s_dirty_first = first;
         if (s_dirty_last < last) s_dirty_last = last;
@@ -68,8 +70,8 @@ namespace NEONengine
     {
         if (s_dirty_first == NO_ENTRY) return;
 
-        uint16_t const first = s_dirty_first;
-        uint16_t const last  = s_dirty_last;
+        u16 const first = s_dirty_first;
+        u16 const last  = s_dirty_last;
         s_dirty_first        = NO_ENTRY;
         s_dirty_last         = 0;
 
@@ -79,8 +81,8 @@ namespace NEONengine
         // hardware palette a second time for nothing.
         if (screenFadeOwnsPalette(g_mainScreen)) return;
 
-        auto const* reference = mtl::force_to<ULONG const*>(screenGetPalette(g_mainScreen));
-        auto* display = mtl::force_to<ULONG*>(screenGetView(g_mainScreen)->pFirstVPort->pPalette);
+        auto const* reference = force_to<ULONG const*>(screenGetPalette(g_mainScreen));
+        auto* display = force_to<ULONG*>(screenGetView(g_mainScreen)->pFirstVPort->pPalette);
 
         // Scaled to whatever brightness the screen currently stands at, not
         // copied straight across. A fade leaves the display wherever it
@@ -88,7 +90,7 @@ namespace NEONengine
         // bright reference behind it; copying raw would light the turned band up
         // on its own against the black.
         UBYTE const ratio = screenPaletteRatio(g_mainScreen);
-        for (uint16_t entry = first; entry <= last; ++entry)
+        for (u16 entry = first; entry <= last; ++entry)
         {
             display[entry] = paletteColorDimAga(reference[entry], ratio);
         }

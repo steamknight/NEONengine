@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -17,7 +19,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_nop_then_halt)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::NOP);
         bc.emit(noir_op::NOP);
@@ -36,7 +38,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_halt)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::HALT);
 
@@ -54,7 +56,7 @@ namespace NEONengine
     {
         // YIELD should pause execution and resume on the next update()
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // MOV16 D0 <- imm16 42
         bc.emit(noir_op::MOV16);
@@ -91,7 +93,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_wait_delays_frames)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // WAIT 3 frames
         bc.emit(noir_op::WAIT);
@@ -131,7 +133,7 @@ namespace NEONengine
     {
         // WAIT 0 should still enter waiting state but resume immediately next update
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::WAIT);
         bc.emit_u16(0);
@@ -157,7 +159,7 @@ namespace NEONengine
     {
         // RET from the entry function should complete with exit code in D0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // D0 = 7 (exit code)
         bc.emit(noir_op::MOV16);
@@ -183,7 +185,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // func 0: main
-        uint16_t fn_main = bc.begin_func();
+        u16 fn_main = bc.begin_func();
         // Set D0 = 10
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -215,7 +217,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_call_invalid_func)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // CALL func_id 99 — out of range
         bc.emit(noir_op::CALL);
@@ -235,7 +237,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // func 0: main. D0=1, CALL 1, RET
-        uint16_t fn_main = bc.begin_func();
+        u16 fn_main = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(1);
@@ -274,7 +276,7 @@ namespace NEONengine
         // LOCALS allocates stack space for local variables. Verify we can
         // write and read a local via the LOCAL addressing mode.
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Reserve 4 bytes of locals (2 x 16-bit slots)
         bc.emit(noir_op::LOCALS);
@@ -284,13 +286,13 @@ namespace NEONengine
         // Inline data follows dst→src order (matching mode byte [dst:4][src:4])
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-4));  // dst offset (LOCAL inline data)
+        bc.emit(to<u8>(-4));  // dst offset (LOCAL inline data)
         bc.emit_u16(0x1234);                // src value  (IMM16 inline data)
 
         // Read it back into D0
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-4));  // src offset
+        bc.emit(to<u8>(-4));  // src offset
 
         bc.emit(noir_op::RET);
 
@@ -308,7 +310,7 @@ namespace NEONengine
     {
         // RETZ returns when Z=1. Set Z via CMP equal values.
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // D0 = 5
         bc.emit(noir_op::MOV16);
@@ -342,7 +344,7 @@ namespace NEONengine
     {
         // RETZ should NOT return when Z=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // D0 = 5
         bc.emit(noir_op::MOV16);
@@ -377,7 +379,7 @@ namespace NEONengine
     {
         // RETC returns when C=1. SUB where a < b sets C.
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // D0 = 3, D1 = 10
         bc.emit(noir_op::MOV16);
@@ -413,7 +415,7 @@ namespace NEONengine
     {
         // RETC should NOT return when C=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // D0 = 10, D1 = 3
         bc.emit(noir_op::MOV16);
@@ -449,7 +451,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_invalid_opcode)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // 0x0F is in the script_exec category but not a valid opcode
         bc.emit(0x0F);
@@ -483,7 +485,7 @@ namespace NEONengine
     {
         // With opcodes_per_update=2, a 4-opcode function should take 2+ updates
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::NOP);
         bc.emit(noir_op::NOP);
@@ -515,7 +517,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // func 0: main
-        uint16_t fn_main = bc.begin_func();
+        u16 fn_main = bc.begin_func();
         // D0 = 0xAA
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);

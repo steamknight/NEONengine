@@ -1,5 +1,7 @@
 #include "noir_vm.h"
 
+#include "types.h"
+
 #include "core/logger.h"
 #include "core/noir_opcodes.h"
 #include "mtl/utility.h"
@@ -26,16 +28,16 @@ namespace NEONengine
 
     // ─── Constructor ────────────────────────────────────────────────────────────
 
-    noir_vm::noir_vm(uint8_t* flags,
-        uint16_t flags_size,
-        uint16_t* values,
-        uint16_t values_count,
-        uint8_t const* bytecode,
-        uint32_t bytecode_size,
-        uint32_t const* func_toc,
-        uint16_t func_count,
+    noir_vm::noir_vm(u8* flags,
+        u16 flags_size,
+        u16* values,
+        u16 values_count,
+        u8 const* bytecode,
+        u32 bytecode_size,
+        u32 const* func_toc,
+        u16 func_count,
         noir_bridge const* bridge,
-        uint16_t stack_size) noexcept
+        u16 stack_size) noexcept
         : _flags(flags)
         , _flags_size(flags_size)
         , _values(values)
@@ -45,7 +47,7 @@ namespace NEONengine
         , _func_toc(func_toc)
         , _func_count(func_count)
         , _bridge(bridge)
-        , _stack(mtl::to<size_t>(stack_size))
+        , _stack(to<size_t>(stack_size))
         , _d{ 0, 0, 0, 0 }
         , _sp(nullptr)
         , _fp(nullptr)
@@ -64,7 +66,7 @@ namespace NEONengine
         , _cached_dst_param(0)
     {
         // Grow the vector to fill its capacity so the memory is allocated
-        _stack.assign(mtl::to<size_t>(stack_size), uint8_t(0));
+        _stack.assign(to<size_t>(stack_size), u8(0));
 
         // SP starts at the top of the stack (grows downward)
         _sp = _stack.data() + _stack.size();
@@ -77,7 +79,7 @@ namespace NEONengine
 
     // ─── execute(func_id) ───────────────────────────────────────────────────────
 
-    noir_status noir_vm::execute(uint16_t func_id) noexcept
+    noir_status noir_vm::execute(u16 func_id) noexcept
     {
         if (func_id >= _func_count)
         {
@@ -99,17 +101,17 @@ namespace NEONengine
             push16(_d[1]);
             push16(_d[2]);
             push16(_d[3]);
-            push16(mtl::to<uint16_t>(_sr));  // padded to 16-bit
-            push32(mtl::force_to<uint32_t>(_sp));
-            push32(mtl::force_to<uint32_t>(_fp));
-            push32(mtl::force_to<uint32_t>(_pc));
+            push16(to<u16>(_sr));  // padded to 16-bit
+            push32(force_to<u32>(_sp));
+            push32(force_to<u32>(_fp));
+            push32(force_to<u32>(_pc));
         }
 
         _pc = _bytecode + _func_toc[func_id];
 
         // Set up initial stack frame (sentinel return address)
         push32(0x00000000);  // sentinel return PC
-        push32(mtl::force_to<uint32_t>(_fp));
+        push32(force_to<u32>(_fp));
         _fp = _sp;
 
         _state = noir_state::running;
@@ -204,8 +206,8 @@ namespace NEONengine
 
     noir_status noir_vm::execute_one_opcode() noexcept
     {
-        uint8_t opcode   = read_u8();
-        uint8_t category = opcode >> 4;
+        u8 opcode   = read_u8();
+        u8 category = opcode >> 4;
 
         switch (category)
         {
@@ -230,7 +232,7 @@ namespace NEONengine
 
     // ─── Script Execution opcodes ───────────────────────────────────────────────
 
-    noir_status noir_vm::op_script_exec(uint8_t op) noexcept
+    noir_status noir_vm::op_script_exec(u8 op) noexcept
     {
         switch (op)
         {
@@ -238,7 +240,7 @@ namespace NEONengine
 
             case WAIT:
             {
-                uint16_t frames = read_u16();
+                u16 frames = read_u16();
                 _wait_counter += frames;
                 _state = noir_state::waiting;
                 return noir_status::ok;
@@ -254,15 +256,15 @@ namespace NEONengine
 
             case CALL:
             {
-                uint16_t func_id = read_u16();
+                u16 func_id = read_u16();
                 if (func_id >= _func_count)
                 {
                     NE_LOG("CALL invalid func_id %u", func_id);
                     return noir_status::err_invalid_func;
                 }
                 auto target = _bytecode + _func_toc[func_id];
-                push32(mtl::force_to<uint32_t>(_pc));
-                push32(mtl::force_to<uint32_t>(_fp));
+                push32(force_to<u32>(_pc));
+                push32(force_to<u32>(_fp));
                 _fp = _sp;
                 _pc = target;
 #ifdef GAME_DEBUG
@@ -275,7 +277,7 @@ namespace NEONengine
 
             case LOCALS:
             {
-                uint8_t n = read_u8();
+                u8 n = read_u8();
                 ensure_stack(n);
                 _sp -= n;
                 return noir_status::ok;
@@ -307,38 +309,38 @@ namespace NEONengine
 
     // ─── Data Movement opcodes ──────────────────────────────────────────────────
 
-    noir_status noir_vm::op_data_move(uint8_t op) noexcept
+    noir_status noir_vm::op_data_move(u8 op) noexcept
     {
         switch (op)
         {
             case MOV8:
             {
-                uint8_t mode     = read_u8();
-                uint8_t dst_mode = mode >> DST_SHIFT;
-                uint8_t src_mode = mode & SRC_MASK;
+                u8 mode     = read_u8();
+                u8 dst_mode = mode >> DST_SHIFT;
+                u8 src_mode = mode & SRC_MASK;
                 read_operand_cached(dst_mode);
-                uint16_t val = read_operand(src_mode) & 0xFF;
+                u16 val = read_operand(src_mode) & 0xFF;
                 write_operand_cached(val);
                 return noir_status::ok;
             }
 
             case MOV16:
             {
-                uint8_t mode     = read_u8();
-                uint8_t dst_mode = mode >> DST_SHIFT;
-                uint8_t src_mode = mode & SRC_MASK;
+                u8 mode     = read_u8();
+                u8 dst_mode = mode >> DST_SHIFT;
+                u8 src_mode = mode & SRC_MASK;
                 read_operand_cached(dst_mode);
-                uint16_t val = read_operand(src_mode);
+                u16 val = read_operand(src_mode);
                 write_operand_cached(val);
                 return noir_status::ok;
             }
 
             case XCHG:
             {
-                uint8_t regs = read_u8();
-                uint8_t ra   = (regs >> DST_SHIFT) - REG_D0;
-                uint8_t rb   = (regs & SRC_MASK) - REG_D0;
-                uint16_t tmp = _d[ra & 3];
+                u8 regs = read_u8();
+                u8 ra   = (regs >> DST_SHIFT) - REG_D0;
+                u8 rb   = (regs & SRC_MASK) - REG_D0;
+                u16 tmp = _d[ra & 3];
                 _d[ra & 3]   = _d[rb & 3];
                 _d[rb & 3]   = tmp;
                 return noir_status::ok;
@@ -346,42 +348,42 @@ namespace NEONengine
 
             case PUSH:
             {
-                uint8_t mode     = read_u8();
-                uint8_t src_mode = mode & SRC_MASK;
-                uint16_t val     = read_operand(src_mode);
+                u8 mode     = read_u8();
+                u8 src_mode = mode & SRC_MASK;
+                u16 val     = read_operand(src_mode);
                 push16(val);
                 return noir_status::ok;
             }
 
             case POP:
             {
-                uint8_t mode     = read_u8();
-                uint8_t dst_mode = mode >> DST_SHIFT;
-                uint16_t val     = pop16();
+                u8 mode     = read_u8();
+                u8 dst_mode = mode >> DST_SHIFT;
+                u16 val     = pop16();
                 write_operand(dst_mode, val);
                 return noir_status::ok;
             }
 
             case TOP:
             {
-                uint8_t mode     = read_u8();
-                uint8_t dst_mode = mode >> DST_SHIFT;
-                uint16_t val     = peek16();
+                u8 mode     = read_u8();
+                u8 dst_mode = mode >> DST_SHIFT;
+                u16 val     = peek16();
                 write_operand(dst_mode, val);
                 return noir_status::ok;
             }
 
             case DUP:
             {
-                uint16_t val = peek16();
+                u16 val = peek16();
                 push16(val);
                 return noir_status::ok;
             }
 
             case CLR:
             {
-                uint8_t mode     = read_u8();
-                uint8_t dst_mode = mode >> DST_SHIFT;
+                u8 mode     = read_u8();
+                u8 dst_mode = mode >> DST_SHIFT;
                 write_operand(dst_mode, 0);
                 return noir_status::ok;
             }
@@ -392,21 +394,21 @@ namespace NEONengine
 
     // ─── Arithmetic opcodes ─────────────────────────────────────────────────────
 
-    noir_status noir_vm::op_arithmetic(uint8_t op) noexcept
+    noir_status noir_vm::op_arithmetic(u8 op) noexcept
     {
-        uint8_t mode     = read_u8();
-        uint8_t dst_mode = mode >> DST_SHIFT;
-        uint8_t src_mode = mode & SRC_MASK;
+        u8 mode     = read_u8();
+        u8 dst_mode = mode >> DST_SHIFT;
+        u8 src_mode = mode & SRC_MASK;
 
-        uint16_t a = read_operand_cached(dst_mode);
+        u16 a = read_operand_cached(dst_mode);
 
         switch (op)
         {
             case ADD:
             {
-                uint16_t b      = read_operand(src_mode);
-                uint32_t result = mtl::to<uint32_t>(a) + mtl::to<uint32_t>(b);
-                uint16_t r      = mtl::to<uint16_t>(result & 0xFFFF);
+                u16 b      = read_operand(src_mode);
+                u32 result = to<u32>(a) + to<u32>(b);
+                u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_add(a, b, result);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -414,9 +416,9 @@ namespace NEONengine
 
             case SUB:
             {
-                uint16_t b      = read_operand(src_mode);
-                uint32_t result = mtl::to<uint32_t>(a) - mtl::to<uint32_t>(b);
-                uint16_t r      = mtl::to<uint16_t>(result & 0xFFFF);
+                u16 b      = read_operand(src_mode);
+                u32 result = to<u32>(a) - to<u32>(b);
+                u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_sub(a, b, result);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -424,32 +426,32 @@ namespace NEONengine
 
             case MUL:
             {
-                uint16_t b   = read_operand(src_mode);
-                int32_t sa   = mtl::to<int16_t>(a);
-                int32_t sb   = mtl::to<int16_t>(b);
-                int32_t full = sa * sb;
-                uint16_t r   = mtl::to<uint16_t>(full & 0xFFFF);
+                u16 b   = read_operand(src_mode);
+                i32 sa   = to<i16>(a);
+                i32 sb   = to<i16>(b);
+                i32 full = sa * sb;
+                u16 r   = to<u16>(full & 0xFFFF);
 
                 _sr = 0;
                 if (r & 0x8000) _sr |= N;
                 if (r == 0) _sr |= Z;
-                if (full != mtl::to<int32_t>(mtl::to<int16_t>(r))) _sr |= V;
+                if (full != to<i32>(to<i16>(r))) _sr |= V;
                 write_operand_cached(r);
                 return noir_status::ok;
             }
 
             case DIV:
             {
-                uint16_t b = read_operand(src_mode);
+                u16 b = read_operand(src_mode);
                 if (b == 0)
                 {
                     NE_LOG("division by zero");
                     return noir_status::err_division_zero;
                 }
-                int16_t sa  = mtl::to<int16_t>(a);
-                int16_t sb  = mtl::to<int16_t>(b);
-                int16_t r   = sa / sb;
-                uint16_t ur = mtl::to<uint16_t>(r);
+                i16 sa  = to<i16>(a);
+                i16 sb  = to<i16>(b);
+                i16 r   = sa / sb;
+                u16 ur = to<u16>(r);
                 set_flags_nz(ur);
                 write_operand_cached(ur);
                 return noir_status::ok;
@@ -457,16 +459,16 @@ namespace NEONengine
 
             case MOD:
             {
-                uint16_t b = read_operand(src_mode);
+                u16 b = read_operand(src_mode);
                 if (b == 0)
                 {
                     NE_LOG("modulo by zero");
                     return noir_status::err_division_zero;
                 }
-                int16_t sa  = mtl::to<int16_t>(a);
-                int16_t sb  = mtl::to<int16_t>(b);
-                int16_t r   = sa % sb;
-                uint16_t ur = mtl::to<uint16_t>(r);
+                i16 sa  = to<i16>(a);
+                i16 sb  = to<i16>(b);
+                i16 r   = sa % sb;
+                u16 ur = to<u16>(r);
                 set_flags_nz(ur);
                 write_operand_cached(ur);
                 return noir_status::ok;
@@ -474,25 +476,25 @@ namespace NEONengine
 
             case CMP:
             {
-                uint16_t b      = read_operand(src_mode);
-                uint32_t result = mtl::to<uint32_t>(a) - mtl::to<uint32_t>(b);
+                u16 b      = read_operand(src_mode);
+                u32 result = to<u32>(a) - to<u32>(b);
                 set_flags_nzcv_sub(a, b, result);
                 return noir_status::ok;
             }
 
             case NEG:
             {
-                uint32_t result = mtl::to<uint32_t>(-mtl::to<int16_t>(a)) & 0xFFFF;
-                uint16_t r      = mtl::to<uint16_t>(result);
-                set_flags_nzcv_sub(0, a, mtl::to<uint32_t>(0) - mtl::to<uint32_t>(a));
+                u32 result = to<u32>(-to<i16>(a)) & 0xFFFF;
+                u16 r      = to<u16>(result);
+                set_flags_nzcv_sub(0, a, to<u32>(0) - to<u32>(a));
                 write_operand_cached(r);
                 return noir_status::ok;
             }
 
             case INC:
             {
-                uint32_t result = mtl::to<uint32_t>(a) + 1;
-                uint16_t r      = mtl::to<uint16_t>(result & 0xFFFF);
+                u32 result = to<u32>(a) + 1;
+                u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_add(a, 1, result);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -500,8 +502,8 @@ namespace NEONengine
 
             case DEC:
             {
-                uint32_t result = mtl::to<uint32_t>(a) - 1;
-                uint16_t r      = mtl::to<uint16_t>(result & 0xFFFF);
+                u32 result = to<u32>(a) - 1;
+                u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_sub(a, 1, result);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -513,20 +515,20 @@ namespace NEONengine
 
     // ─── Logic opcodes ──────────────────────────────────────────────────────────
 
-    noir_status noir_vm::op_logic(uint8_t op) noexcept
+    noir_status noir_vm::op_logic(u8 op) noexcept
     {
-        uint8_t mode     = read_u8();
-        uint8_t dst_mode = mode >> DST_SHIFT;
-        uint8_t src_mode = mode & SRC_MASK;
+        u8 mode     = read_u8();
+        u8 dst_mode = mode >> DST_SHIFT;
+        u8 src_mode = mode & SRC_MASK;
 
-        uint16_t a = read_operand_cached(dst_mode);
+        u16 a = read_operand_cached(dst_mode);
 
         switch (op)
         {
             case AND:
             {
-                uint16_t b = read_operand(src_mode);
-                uint16_t r = a & b;
+                u16 b = read_operand(src_mode);
+                u16 r = a & b;
                 set_flags_nz(r);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -534,8 +536,8 @@ namespace NEONengine
 
             case OR:
             {
-                uint16_t b = read_operand(src_mode);
-                uint16_t r = a | b;
+                u16 b = read_operand(src_mode);
+                u16 r = a | b;
                 set_flags_nz(r);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -543,8 +545,8 @@ namespace NEONengine
 
             case XOR:
             {
-                uint16_t b = read_operand(src_mode);
-                uint16_t r = a ^ b;
+                u16 b = read_operand(src_mode);
+                u16 r = a ^ b;
                 set_flags_nz(r);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -552,15 +554,15 @@ namespace NEONengine
 
             case TST:
             {
-                uint16_t b = read_operand(src_mode);
-                uint16_t r = a & b;
+                u16 b = read_operand(src_mode);
+                u16 r = a & b;
                 set_flags_nz(r);
                 return noir_status::ok;
             }
 
             case NOT:
             {
-                uint16_t r = ~a;
+                u16 r = ~a;
                 set_flags_nz(r);
                 write_operand_cached(r);
                 return noir_status::ok;
@@ -568,13 +570,13 @@ namespace NEONengine
 
             case SHL:
             {
-                uint8_t count = read_u8();
+                u8 count = read_u8();
                 _sr           = 0;
                 if (count > 0 && count <= 16)
                 {
                     if (a & (1u << (16 - count))) _sr |= C;
                 }
-                uint16_t r = (count < 16) ? mtl::to<uint16_t>(a << count) : 0;
+                u16 r = (count < 16) ? to<u16>(a << count) : 0;
                 if (r & 0x8000) _sr |= N;
                 if (r == 0) _sr |= Z;
                 write_operand_cached(r);
@@ -583,13 +585,13 @@ namespace NEONengine
 
             case SHR:
             {
-                uint8_t count = read_u8();
+                u8 count = read_u8();
                 _sr           = 0;
                 if (count > 0 && count <= 16)
                 {
                     if (a & (1u << (count - 1))) _sr |= C;
                 }
-                uint16_t r = (count < 16) ? mtl::to<uint16_t>(a >> count) : 0;
+                u16 r = (count < 16) ? to<u16>(a >> count) : 0;
                 if (r & 0x8000) _sr |= N;
                 if (r == 0) _sr |= Z;
                 write_operand_cached(r);
@@ -598,15 +600,15 @@ namespace NEONengine
 
             case ASR:
             {
-                uint8_t count = read_u8();
-                int16_t sa    = mtl::to<int16_t>(a);
+                u8 count = read_u8();
+                i16 sa    = to<i16>(a);
                 _sr           = 0;
                 if (count > 0 && count <= 16)
                 {
                     if (a & (1u << (count - 1))) _sr |= C;
                 }
-                int16_t r   = (count < 16) ? mtl::to<int16_t>(sa >> count) : (sa < 0 ? -1 : 0);
-                uint16_t ur = mtl::to<uint16_t>(r);
+                i16 r   = (count < 16) ? to<i16>(sa >> count) : (sa < 0 ? -1 : 0);
+                u16 ur = to<u16>(r);
                 if (ur & 0x8000) _sr |= N;
                 if (ur == 0) _sr |= Z;
                 write_operand_cached(ur);
@@ -619,9 +621,9 @@ namespace NEONengine
 
     // ─── Control Flow opcodes ───────────────────────────────────────────────────
 
-    noir_status noir_vm::op_control_flow(uint8_t op) noexcept
+    noir_status noir_vm::op_control_flow(u8 op) noexcept
     {
-        int16_t offset = read_s16();
+        i16 offset = read_s16();
 
         bool take = false;
 
@@ -649,35 +651,35 @@ namespace NEONengine
 
     // ─── Flag Operations ────────────────────────────────────────────────────────
 
-    noir_status noir_vm::op_flag_ops(uint8_t op) noexcept
+    noir_status noir_vm::op_flag_ops(u8 op) noexcept
     {
         switch (op)
         {
             // Immediate index variants: [op] [u16 index]
             case SETF:
             {
-                uint16_t idx = read_u16();
+                u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, true);
                 return noir_status::ok;
             }
             case CLRF:
             {
-                uint16_t idx = read_u16();
+                u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, false);
                 return noir_status::ok;
             }
             case TOGF:
             {
-                uint16_t idx = read_u16();
+                u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, !get_flag(idx));
                 return noir_status::ok;
             }
             case TSTF:
             {
-                uint16_t idx = read_u16();
+                u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 // Z=1 when flag is clear, Z=0 when flag is set
                 _sr = get_flag(idx) ? 0 : Z;
@@ -687,32 +689,32 @@ namespace NEONengine
             // Register-indexed variants: [op] [reg_id]
             case SETFR:
             {
-                uint8_t reg  = read_u8();
-                uint16_t idx = _d[reg & 3];
+                u8 reg  = read_u8();
+                u16 idx = _d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, true);
                 return noir_status::ok;
             }
             case CLRFR:
             {
-                uint8_t reg  = read_u8();
-                uint16_t idx = _d[reg & 3];
+                u8 reg  = read_u8();
+                u16 idx = _d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, false);
                 return noir_status::ok;
             }
             case TOGFR:
             {
-                uint8_t reg  = read_u8();
-                uint16_t idx = _d[reg & 3];
+                u8 reg  = read_u8();
+                u16 idx = _d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, !get_flag(idx));
                 return noir_status::ok;
             }
             case TSTFR:
             {
-                uint8_t reg  = read_u8();
-                uint16_t idx = _d[reg & 3];
+                u8 reg  = read_u8();
+                u16 idx = _d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 _sr = get_flag(idx) ? 0 : Z;
                 return noir_status::ok;
@@ -721,18 +723,18 @@ namespace NEONengine
             // Flag ↔ Register transfer: [op] [reg_id] [u16 index]
             case LDFR:
             {
-                uint8_t reg  = read_u8();
-                uint16_t idx = read_u16();
+                u8 reg  = read_u8();
+                u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
-                uint16_t val = get_flag(idx) ? 1 : 0;
+                u16 val = get_flag(idx) ? 1 : 0;
                 _d[reg & 3]  = val;
                 set_flags_nz(val);
                 return noir_status::ok;
             }
             case STFR:
             {
-                uint8_t reg  = read_u8();
-                uint16_t idx = read_u16();
+                u8 reg  = read_u8();
+                u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, (_d[reg & 3] & 1) != 0);
                 return noir_status::ok;
@@ -744,18 +746,18 @@ namespace NEONengine
 
     // ─── Value Operations ───────────────────────────────────────────────────────
 
-    noir_status noir_vm::op_value_ops(uint8_t op) noexcept
+    noir_status noir_vm::op_value_ops(u8 op) noexcept
     {
-        uint16_t idx = read_u16();
+        u16 idx = read_u16();
         if (!validate_value_index(idx)) return noir_status::err_value_oob;
 
         switch (op)
         {
             case CMPV:
             {
-                uint16_t imm    = read_u16();
-                uint16_t a      = _values[idx];
-                uint32_t result = mtl::to<uint32_t>(a) - mtl::to<uint32_t>(imm);
+                u16 imm    = read_u16();
+                u16 a      = _values[idx];
+                u32 result = to<u32>(a) - to<u32>(imm);
                 set_flags_nzcv_sub(a, imm, result);
                 return noir_status::ok;
             }
@@ -774,9 +776,9 @@ namespace NEONengine
 
             case INCV:
             {
-                uint16_t a      = _values[idx];
-                uint32_t result = mtl::to<uint32_t>(a) + 1;
-                uint16_t r      = mtl::to<uint16_t>(result & 0xFFFF);
+                u16 a      = _values[idx];
+                u32 result = to<u32>(a) + 1;
+                u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_add(a, 1, result);
                 _values[idx] = r;
                 return noir_status::ok;
@@ -784,9 +786,9 @@ namespace NEONengine
 
             case DECV:
             {
-                uint16_t a      = _values[idx];
-                uint32_t result = mtl::to<uint32_t>(a) - 1;
-                uint16_t r      = mtl::to<uint16_t>(result & 0xFFFF);
+                u16 a      = _values[idx];
+                u32 result = to<u32>(a) - 1;
+                u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_sub(a, 1, result);
                 _values[idx] = r;
                 return noir_status::ok;
@@ -798,7 +800,7 @@ namespace NEONengine
 
     // ─── Game Calls — Inventory ─────────────────────────────────────────────────
 
-    noir_status noir_vm::op_game_inventory(uint8_t op) noexcept
+    noir_status noir_vm::op_game_inventory(u8 op) noexcept
     {
         switch (op)
         {
@@ -823,7 +825,7 @@ namespace NEONengine
 
     // ─── Game Calls — Timeline ──────────────────────────────────────────────────
 
-    noir_status noir_vm::op_game_timeline(uint8_t op) noexcept
+    noir_status noir_vm::op_game_timeline(u8 op) noexcept
     {
         switch (op)
         {
@@ -842,7 +844,7 @@ namespace NEONengine
 
     // ─── Game Calls — Scenes ────────────────────────────────────────────────────
 
-    noir_status noir_vm::op_game_scenes(uint8_t op) noexcept
+    noir_status noir_vm::op_game_scenes(u8 op) noexcept
     {
         switch (op)
         {
@@ -865,7 +867,7 @@ namespace NEONengine
 
     // ─── Game Calls — Dialogue / Audio ──────────────────────────────────────────
 
-    noir_status noir_vm::op_game_dialogue(uint8_t op) noexcept
+    noir_status noir_vm::op_game_dialogue(u8 op) noexcept
     {
         switch (op)
         {
@@ -895,7 +897,7 @@ namespace NEONengine
 
     // ─── Game Calls — Menu / Settings ───────────────────────────────────────────
 
-    noir_status noir_vm::op_game_menu(uint8_t op) noexcept
+    noir_status noir_vm::op_game_menu(u8 op) noexcept
     {
         switch (op)
         {
@@ -927,7 +929,7 @@ namespace NEONengine
 
     // ─── Debug opcodes ──────────────────────────────────────────────────────────
 
-    noir_status noir_vm::op_debug(uint8_t op) noexcept
+    noir_status noir_vm::op_debug(u8 op) noexcept
     {
 #ifdef GAME_DEBUG
         switch (op)
@@ -936,8 +938,8 @@ namespace NEONengine
 
             case DBG_LOGS:
             {
-                uint8_t len = read_u8();
-                auto str    = reinterpret_cast<char const*>(_pc);
+                u8 len = read_u8();
+                auto str    = force_to<char const*>(_pc);
                 _bridge->debug_print(str, len);
                 _pc += len;
                 break;
@@ -955,8 +957,8 @@ namespace NEONengine
 
             case DBG_STK:
             {
-                uint8_t const* p   = _sp;
-                uint8_t const* end = _stack.data() + _stack.size();
+                u8 const* p   = _sp;
+                u8 const* end = _stack.data() + _stack.size();
                 NE_LOG("STK: (top → bottom, up to 16 bytes)");
                 for (int i = 0; i < 16 && p < end; ++i, ++p) NE_LOG("  [SP+%d] = %02X", i, *p);
                 break;
@@ -973,9 +975,9 @@ namespace NEONengine
             {
                 if (_d[0] == 0xFFFF)
                 {
-                    uint16_t total = mtl::to<uint16_t>(_flags_size * 8);
+                    u16 total = to<u16>(_flags_size * 8);
                     NE_LOG("FLAGS: (all %u)", total);
-                    for (uint16_t i = 0; i < total; ++i)
+                    for (u16 i = 0; i < total; ++i)
                     {
                         if (get_flag(i)) NE_LOG("  flag[%u] = 1", i);
                     }
@@ -993,7 +995,7 @@ namespace NEONengine
                 if (_d[0] == 0xFFFF)
                 {
                     NE_LOG("VALUES: (all %u)", _values_count);
-                    for (uint16_t i = 0; i < _values_count; ++i)
+                    for (u16 i = 0; i < _values_count; ++i)
                         NE_LOG("  value[%u] = %u", i, _values[i]);
                 }
                 else
@@ -1012,7 +1014,7 @@ namespace NEONengine
         // Release build: skip inline data for DBG_LOGS, otherwise NOP
         if (op == DBG_LOGS)
         {
-            uint8_t len = read_u8();
+            u8 len = read_u8();
             _pc += len;
         }
 #endif
@@ -1024,8 +1026,8 @@ namespace NEONengine
     void noir_vm::do_ret() noexcept
     {
         _sp = _fp;
-        _fp = mtl::force_to<uint8_t*>(pop32());
-        _pc = mtl::force_to<uint8_t const*>(pop32());
+        _fp = force_to<u8*>(pop32());
+        _pc = force_to<u8 const*>(pop32());
 
 #ifdef GAME_DEBUG
         if (_call_depth > 0) --_call_depth;
@@ -1037,10 +1039,10 @@ namespace NEONengine
             if (_pc == nullptr)
             {
                 // Restore registers saved during execute()
-                _pc   = mtl::force_to<uint8_t const*>(pop32());
-                _fp   = mtl::force_to<uint8_t*>(pop32());
-                _sp   = mtl::force_to<uint8_t*>(pop32());
-                _sr   = mtl::to<uint8_t>(pop16());
+                _pc   = force_to<u8 const*>(pop32());
+                _fp   = force_to<u8*>(pop32());
+                _sp   = force_to<u8*>(pop32());
+                _sr   = to<u8>(pop16());
                 _d[3] = pop16();
                 _d[2] = pop16();
                 _d[1] = pop16();
@@ -1063,45 +1065,45 @@ namespace NEONengine
 
     // ─── Stack operations ───────────────────────────────────────────────────────
 
-    void noir_vm::push16(uint16_t value) noexcept
+    void noir_vm::push16(u16 value) noexcept
     {
         ensure_stack(2);
         _sp -= 2;
-        _sp[0] = mtl::to<uint8_t>(value >> 8);  // big-endian
-        _sp[1] = mtl::to<uint8_t>(value & 0xFF);
+        _sp[0] = to<u8>(value >> 8);  // big-endian
+        _sp[1] = to<u8>(value & 0xFF);
     }
 
-    void noir_vm::push32(uint32_t value) noexcept
+    void noir_vm::push32(u32 value) noexcept
     {
         ensure_stack(4);
         _sp -= 4;
-        _sp[0] = mtl::to<uint8_t>(value >> 24);
-        _sp[1] = mtl::to<uint8_t>(value >> 16);
-        _sp[2] = mtl::to<uint8_t>(value >> 8);
-        _sp[3] = mtl::to<uint8_t>(value & 0xFF);
+        _sp[0] = to<u8>(value >> 24);
+        _sp[1] = to<u8>(value >> 16);
+        _sp[2] = to<u8>(value >> 8);
+        _sp[3] = to<u8>(value & 0xFF);
     }
 
-    uint16_t noir_vm::pop16() noexcept
+    u16 noir_vm::pop16() noexcept
     {
-        uint16_t value = mtl::to<uint16_t>((mtl::to<uint16_t>(_sp[0]) << 8) | _sp[1]);
+        u16 value = to<u16>((to<u16>(_sp[0]) << 8) | _sp[1]);
         _sp += 2;
         return value;
     }
 
-    uint32_t noir_vm::pop32() noexcept
+    u32 noir_vm::pop32() noexcept
     {
-        uint32_t value = (mtl::to<uint32_t>(_sp[0]) << 24) | (mtl::to<uint32_t>(_sp[1]) << 16)
-                         | (mtl::to<uint32_t>(_sp[2]) << 8) | mtl::to<uint32_t>(_sp[3]);
+        u32 value = (to<u32>(_sp[0]) << 24) | (to<u32>(_sp[1]) << 16)
+                         | (to<u32>(_sp[2]) << 8) | to<u32>(_sp[3]);
         _sp += 4;
         return value;
     }
 
-    uint16_t noir_vm::peek16() const noexcept
+    u16 noir_vm::peek16() const noexcept
     {
-        return mtl::to<uint16_t>((mtl::to<uint16_t>(_sp[0]) << 8) | _sp[1]);
+        return to<u16>((to<u16>(_sp[0]) << 8) | _sp[1]);
     }
 
-    void noir_vm::ensure_stack(uint16_t bytes_needed) noexcept
+    void noir_vm::ensure_stack(u16 bytes_needed) noexcept
     {
         if (_sp - bytes_needed >= _stack.data()) return;
 
@@ -1122,7 +1124,7 @@ namespace NEONengine
 
         for (size_t i = 0; i < old_size; ++i)
         {
-            new_top[-(mtl::to<int>(i)) - 1] = old_top[-(mtl::to<int>(i)) - 1];
+            new_top[-(to<int>(i)) - 1] = old_top[-(to<int>(i)) - 1];
         }
 
         _sp = new_top - sp_offset;
@@ -1135,30 +1137,30 @@ namespace NEONengine
 
     // ─── Bytecode reading ───────────────────────────────────────────────────────
 
-    uint8_t noir_vm::read_u8() noexcept
+    u8 noir_vm::read_u8() noexcept
     {
         return *_pc++;
     }
 
-    uint16_t noir_vm::read_u16() noexcept
+    u16 noir_vm::read_u16() noexcept
     {
-        uint16_t hi = *_pc++;
-        uint16_t lo = *_pc++;
-        return mtl::to<uint16_t>((hi << 8) | lo);
+        u16 hi = *_pc++;
+        u16 lo = *_pc++;
+        return to<u16>((hi << 8) | lo);
     }
 
-    int16_t noir_vm::read_s16() noexcept
+    i16 noir_vm::read_s16() noexcept
     {
-        return mtl::to<int16_t>(read_u16());
+        return to<i16>(read_u16());
     }
 
     // ─── Mode byte helpers ──────────────────────────────────────────────────────
 
-    uint16_t noir_vm::read_operand(uint8_t mode) noexcept
+    u16 noir_vm::read_operand(u8 mode) noexcept
     {
         switch (mode)
         {
-            case IMM8: return mtl::to<uint16_t>(read_u8());
+            case IMM8: return to<u16>(read_u8());
             case IMM16: return read_u16();
             case REG_D0: return _d[0];
             case REG_D1: return _d[1];
@@ -1167,14 +1169,14 @@ namespace NEONengine
 
             case LOCAL:
             {
-                int8_t offset = mtl::to<int8_t>(read_u8());
-                uint8_t* addr = _fp + offset;
-                return mtl::to<uint16_t>((mtl::to<uint16_t>(addr[0]) << 8) | addr[1]);
+                i8 offset = to<i8>(read_u8());
+                u8* addr = _fp + offset;
+                return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
             case VALUE_IMM:
             {
-                uint16_t idx = read_u16();
+                u16 idx = read_u16();
                 if (!validate_value_index(idx))
                 {
                     _last_error = noir_status::err_value_oob;
@@ -1199,7 +1201,7 @@ namespace NEONengine
         }
     }
 
-    void noir_vm::write_operand(uint8_t mode, uint16_t value) noexcept
+    void noir_vm::write_operand(u8 mode, u16 value) noexcept
     {
         switch (mode)
         {
@@ -1210,16 +1212,16 @@ namespace NEONengine
 
             case LOCAL:
             {
-                int8_t offset = mtl::to<int8_t>(read_u8());
-                uint8_t* addr = _fp + offset;
-                addr[0]       = mtl::to<uint8_t>(value >> 8);
-                addr[1]       = mtl::to<uint8_t>(value & 0xFF);
+                i8 offset = to<i8>(read_u8());
+                u8* addr = _fp + offset;
+                addr[0]       = to<u8>(value >> 8);
+                addr[1]       = to<u8>(value & 0xFF);
                 break;
             }
 
             case VALUE_IMM:
             {
-                uint16_t idx = read_u16();
+                u16 idx = read_u16();
                 if (!validate_value_index(idx))
                 {
                     _last_error = noir_status::err_value_oob;
@@ -1255,12 +1257,12 @@ namespace NEONengine
     // read_operand_cached() consumes the destination's inline data and caches it
     // so that write_operand_cached() can write back without re-reading the stream.
 
-    uint16_t noir_vm::read_operand_cached(uint8_t mode) noexcept
+    u16 noir_vm::read_operand_cached(u8 mode) noexcept
     {
         _cached_dst_mode = mode;
         switch (mode)
         {
-            case IMM8: return mtl::to<uint16_t>(read_u8());
+            case IMM8: return to<u16>(read_u8());
             case IMM16: return read_u16();
             case REG_D0: return _d[0];
             case REG_D1: return _d[1];
@@ -1269,15 +1271,15 @@ namespace NEONengine
 
             case LOCAL:
             {
-                int8_t offset     = mtl::to<int8_t>(read_u8());
-                _cached_dst_param = mtl::to<uint16_t>(mtl::to<uint8_t>(offset));
-                uint8_t* addr     = _fp + offset;
-                return mtl::to<uint16_t>((mtl::to<uint16_t>(addr[0]) << 8) | addr[1]);
+                i8 offset     = to<i8>(read_u8());
+                _cached_dst_param = to<u16>(to<u8>(offset));
+                u8* addr     = _fp + offset;
+                return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
             case VALUE_IMM:
             {
-                uint16_t idx      = read_u16();
+                u16 idx      = read_u16();
                 _cached_dst_param = idx;
                 if (!validate_value_index(idx))
                 {
@@ -1303,7 +1305,7 @@ namespace NEONengine
         }
     }
 
-    void noir_vm::write_operand_cached(uint16_t value) noexcept
+    void noir_vm::write_operand_cached(u16 value) noexcept
     {
         switch (_cached_dst_mode)
         {
@@ -1314,10 +1316,10 @@ namespace NEONengine
 
             case LOCAL:
             {
-                int8_t offset = mtl::to<int8_t>(mtl::to<uint8_t>(_cached_dst_param));
-                uint8_t* addr = _fp + offset;
-                addr[0]       = mtl::to<uint8_t>(value >> 8);
-                addr[1]       = mtl::to<uint8_t>(value & 0xFF);
+                i8 offset = to<i8>(to<u8>(_cached_dst_param));
+                u8* addr = _fp + offset;
+                addr[0]       = to<u8>(value >> 8);
+                addr[1]       = to<u8>(value & 0xFF);
                 break;
             }
 
@@ -1351,16 +1353,16 @@ namespace NEONengine
 
     // ─── SR flag helpers ────────────────────────────────────────────────────────
 
-    void noir_vm::set_flags_nz(uint16_t result) noexcept
+    void noir_vm::set_flags_nz(u16 result) noexcept
     {
         _sr = 0;
         if (result & 0x8000) _sr |= N;
         if (result == 0) _sr |= Z;
     }
 
-    void noir_vm::set_flags_nzcv_add(uint16_t a, uint16_t b, uint32_t result) noexcept
+    void noir_vm::set_flags_nzcv_add(u16 a, u16 b, u32 result) noexcept
     {
-        uint16_t r = mtl::to<uint16_t>(result & 0xFFFF);
+        u16 r = to<u16>(result & 0xFFFF);
         _sr        = 0;
         if (r & 0x8000) _sr |= N;
         if (r == 0) _sr |= Z;
@@ -1369,9 +1371,9 @@ namespace NEONengine
         if ((~(a ^ b) & (a ^ r)) & 0x8000) _sr |= V;
     }
 
-    void noir_vm::set_flags_nzcv_sub(uint16_t a, uint16_t b, uint32_t result) noexcept
+    void noir_vm::set_flags_nzcv_sub(u16 a, u16 b, u32 result) noexcept
     {
-        uint16_t r = mtl::to<uint16_t>(result & 0xFFFF);
+        u16 r = to<u16>(result & 0xFFFF);
         _sr        = 0;
         if (r & 0x8000) _sr |= N;
         if (r == 0) _sr |= Z;
@@ -1382,31 +1384,31 @@ namespace NEONengine
 
     // ─── Flag/Value helpers ─────────────────────────────────────────────────────
 
-    bool noir_vm::get_flag(uint16_t index) const noexcept
+    bool noir_vm::get_flag(u16 index) const noexcept
     {
-        uint16_t byte_idx = index / 8;
-        uint8_t bit_idx   = mtl::to<uint8_t>(index % 8);
+        u16 byte_idx = index / 8;
+        u8 bit_idx   = to<u8>(index % 8);
         return (_flags[byte_idx] & (1u << bit_idx)) != 0;
     }
 
-    void noir_vm::set_flag(uint16_t index, bool value) noexcept
+    void noir_vm::set_flag(u16 index, bool value) noexcept
     {
-        uint16_t byte_idx = index / 8;
-        uint8_t bit_idx   = mtl::to<uint8_t>(index % 8);
+        u16 byte_idx = index / 8;
+        u8 bit_idx   = to<u8>(index % 8);
         if (value)
-            _flags[byte_idx] |= mtl::to<uint8_t>(1u << bit_idx);
+            _flags[byte_idx] |= to<u8>(1u << bit_idx);
         else
-            _flags[byte_idx] &= mtl::to<uint8_t>(~(1u << bit_idx));
+            _flags[byte_idx] &= to<u8>(~(1u << bit_idx));
     }
 
-    bool noir_vm::validate_flag_index(uint16_t index) const noexcept
+    bool noir_vm::validate_flag_index(u16 index) const noexcept
     {
-        if (index < mtl::to<uint16_t>(_flags_size * 8)) return true;
+        if (index < to<u16>(_flags_size * 8)) return true;
         NE_LOG("flag index %u out of bounds (max=%u)", index, _flags_size * 8);
         return false;
     }
 
-    bool noir_vm::validate_value_index(uint16_t index) const noexcept
+    bool noir_vm::validate_value_index(u16 index) const noexcept
     {
         if (index < _values_count) return true;
         NE_LOG("value index %u out of bounds (max=%u)", index, _values_count);
@@ -1419,7 +1421,7 @@ namespace NEONengine
     void noir_vm::update_stack_high_water() noexcept
     {
         auto stack_top = _stack.data() + _stack.size();
-        uint32_t used  = mtl::to<uint32_t>(stack_top - _sp);
+        u32 used  = to<u32>(stack_top - _sp);
         if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
     }
 #endif

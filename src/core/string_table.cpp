@@ -1,5 +1,7 @@
 #include "string_table.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/utils/disk_file.h>
@@ -20,11 +22,11 @@ namespace NEONengine
 
     namespace
     {
-        constexpr uint32_t NOIR_MAGIC        = 0x4E4F4952;  ///< 'NOIR'.
-        constexpr uint16_t SUPPORTED_VERSION = 2;
-        constexpr uint32_t LANGUAGE_PATH_SIZE = 32;  ///< Fits "data/lang/xx.noir".
-        constexpr uint32_t MAX_STRING_COUNT   = 65535;
-        constexpr uint32_t MAX_TOTAL_SIZE     = 0xFFFFFFFCu;
+        constexpr u32 NOIR_MAGIC        = 0x4E4F4952;  ///< 'NOIR'.
+        constexpr u16 SUPPORTED_VERSION = 2;
+        constexpr u32 LANGUAGE_PATH_SIZE = 32;  ///< Fits "data/lang/xx.noir".
+        constexpr u32 MAX_STRING_COUNT   = 65535;
+        constexpr u32 MAX_TOTAL_SIZE     = 0xFFFFFFFCu;
 
         /**
          * @brief The 36-byte `.noir` header, overlaid on the file's first bytes.
@@ -34,17 +36,17 @@ namespace NEONengine
          */
         struct noir_header
         {
-            uint32_t magic;         ///< 0:  'NOIR'.
-            uint16_t version;       ///< 4:  Format version.
-            uint16_t build_period;  ///< 6:  UTC build period, YYMM.
-            uint16_t header_size;   ///< 8:  Size of this header, 36.
-            uint16_t language_id;   ///< 10: Language id.
-            uint32_t format_flags;  ///< 12: Format flags, zero.
-            uint32_t total_size;    ///< 16: Total file size.
-            uint32_t string_count;  ///< 20: Number of string records.
-            uint32_t payload_size;  ///< 24: Payload byte size.
-            uint32_t build_number;  ///< 28: Monotonic project build number.
-            uint32_t checksum;      ///< 32: Adler32 of bytes 36..EOF.
+            u32 magic;         ///< 0:  'NOIR'.
+            u16 version;       ///< 4:  Format version.
+            u16 build_period;  ///< 6:  UTC build period, YYMM.
+            u16 header_size;   ///< 8:  Size of this header, 36.
+            u16 language_id;   ///< 10: Language id.
+            u32 format_flags;  ///< 12: Format flags, zero.
+            u32 total_size;    ///< 16: Total file size.
+            u32 string_count;  ///< 20: Number of string records.
+            u32 payload_size;  ///< 24: Payload byte size.
+            u32 build_number;  ///< 28: Monotonic project build number.
+            u32 checksum;      ///< 32: Adler32 of bytes 36..EOF.
         };
 
         static_assert(sizeof(noir_header) == 36, "noir_header must be exactly 36 bytes");
@@ -65,7 +67,7 @@ namespace NEONengine
          * after the text, which is what lets bstr_view::data() be handed
          * straight to a C API.
          */
-        constexpr uint32_t padding_for(uint32_t length) noexcept
+        constexpr u32 padding_for(u32 length) noexcept
         {
             return 4 - (length & 3);
         }
@@ -93,7 +95,7 @@ namespace NEONengine
             if (fileRead(pFile, &header, sizeof(noir_header)) != sizeof(noir_header))
             {
                 NE_LOG("could not read a %lu byte header",
-                    mtl::to<ULONG>(sizeof(noir_header)));
+                    to<ULONG>(sizeof(noir_header)));
                 return mtl::unexpected(error_code::MISSING_HEADER);
             }
 
@@ -117,11 +119,11 @@ namespace NEONengine
             if (header.header_size != sizeof(noir_header))
             {
                 NE_LOG("header size %hu, expected %lu",
-                    header.header_size, mtl::to<ULONG>(sizeof(noir_header)));
+                    header.header_size, to<ULONG>(sizeof(noir_header)));
                 return mtl::unexpected(error_code::MALFORMED_HEADER);
             }
 
-            if (header.language_id >= to<uint16_t>(language::COUNT))
+            if (header.language_id >= to<u16>(language::COUNT))
             {
                 NE_LOG("unsupported language id %hu", header.language_id);
                 return mtl::unexpected(error_code::UNSUPPORTED_LANGUAGE);
@@ -130,14 +132,14 @@ namespace NEONengine
             if (header.format_flags != 0)
             {
                 NE_LOG("unknown format flags %08lx",
-                    mtl::to<ULONG>(header.format_flags));
+                    to<ULONG>(header.format_flags));
                 return mtl::unexpected(error_code::MALFORMED_HEADER);
             }
 
             if (header.string_count > MAX_STRING_COUNT)
             {
                 NE_LOG("%lu strings exceeds the %lu the format allows",
-                    mtl::to<ULONG>(header.string_count), mtl::to<ULONG>(MAX_STRING_COUNT));
+                    to<ULONG>(header.string_count), to<ULONG>(MAX_STRING_COUNT));
                 return mtl::unexpected(error_code::MALFORMED_HEADER);
             }
 
@@ -149,17 +151,17 @@ namespace NEONengine
                 || header.payload_size != header.total_size - sizeof(noir_header))
             {
                 NE_LOG("payload %lu does not match total %lu minus header",
-                    mtl::to<ULONG>(header.payload_size), mtl::to<ULONG>(header.total_size));
+                    to<ULONG>(header.payload_size), to<ULONG>(header.total_size));
                 return mtl::unexpected(error_code::MALFORMED_HEADER);
             }
 
             // Trust the declared sizes only once the file is really that big;
             // otherwise a tiny corrupt file could drive a huge allocation.
             auto const actual_size = fileGetSize(pFile);
-            if (actual_size < 0 || mtl::to<uint32_t>(actual_size) != header.total_size)
+            if (actual_size < 0 || to<u32>(actual_size) != header.total_size)
             {
                 NE_LOG("file is %ld bytes, header declares %lu",
-                    actual_size, mtl::to<ULONG>(header.total_size));
+                    actual_size, to<ULONG>(header.total_size));
                 return mtl::unexpected(error_code::MALFORMED_HEADER);
             }
 
@@ -178,7 +180,7 @@ namespace NEONengine
         }
     }
 
-    bstr_view const string_table::get_string(uint32_t id) const
+    bstr_view const string_table::get_string(u32 id) const
     {
         if (id >= _offsets.size()) return bstr_view();
 
@@ -199,8 +201,8 @@ namespace NEONengine
         {
             NE_LOG("'%s' holds language %hu, not the requested %hu",
                 path,
-                mtl::to<UWORD>(result.value()->language_id()),
-                mtl::to<UWORD>(lang));
+                to<UWORD>(result.value()->language_id()),
+                to<UWORD>(lang));
             return mtl::unexpected(error_code::LANGUAGE_MISMATCH);
         }
 
@@ -239,7 +241,7 @@ namespace NEONengine
             && fileRead(pFile.get(), pTable->_payload.data(), hd.payload_size) != hd.payload_size)
         {
             NE_LOG("payload is shorter than its declared %lu bytes",
-                mtl::to<ULONG>(hd.payload_size));
+                to<ULONG>(hd.payload_size));
             return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
         }
 
@@ -247,7 +249,7 @@ namespace NEONengine
         if (checksum != hd.checksum)
         {
             NE_LOG("checksum %08lx does not match the header's %08lx",
-                mtl::to<ULONG>(checksum), mtl::to<ULONG>(hd.checksum));
+                to<ULONG>(checksum), to<ULONG>(hd.checksum));
             return mtl::unexpected(error_code::CHECKSUM_MISMATCH);
         }
 
@@ -257,47 +259,47 @@ namespace NEONengine
         // be salvaged.
         pTable->_offsets.reserve(hd.string_count);
 
-        uint32_t offset = 0;
-        for (uint32_t index = 0; index < hd.string_count; ++index)
+        u32 offset = 0;
+        for (u32 index = 0; index < hd.string_count; ++index)
         {
             // offset never passes payload_size, so this cannot underflow.
-            uint32_t const remaining = hd.payload_size - offset;
-            if (remaining < sizeof(uint32_t))
+            u32 const remaining = hd.payload_size - offset;
+            if (remaining < sizeof(u32))
             {
                 NE_LOG("record %lu has no room for its length prefix",
-                    mtl::to<ULONG>(index));
+                    to<ULONG>(index));
                 return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
             }
 
             auto* pRecord     = pTable->_payload.data() + offset;
-            auto const length = to<uint32_t>(bstr_view::from_bstr(pRecord).length());
+            auto const length = to<u32>(bstr_view::from_bstr(pRecord).length());
 
             // Each test subtracts from the bytes that are left rather than
             // adding the record up, so a corrupt length near the 32-bit maximum
             // cannot wrap a sum and understate how much room the record needs.
-            uint32_t const after_prefix = remaining - sizeof(uint32_t);
-            uint32_t const padding      = padding_for(length);
+            u32 const after_prefix = remaining - sizeof(u32);
+            u32 const padding      = padding_for(length);
             if (length > after_prefix || padding > after_prefix - length)
             {
                 NE_LOG("record %lu of %lu bytes runs past the payload",
-                    mtl::to<ULONG>(index), mtl::to<ULONG>(length));
+                    to<ULONG>(index), to<ULONG>(length));
                 return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
             }
 
             pTable->_offsets.push_back(pRecord);
-            offset += sizeof(uint32_t) + length + padding;
+            offset += sizeof(u32) + length + padding;
         }
 
         if (offset != hd.payload_size)
         {
             NE_LOG("%lu records consumed %lu of %lu payload bytes",
-                mtl::to<ULONG>(hd.string_count),
-                mtl::to<ULONG>(offset),
-                mtl::to<ULONG>(hd.payload_size));
+                to<ULONG>(hd.string_count),
+                to<ULONG>(offset),
+                to<ULONG>(hd.payload_size));
             return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
         }
 
-        pTable->_string_count = to<uint16_t>(pTable->_offsets.size());
+        pTable->_string_count = to<u16>(pTable->_offsets.size());
 
         NE_LOG("loaded '%s', %hu strings",
             language_code(pTable->_language), pTable->_string_count);
@@ -305,7 +307,7 @@ namespace NEONengine
         return mtl::move(pTable);
     }
 
-    uint32_t string_table::peek_language_name(language lang, char* pBuffer, uint32_t capacity)
+    u32 string_table::peek_language_name(language lang, char* pBuffer, u32 capacity)
     {
         ACE_LOG_BLOCK("NEONengine::string_table::peek_language_name");
 
@@ -326,10 +328,10 @@ namespace NEONengine
 
         // The first record starts immediately after the header, which is exactly
         // where reading the header left the cursor.
-        uint32_t length = 0;
+        u32 length = 0;
         if (fileRead(pFile.get(), &length, sizeof(length)) != sizeof(length)) return 0;
-        if (length == 0 || hd.payload_size < sizeof(uint32_t)
-            || length > hd.payload_size - sizeof(uint32_t))
+        if (length == 0 || hd.payload_size < sizeof(u32)
+            || length > hd.payload_size - sizeof(u32))
         {
             return 0;
         }

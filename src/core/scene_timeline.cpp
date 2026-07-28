@@ -1,5 +1,7 @@
 #include "scene_timeline.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <mtl/utility.h>
@@ -20,30 +22,30 @@ namespace NEONengine
     namespace
     {
         /// No track of that name in this scene.
-        constexpr uint16_t NO_TRACK = 0xFFFF;
+        constexpr u16 NO_TRACK = 0xFFFF;
 
         /// No graphic instance of that id in this scene.
-        constexpr uint16_t NO_INSTANCE = 0xFFFF;
+        constexpr u16 NO_INSTANCE = 0xFFFF;
 
         /// No neighbouring keyframe on that side.
-        constexpr uint16_t NO_KEY = 0xFFFF;
+        constexpr u16 NO_KEY = 0xFFFF;
 
         /// Cycle boundaries logged per track before the module falls silent.
-        constexpr uint16_t LOGGED_CYCLES = 3;
+        constexpr u16 LOGGED_CYCLES = 3;
 
-        uint16_t s_first = 0;  ///< First TRAK id this scene owns.
-        uint16_t s_count = 0;  ///< How many it owns; 0 disables the whole module.
+        u16 s_first = 0;  ///< First TRAK id this scene owns.
+        u16 s_count = 0;  ///< How many it owns; 0 disables the whole module.
 
-        uint16_t s_gfxi_first = 0;  ///< First GFXI id this scene owns.
-        uint16_t s_gfxi_count = 0;  ///< How many it owns.
+        u16 s_gfxi_first = 0;  ///< First GFXI id this scene owns.
+        u16 s_gfxi_count = 0;  ///< How many it owns.
 
         mtl::vector<track_clock> s_clocks;  ///< One playhead per owned track.
 
         /// Scene-local index of each track's first keyframe, for indexing s_fired.
-        mtl::vector<uint32_t> s_key_base;
+        mtl::vector<u32> s_key_base;
 
         /// One bit per scene-local keyframe: whether a fire_once key has fired.
-        mtl::vector<uint8_t> s_fired;
+        mtl::vector<u8> s_fired;
 
         /**
          * @brief A GFX_MOVE interpolation under way for one graphic instance.
@@ -55,11 +57,11 @@ namespace NEONengine
          */
         struct glide
         {
-            data::point<uint16_t> from{ 0, 0 };  ///< Where the span begins.
-            data::point<uint16_t> to{ 0, 0 };    ///< Where it ends.
-            uint16_t t0    = 0;                  ///< Playhead position of @c from.
-            uint16_t t1    = 0;                  ///< Playhead position of @c to; always > t0.
-            uint16_t track = 0;                  ///< Scene-local track driving it.
+            data::point<u16> from{ 0, 0 };  ///< Where the span begins.
+            data::point<u16> to{ 0, 0 };    ///< Where it ends.
+            u16 t0    = 0;                  ///< Playhead position of @c from.
+            u16 t1    = 0;                  ///< Playhead position of @c to; always > t0.
+            u16 track = 0;                  ///< Scene-local track driving it.
             bool active    = false;              ///< Whether the instance is on a span at all.
         };
 
@@ -85,14 +87,14 @@ namespace NEONengine
          */
         struct cycle_span
         {
-            uint16_t track  = 0;  ///< Scene-local track whose playhead drives it.
-            uint16_t t0     = 0;  ///< Position the span opens at.
-            uint16_t t1     = 0;  ///< Position it closes at; always > t0.
-            uint16_t delay  = 1;  ///< Frames each step of the turn is held for.
-            uint16_t width  = 0;  ///< Entries in the band; always >= 2.
-            uint16_t offset = 0;  ///< How far the band currently stands turned.
-            uint8_t first   = 0;  ///< First palette entry of the band.
-            uint8_t last    = 0;  ///< Last entry of the band, inclusive.
+            u16 track  = 0;  ///< Scene-local track whose playhead drives it.
+            u16 t0     = 0;  ///< Position the span opens at.
+            u16 t1     = 0;  ///< Position it closes at; always > t0.
+            u16 delay  = 1;  ///< Frames each step of the turn is held for.
+            u16 width  = 0;  ///< Entries in the band; always >= 2.
+            u16 offset = 0;  ///< How far the band currently stands turned.
+            u8 first   = 0;  ///< First palette entry of the band.
+            u8 last    = 0;  ///< Last entry of the band, inclusive.
 
             /// Whether the band turns for one traversal of its span only.
             bool fire_once = false;
@@ -128,9 +130,9 @@ namespace NEONengine
          */
         struct wait_state
         {
-            uint16_t name  = 0;      ///< Track name the script asked for.
-            uint16_t track = 0;      ///< Scene-local index; only valid when found.
-            uint8_t depth  = 0;      ///< Waits on the blocking counter; 0 = none.
+            u16 name  = 0;      ///< Track name the script asked for.
+            u16 track = 0;      ///< Scene-local index; only valid when found.
+            u8 depth  = 0;      ///< Waits on the blocking counter; 0 = none.
             bool found     = false;  ///< Whether this scene has that track.
         };
 
@@ -140,9 +142,9 @@ namespace NEONengine
         /**
          * @brief Names @p mode the way the editor and the format docs do.
          */
-        char const* loop_mode_name(uint8_t mode)
+        char const* loop_mode_name(u8 mode)
         {
-            switch (mtl::to<data::loop_mode>(mode))
+            switch (to<data::loop_mode>(mode))
             {
                 case data::loop_mode::NONE: return "None";
                 case data::loop_mode::RESTART: return "Restart";
@@ -154,9 +156,9 @@ namespace NEONengine
         /**
          * @brief Names @p type the way the editor and the format docs do.
          */
-        char const* keyframe_type_name(uint8_t type)
+        char const* keyframe_type_name(u8 type)
         {
-            switch (mtl::to<data::keyframe_type>(type))
+            switch (to<data::keyframe_type>(type))
             {
                 case data::keyframe_type::GFX_MOVE: return "GFX_MOVE";
                 case data::keyframe_type::GFX_VISIBILITY: return "GFX_VISIBILITY";
@@ -171,9 +173,9 @@ namespace NEONengine
         }
 
         /// @brief Whether this slice acts on @p type at all.
-        bool is_implemented(uint8_t type)
+        bool is_implemented(u8 type)
         {
-            switch (mtl::to<data::keyframe_type>(type))
+            switch (to<data::keyframe_type>(type))
             {
                 case data::keyframe_type::GFX_MOVE:
                 case data::keyframe_type::GFX_VISIBILITY:
@@ -190,13 +192,13 @@ namespace NEONengine
         /// @brief Whether @p key moves a graphic instance.
         bool is_move(data::keyframe const& key)
         {
-            return mtl::to<data::keyframe_type>(key.type) == data::keyframe_type::GFX_MOVE;
+            return to<data::keyframe_type>(key.type) == data::keyframe_type::GFX_MOVE;
         }
 
         /// @brief @p key read as a GFX_MOVE; only call it when is_move() holds.
         data::gfx_move_payload const& move_of(data::keyframe const& key)
         {
-            return *mtl::force_to<data::gfx_move_payload const*>(key.payload);
+            return *force_to<data::gfx_move_payload const*>(key.payload);
         }
 
         /**
@@ -205,28 +207,28 @@ namespace NEONengine
          * GFX_MOVE and GFX_VISIBILITY both open their payload with the id, so
          * the two are read the same way where only the id is wanted.
          */
-        uint16_t instance_of(data::keyframe const& key)
+        u16 instance_of(data::keyframe const& key)
         {
-            return *mtl::force_to<uint16_t const*>(key.payload);
+            return *force_to<u16 const*>(key.payload);
         }
 
         /// @brief Whether @p key opens a palette cycle's span.
         bool is_cycle_start(data::keyframe const& key)
         {
-            return mtl::to<data::keyframe_type>(key.type)
+            return to<data::keyframe_type>(key.type)
                 == data::keyframe_type::PALETTE_CYCLE_START;
         }
 
         /// @brief Whether @p key closes one.
         bool is_cycle_end(data::keyframe const& key)
         {
-            return mtl::to<data::keyframe_type>(key.type) == data::keyframe_type::PALETTE_CYCLE_END;
+            return to<data::keyframe_type>(key.type) == data::keyframe_type::PALETTE_CYCLE_END;
         }
 
         /// @brief @p key read as a PALETTE_CYCLE_START; only when is_cycle_start() holds.
         data::palette_cycle_start_payload const& cycle_start_of(data::keyframe const& key)
         {
-            return *mtl::force_to<data::palette_cycle_start_payload const*>(key.payload);
+            return *force_to<data::palette_cycle_start_payload const*>(key.payload);
         }
 
         /**
@@ -235,9 +237,9 @@ namespace NEONengine
          * Both palette cycle payloads open with the id, so a START and an END
          * are read the same way where only the id is wanted.
          */
-        uint16_t cycle_id_of(data::keyframe const& key)
+        u16 cycle_id_of(data::keyframe const& key)
         {
-            return *mtl::force_to<uint16_t const*>(key.payload);
+            return *force_to<u16 const*>(key.payload);
         }
 
         /**
@@ -246,10 +248,10 @@ namespace NEONengine
          * @return NO_INSTANCE when the id names an instance this scene does not
          *         own, which the load reports once rather than every frame.
          */
-        uint16_t find_instance(uint16_t id)
+        u16 find_instance(u16 id)
         {
             if (id < s_gfxi_first) return NO_INSTANCE;
-            uint16_t const local = mtl::to<uint16_t>(id - s_gfxi_first);
+            u16 const local = to<u16>(id - s_gfxi_first);
             return local < s_gfxi_count ? local : NO_INSTANCE;
         }
 
@@ -262,15 +264,15 @@ namespace NEONengine
         }
 
         /// @brief Whether the fire_once key at scene-local @p index has already fired.
-        bool has_fired(uint32_t index)
+        bool has_fired(u32 index)
         {
-            return (s_fired[index >> 3] & mtl::to<uint8_t>(1 << (index & 7))) != 0;
+            return (s_fired[index >> 3] & to<u8>(1 << (index & 7))) != 0;
         }
 
         /// @brief Records that the fire_once key at scene-local @p index has fired.
-        void mark_fired(uint32_t index)
+        void mark_fired(u32 index)
         {
-            s_fired[index >> 3] |= mtl::to<uint8_t>(1 << (index & 7));
+            s_fired[index >> 3] |= to<u8>(1 << (index & 7));
         }
 
         /**
@@ -280,13 +282,13 @@ namespace NEONengine
          * scene_timeline_play() always begins a new run, so the marks from the
          * previous one are wiped rather than carried over.
          */
-        void clear_fired(uint16_t index, data::track const& track)
+        void clear_fired(u16 index, data::track const& track)
         {
-            uint32_t const base = s_key_base[index];
-            for (uint16_t offset = 0; offset < track.keyframe_range.count; ++offset)
+            u32 const base = s_key_base[index];
+            for (u16 offset = 0; offset < track.keyframe_range.count; ++offset)
             {
-                uint32_t const marker = base + offset;
-                s_fired[marker >> 3] &= mtl::to<uint8_t>(0xFF ^ (1 << (marker & 7)));
+                u32 const marker = base + offset;
+                s_fired[marker >> 3] &= to<u8>(0xFF ^ (1 << (marker & 7)));
             }
         }
 
@@ -300,7 +302,7 @@ namespace NEONengine
         bool keys_in_range(data::track const& track)
         {
             auto const all = g_pEngine->data().keyframes();
-            return mtl::to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
+            return to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
                 <= all.size();
         }
 
@@ -311,10 +313,10 @@ namespace NEONengine
          *         ordinary outcome: a script is not owned by a scene, so it can
          *         legitimately name a track that only exists in another one.
          */
-        uint16_t find_track(uint16_t name_id)
+        u16 find_track(u16 name_id)
         {
             auto const tracks = scene_timeline_tracks();
-            for (uint16_t index = 0; index < s_count; ++index)
+            for (u16 index = 0; index < s_count; ++index)
             {
                 if (tracks[index].name_id == name_id) return index;
             }
@@ -330,8 +332,8 @@ namespace NEONengine
         {
             if (s_wait.depth == 0) return;
 
-            uint16_t const name = s_wait.name;
-            uint8_t const depth = s_wait.depth;
+            u16 const name = s_wait.name;
+            u8 const depth = s_wait.depth;
             s_wait              = wait_state{};
 
             auto& vm = g_pEngine->vm();
@@ -344,7 +346,7 @@ namespace NEONengine
             // click can cancel the block out from under a wait (it re-enters
             // execute() without checking the VM is idle), and when it does this
             // is what puts the counter back where it started.
-            for (uint8_t step = 0; step < depth; ++step) vm.decrement_blocking();
+            for (u8 step = 0; step < depth; ++step) vm.decrement_blocking();
 
             if (vm.state() != noir_state::blocked)
             {
@@ -381,9 +383,9 @@ namespace NEONengine
         {
             mtl::span<data::keyframe> keys;       ///< The owning track's keyframes.
             data::track const* record = nullptr;  ///< The owning track's TRAK record.
-            uint32_t base             = 0;        ///< s_fired index of keys[0].
-            uint16_t offset           = 0;        ///< This keyframe's index in keys.
-            uint16_t track            = 0;        ///< Scene-local track index.
+            u32 base             = 0;        ///< s_fired index of keys[0].
+            u16 offset           = 0;        ///< This keyframe's index in keys.
+            u16 track            = 0;        ///< Scene-local track index.
             bool reversing            = false;    ///< Whether the playhead heads back to 0.
         };
 
@@ -396,9 +398,9 @@ namespace NEONengine
          * @param forward Which side to look on, in time order.
          * @return An index into ctx.keys, or NO_KEY when that side holds none.
          */
-        uint16_t neighbour_move(fire_context const& ctx, uint16_t instance, bool forward)
+        u16 neighbour_move(fire_context const& ctx, u16 instance, bool forward)
         {
-            uint16_t step = ctx.offset;
+            u16 step = ctx.offset;
             while (true)
             {
                 if (forward)
@@ -422,7 +424,7 @@ namespace NEONengine
         }
 
         /// @brief Takes the instance at @p slot off whatever span it was on.
-        void clear_glide(uint16_t slot) { s_glides[slot].active = false; }
+        void clear_glide(u16 slot) { s_glides[slot].active = false; }
 
         /**
          * @brief Puts the instance at @p slot on the span @p t0 to @p t1.
@@ -431,12 +433,12 @@ namespace NEONengine
          * which is what lets one expression serve a reverse leg: the position is
          * read off the span rather than accumulated along it.
          */
-        void set_glide(uint16_t slot,
-            uint16_t track,
-            data::point<uint16_t> from,
-            uint16_t t0,
-            data::point<uint16_t> to,
-            uint16_t t1)
+        void set_glide(u16 slot,
+            u16 track,
+            data::point<u16> from,
+            u16 t0,
+            data::point<u16> dest,
+            u16 t1)
         {
             // Two moves of one instance at one time are rejected by the editor,
             // so this means a pak built by something else. Dividing by the span
@@ -450,18 +452,18 @@ namespace NEONengine
 
             glide& g = s_glides[slot];
             g.from   = from;
-            g.to     = to;
+            g.to     = dest;
             g.t0     = t0;
             g.t1     = t1;
             g.track  = track;
             g.active = true;
         }
 
-        /// @brief @p from moved @p done parts out of @p span of the way to @p to.
-        uint16_t lerp(uint16_t from, uint16_t to, int32_t done, int32_t span)
+        /// @brief @p from moved @p done parts out of @p span of the way to @p dest.
+        u16 lerp(u16 from, u16 dest, i32 done, i32 span)
         {
-            int32_t const delta = mtl::to<int32_t>(to) - mtl::to<int32_t>(from);
-            return mtl::to<uint16_t>(mtl::to<int32_t>(from) + (delta * done) / span);
+            i32 const delta = to<i32>(dest) - to<i32>(from);
+            return to<u16>(to<i32>(from) + (delta * done) / span);
         }
 
         /**
@@ -475,7 +477,7 @@ namespace NEONengine
          */
         void update_glides()
         {
-            for (uint16_t slot = 0; slot < s_glides.size(); ++slot)
+            for (u16 slot = 0; slot < s_glides.size(); ++slot)
             {
                 glide const& g = s_glides[slot];
                 if (!g.active) continue;
@@ -485,10 +487,10 @@ namespace NEONengine
                 auto const& clock = s_clocks[g.track];
                 if (!clock.is_running()) continue;
 
-                int32_t const span = mtl::to<int32_t>(g.t1) - mtl::to<int32_t>(g.t0);
-                int32_t const done = mtl::to<int32_t>(clock.position()) - mtl::to<int32_t>(g.t0);
+                i32 const span = to<i32>(g.t1) - to<i32>(g.t0);
+                i32 const done = to<i32>(clock.position()) - to<i32>(g.t0);
 
-                data::point<uint16_t> const pos{ lerp(g.from.y, g.to.y, done, span),
+                data::point<u16> const pos{ lerp(g.from.y, g.to.y, done, span),
                     lerp(g.from.x, g.to.x, done, span) };
                 scene_bobs_set_instance_pos(slot, pos);
             }
@@ -511,7 +513,7 @@ namespace NEONengine
             for (auto& span : s_cycles)
             {
                 auto const& clock       = s_clocks[span.track];
-                uint16_t const position = clock.position();
+                u16 const position = clock.position();
 
                 // Half-open: the band is the START's to turn right up to the
                 // END's position, and the END's position itself belongs to
@@ -538,8 +540,8 @@ namespace NEONengine
                 // zero at the position the span opens at. A restart is a
                 // discontinuity by definition, and authoring the span as
                 // (t1 - t0) == n * width * delay removes even that one.
-                uint16_t const wanted = (inside && !span.spent)
-                    ? mtl::to<uint16_t>(((position - span.t0) / span.delay) % span.width)
+                u16 const wanted = (inside && !span.spent)
+                    ? to<u16>(((position - span.t0) / span.delay) % span.width)
                     : span.offset;
 
                 if (wanted == span.offset) continue;
@@ -547,8 +549,8 @@ namespace NEONengine
                 // Always forwards, because a rotation is cyclic: turning the
                 // rest of the way round is how the band goes back, and it is the
                 // same one pass either way.
-                uint16_t const steps
-                    = mtl::to<uint16_t>((wanted + span.width - span.offset) % span.width);
+                u16 const steps
+                    = to<u16>((wanted + span.width - span.offset) % span.width);
                 palette_cycle_rotate(span.first, span.last, steps);
                 span.offset = wanted;
             }
@@ -568,7 +570,7 @@ namespace NEONengine
             {
                 if (span.offset == 0) continue;
                 palette_cycle_rotate(
-                    span.first, span.last, mtl::to<uint16_t>(span.width - span.offset));
+                    span.first, span.last, to<u16>(span.width - span.offset));
                 span.offset = 0;
             }
         }
@@ -581,7 +583,7 @@ namespace NEONengine
          * palette as it actually stands rather than a policy; the band picks up
          * from there when the playhead next reaches the span.
          */
-        void clear_cycles(uint16_t index)
+        void clear_cycles(u16 index)
         {
             for (auto& span : s_cycles)
             {
@@ -601,7 +603,7 @@ namespace NEONengine
         bool fire_move(data::keyframe const& key, fire_context const& ctx)
         {
             auto const& payload = move_of(key);
-            uint16_t const slot = find_instance(payload.instance_id);
+            u16 const slot = find_instance(payload.instance_id);
             if (slot == NO_INSTANCE) return false;  // Reported once at load.
 
             scene_bobs_set_instance_pos(slot, payload.pos);
@@ -611,11 +613,11 @@ namespace NEONengine
             // again coming down. The span it brackets on the way back has to be
             // set up here because there is no second crossing to do it.
             bool const turning =
-                mtl::to<data::loop_mode>(ctx.record->loop_mode) == data::loop_mode::PING_PONG
+                to<data::loop_mode>(ctx.record->loop_mode) == data::loop_mode::PING_PONG
                 && key.time >= ctx.record->duration;
             bool const backward = ctx.reversing || turning;
 
-            uint16_t const other = neighbour_move(ctx, payload.instance_id, !backward);
+            u16 const other = neighbour_move(ctx, payload.instance_id, !backward);
             if (other == NO_KEY)
             {
                 clear_glide(slot);
@@ -641,9 +643,9 @@ namespace NEONengine
         bool fire_visibility(data::keyframe const& key)
         {
             auto const& payload =
-                *mtl::force_to<data::gfx_visibility_payload const*>(key.payload);
+                *force_to<data::gfx_visibility_payload const*>(key.payload);
 
-            uint16_t const slot = find_instance(payload.instance_id);
+            u16 const slot = find_instance(payload.instance_id);
             if (slot == NO_INSTANCE) return false;  // Reported once at load.
 
             scene_bobs_set_instance_visible(slot, payload.visible != 0);
@@ -655,13 +657,13 @@ namespace NEONengine
             // Preloaded when the scene did, because a sound has to be resident
             // in Chip RAM before it is asked for. The channel the payload names
             // is deliberately not read; see scene_audio.
-            scene_audio_play(mtl::force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
+            scene_audio_play(force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
             return true;
         }
 
         bool fire_music(data::keyframe const& key)
         {
-            auto const& payload = *mtl::force_to<data::music_play_payload const*>(key.payload);
+            auto const& payload = *force_to<data::music_play_payload const*>(key.payload);
 
             // Read here rather than preloaded with the scene: a module is far
             // larger than a sound effect, and a scene may name several it never
@@ -673,21 +675,21 @@ namespace NEONengine
             auto mod = g_pEngine->data().open_asset_uncached(payload.music_hash);
             if (!mod)
             {
-                NE_LOG("no music asset for hash %08lx", mtl::to<ULONG>(payload.music_hash));
+                NE_LOG("no music asset for hash %08lx", to<ULONG>(payload.music_hash));
                 return false;
             }
 
             musicLoad(mtl::move(mod));
             musicPlayCurrent(payload.loop);
             NE_LOG("MUSIC_PLAY %08lx, loop %hu",
-                mtl::to<ULONG>(payload.music_hash),
-                mtl::to<uint16_t>(payload.loop));
+                to<ULONG>(payload.music_hash),
+                to<u16>(payload.loop));
             return true;
         }
 
-        bool fire_script(data::keyframe const& key, uint16_t track_index)
+        bool fire_script(data::keyframe const& key, u16 track_index)
         {
-            auto const& payload = *mtl::force_to<data::execute_script_payload const*>(key.payload);
+            auto const& payload = *force_to<data::execute_script_payload const*>(key.payload);
             auto& vm            = g_pEngine->vm();
 
             // execute() saves the registers of a re-entered call but not the
@@ -718,7 +720,7 @@ namespace NEONengine
          */
         bool fire(data::keyframe const& key, fire_context const& ctx)
         {
-            switch (mtl::to<data::keyframe_type>(key.type))
+            switch (to<data::keyframe_type>(key.type))
             {
                 case data::keyframe_type::GFX_MOVE: return fire_move(key, ctx);
                 case data::keyframe_type::GFX_VISIBILITY: return fire_visibility(key);
@@ -760,13 +762,13 @@ namespace NEONengine
          * a looping track's second cycle leads into its first move exactly as
          * its first cycle did instead of teleporting there.
          */
-        void prime_glides(uint16_t track_index, data::track const& track)
+        void prime_glides(u16 track_index, data::track const& track)
         {
             // A cycle begins with nothing of the last one still in motion, so
             // that a movement whose keyframes are spent or gone cannot leave an
             // instance following a span the playhead has left. Only this track's
             // movements are dropped; another track's are its own business.
-            for (uint16_t slot = 0; slot < s_glides.size(); ++slot)
+            for (u16 slot = 0; slot < s_glides.size(); ++slot)
             {
                 if (s_glides[slot].active && s_glides[slot].track == track_index)
                 {
@@ -780,7 +782,7 @@ namespace NEONengine
             ctx.base   = s_key_base[track_index];
             ctx.track  = track_index;
 
-            for (uint16_t offset = 0; offset < ctx.keys.size(); ++offset)
+            for (u16 offset = 0; offset < ctx.keys.size(); ++offset)
             {
                 auto const& key = ctx.keys[offset];
                 if (!is_move(key) || (key.flags & data::KEYFRAME_FLAG_INTERPOLATE) == 0) continue;
@@ -795,7 +797,7 @@ namespace NEONengine
                 }
 
                 auto const& payload = move_of(key);
-                uint16_t const slot = find_instance(payload.instance_id);
+                u16 const slot = find_instance(payload.instance_id);
                 if (slot == NO_INSTANCE) continue;
 
                 // Only the cycle's first move for an instance leads from where
@@ -804,7 +806,7 @@ namespace NEONengine
                 ctx.offset = offset;
                 if (neighbour_move(ctx, payload.instance_id, false) != NO_KEY) continue;
 
-                data::point<uint16_t> from{ 0, 0 };
+                data::point<u16> from{ 0, 0 };
                 if (!scene_bobs_instance_pos(slot, from)) continue;
 
                 set_glide(slot, track_index, from, 0, payload.pos, key.time);
@@ -820,18 +822,18 @@ namespace NEONengine
          * track, which is why an END can name nothing but a cycle id and still
          * be unambiguous.
          */
-        void collect_cycles(uint16_t track_index, data::track const& track)
+        void collect_cycles(u16 track_index, data::track const& track)
         {
             auto const keys = track_keys(track);
-            for (uint16_t offset = 0; offset < keys.size(); ++offset)
+            for (u16 offset = 0; offset < keys.size(); ++offset)
             {
                 auto const& open = keys[offset];
                 if (!is_cycle_start(open)) continue;
 
                 auto const& payload = cycle_start_of(open);
 
-                uint16_t close = NO_KEY;
-                for (uint16_t other = 0; other < keys.size(); ++other)
+                u16 close = NO_KEY;
+                for (u16 other = 0; other < keys.size(); ++other)
                 {
                     if (!is_cycle_end(keys[other])) continue;
                     if (cycle_id_of(keys[other]) != payload.cycle_id) continue;
@@ -869,7 +871,7 @@ namespace NEONengine
                 span.t1    = keys[close].time;
                 span.first = payload.first;
                 span.last  = payload.last;
-                span.width = mtl::to<uint16_t>(payload.last - payload.first + 1);
+                span.width = to<u16>(payload.last - payload.first + 1);
 
                 // Zero frames a step is no step at all, and dividing by it traps
                 // rather than misbehaving, so it becomes the fastest turn there
@@ -890,7 +892,7 @@ namespace NEONengine
         /**
          * @brief Fires whatever the track at @p track_index has under its playhead.
          */
-        void fire_keyframes(uint16_t track_index, data::track const& track)
+        void fire_keyframes(u16 track_index, data::track const& track)
         {
             if (track.keyframe_range.count == 0) return;
 
@@ -906,17 +908,17 @@ namespace NEONengine
 
             ctx.reversing = clock.is_reversing();
 
-            for (uint16_t step = 0; step < run.count; ++step)
+            for (u16 step = 0; step < run.count; ++step)
             {
                 // A track played backwards is played backwards all the way down,
                 // so keys sharing a position run in reverse on the return leg.
                 ctx.offset = ctx.reversing
-                    ? mtl::to<uint16_t>(run.first + run.count - 1 - step)
-                    : mtl::to<uint16_t>(run.first + step);
+                    ? to<u16>(run.first + run.count - 1 - step)
+                    : to<u16>(run.first + step);
 
                 auto const& key       = ctx.keys[ctx.offset];
                 bool const fire_once  = (key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) != 0;
-                uint32_t const marker = ctx.base + ctx.offset;
+                u32 const marker = ctx.base + ctx.offset;
 
                 if (fire_once && has_fired(marker)) continue;
                 if (fire(key, ctx) && fire_once) mark_fired(marker);
@@ -971,7 +973,7 @@ namespace NEONengine
         {
             NE_LOG("scene names timeline %hu of %lu",
                 scene.timeline_id,
-                mtl::to<ULONG>(timelines.size()));
+                to<ULONG>(timelines.size()));
             return;
         }
 
@@ -987,13 +989,13 @@ namespace NEONengine
                 NE_LOG("track range %hu+%hu exceeds %lu tracks",
                     time.track_range.start,
                     time.track_range.count,
-                    mtl::to<ULONG>(all.size()));
+                    to<ULONG>(all.size()));
             }
             return;
         }
 
         s_first = time.track_range.start;
-        s_count = mtl::to<uint16_t>(tracks.size());
+        s_count = to<u16>(tracks.size());
         s_clocks.reserve(tracks.size());
         s_key_base.reserve(tracks.size());
 
@@ -1001,14 +1003,14 @@ namespace NEONengine
         // an instance's position is its own, so two tracks moving it are settled
         // by which of them wrote last rather than by remembering both.
         s_glides.reserve(s_gfxi_count);
-        for (uint16_t slot = 0; slot < s_gfxi_count; ++slot) s_glides.push_back(glide{});
+        for (u16 slot = 0; slot < s_gfxi_count; ++slot) s_glides.push_back(glide{});
 
-        uint32_t total_keys      = 0;
-        uint16_t unimplemented   = 0;  ///< Bitmask over data::keyframe_type.
+        u32 total_keys      = 0;
+        u16 unimplemented   = 0;  ///< Bitmask over data::keyframe_type.
         auto const all_keyframes = g_pEngine->data().keyframes();
 
-        NE_LOG("%hu, %lu track(s)", scene.timeline_id, mtl::to<ULONG>(tracks.size()));
-        for (uint16_t index = 0; index < tracks.size(); ++index)
+        NE_LOG("%hu, %lu track(s)", scene.timeline_id, to<ULONG>(tracks.size()));
+        for (u16 index = 0; index < tracks.size(); ++index)
         {
             auto const& track = tracks[index];
             NE_LOG("  track %hu: name %hu, keys %hu+%hu, %hu frames, %s x%hu, %s",
@@ -1018,7 +1020,7 @@ namespace NEONengine
                 track.keyframe_range.count,
                 track.duration,
                 loop_mode_name(track.loop_mode),
-                mtl::to<uint16_t>(track.loop_count),
+                to<u16>(track.loop_count),
                 (track.flags & data::TRACK_FLAG_AUTO_START) ? "auto" : "on cue");
 
             // The editor rejects this, so it means the pak was built by
@@ -1043,22 +1045,22 @@ namespace NEONengine
                     index,
                     track.keyframe_range.start,
                     track.keyframe_range.count,
-                    mtl::to<ULONG>(all_keyframes.size()));
+                    to<ULONG>(all_keyframes.size()));
             }
             else
             {
-                for (uint16_t offset = 0; offset < track.keyframe_range.count; ++offset)
+                for (u16 offset = 0; offset < track.keyframe_range.count; ++offset)
                 {
-                    auto const& key = all_keyframes[mtl::to<size_t>(track.keyframe_range.start) + offset];
+                    auto const& key = all_keyframes[to<size_t>(track.keyframe_range.start) + offset];
                     if (!is_implemented(key.type) && key.type < data::KEYFRAME_TYPE_COUNT)
                     {
-                        unimplemented |= mtl::to<uint16_t>(1 << key.type);
+                        unimplemented |= to<u16>(1 << key.type);
                     }
 
                     // Reported here rather than at fire time for the same reason:
                     // a bad id on a looping track would say so 50 times a second.
                     bool const names_instance = is_move(key)
-                        || mtl::to<data::keyframe_type>(key.type)
+                        || to<data::keyframe_type>(key.type)
                             == data::keyframe_type::GFX_VISIBILITY;
 
                     if (names_instance && find_instance(instance_of(key)) == NO_INSTANCE)
@@ -1078,7 +1080,7 @@ namespace NEONengine
 
         // Reported once here rather than at fire time, where an unimplemented
         // keyframe on a looping track would log 50 times a second.
-        for (uint8_t type = 0; type < data::KEYFRAME_TYPE_COUNT; ++type)
+        for (u8 type = 0; type < data::KEYFRAME_TYPE_COUNT; ++type)
         {
             if (unimplemented & (1 << type))
             {
@@ -1090,9 +1092,9 @@ namespace NEONengine
         // The editor rejects a name repeated inside one scene, so this means the
         // pak was built by something else. ANIM_PLAY takes the first match,
         // which is at least deterministic, but the later one is unreachable.
-        for (uint16_t a = 0; a < tracks.size(); ++a)
+        for (u16 a = 0; a < tracks.size(); ++a)
         {
-            for (uint16_t b = mtl::to<uint16_t>(a + 1); b < tracks.size(); ++b)
+            for (u16 b = to<u16>(a + 1); b < tracks.size(); ++b)
             {
                 if (tracks[a].name_id != tracks[b].name_id)
                 {
@@ -1108,12 +1110,12 @@ namespace NEONengine
         }
 
         s_fired.reserve((total_keys + 7) / 8);
-        for (uint32_t byte = 0; byte < (total_keys + 7) / 8; ++byte) s_fired.push_back(0);
+        for (u32 byte = 0; byte < (total_keys + 7) / 8; ++byte) s_fired.push_back(0);
 
         // After s_fired exists, because priming has to see which fire_once keys
         // are spent, and after scene_bobs_load(), because a movement with no
         // earlier one to lead it starts from where its instance already stands.
-        for (uint16_t index = 0; index < tracks.size(); ++index)
+        for (u16 index = 0; index < tracks.size(); ++index)
         {
             if (s_clocks[index].is_running()) prime_glides(index, tracks[index]);
         }
@@ -1140,7 +1142,7 @@ namespace NEONengine
         update_cycles();
 
         auto const tracks = scene_timeline_tracks();
-        for (uint16_t index = 0; index < s_count; ++index)
+        for (u16 index = 0; index < s_count; ++index)
         {
             auto& clock = s_clocks[index];
             if (!clock.is_running()) continue;
@@ -1191,9 +1193,9 @@ namespace NEONengine
         palette_cycle_commit();
     }
 
-    void scene_timeline_play(uint16_t name_id)
+    void scene_timeline_play(u16 name_id)
     {
-        uint16_t const index = find_track(name_id);
+        u16 const index = find_track(name_id);
         if (index == NO_TRACK)
         {
             NE_LOG("ANIM_PLAY names track %hu, which this scene does not have", name_id);
@@ -1227,9 +1229,9 @@ namespace NEONengine
         NE_LOG("ANIM_PLAY started track %hu (name %hu)", index, name_id);
     }
 
-    void scene_timeline_stop(uint16_t name_id)
+    void scene_timeline_stop(u16 name_id)
     {
-        uint16_t const index = find_track(name_id);
+        u16 const index = find_track(name_id);
         if (index == NO_TRACK)
         {
             NE_LOG("ANIM_STOP names track %hu, which this scene does not have", name_id);
@@ -1249,9 +1251,9 @@ namespace NEONengine
             s_clocks[index].position());
     }
 
-    void scene_timeline_wait(uint16_t name_id)
+    void scene_timeline_wait(u16 name_id)
     {
-        uint16_t const index = find_track(name_id);
+        u16 const index = find_track(name_id);
         if (index == NO_TRACK)
         {
             NE_LOG("ANIM_WAIT names track %hu, which this scene does not have", name_id);
@@ -1274,12 +1276,12 @@ namespace NEONengine
         wait_state next;
         next.name  = name_id;
         next.found = (index != NO_TRACK);
-        next.track = next.found ? index : uint16_t(0);
+        next.track = next.found ? index : u16(0);
 
         // Saturating rather than wrapping, though by 255 nested waits the VM's
-        // own uint8_t counter has wrapped too and nothing is recoverable.
+        // own u8 counter has wrapped too and nothing is recoverable.
         next.depth = (s_wait.depth == UINT8_MAX) ? s_wait.depth
-                                                 : mtl::to<uint8_t>(s_wait.depth + 1);
+                                                 : to<u8>(s_wait.depth + 1);
         s_wait     = next;
     }
 }  // namespace NEONengine

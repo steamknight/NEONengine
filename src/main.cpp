@@ -1,4 +1,7 @@
 // #define ACE_TEST_RUNNER
+
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/generic/main.h>
@@ -36,7 +39,7 @@ void genericCreate(void)
     auto engineResult = engine::initialize();
     if (!engineResult)
     {
-        NE_LOG("Could not create NEONengine. Error %d", mtl::to<int>(engineResult.error()));
+        NE_LOG("Could not create NEONengine. Error %d", to<int>(engineResult.error()));
         return;
     }
     g_pEngine = mtl::move(engineResult.value());

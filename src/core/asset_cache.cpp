@@ -1,5 +1,7 @@
 #include "asset_cache.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/memory.h>
@@ -23,20 +25,20 @@ namespace NEONengine
         /// One held asset: its bytes, and which load last wanted them.
         struct cache_entry
         {
-            uint32_t hash       = 0;
-            uint32_t generation = 0;
-            uint8_t* bytes      = nullptr;  ///< Fast RAM, owned by this entry.
-            uint32_t size       = 0;
+            u32 hash       = 0;
+            u32 generation = 0;
+            u8* bytes      = nullptr;  ///< Fast RAM, owned by this entry.
+            u32 size       = 0;
         };
 
         mtl::vector<cache_entry> s_entries;
-        uint32_t s_used       = 0;  ///< Bytes held, always the sum of the entry sizes.
-        uint32_t s_generation = 0;  ///< Which load is in progress.
-        uint32_t s_hits       = 0;
-        uint32_t s_misses     = 0;
+        u32 s_used       = 0;  ///< Bytes held, always the sum of the entry sizes.
+        u32 s_generation = 0;  ///< Which load is in progress.
+        u32 s_hits       = 0;
+        u32 s_misses     = 0;
 
         /// @brief The held entry @p hash names, or nullptr.
-        cache_entry* find_entry(uint32_t hash)
+        cache_entry* find_entry(u32 hash)
         {
             for (auto& entry : s_entries)
             {
@@ -68,12 +70,12 @@ namespace NEONengine
          *
          * @return True when @p size now fits.
          */
-        bool make_room(uint32_t size)
+        bool make_room(u32 size)
         {
             while (s_used + size > ASSET_CACHE_BUDGET)
             {
                 size_t oldest    = s_entries.size();
-                uint32_t bestGen = 0;
+                u32 bestGen = 0;
 
                 for (size_t i = 0; i < s_entries.size(); ++i)
                 {
@@ -109,9 +111,9 @@ namespace NEONengine
          * @return The block, or nullptr when it could not be allocated in Fast
          *         RAM or the file was shorter than it said it was.
          */
-        uint8_t* read_whole(tFile* file, uint32_t size)
+        u8* read_whole(tFile* file, u32 size)
         {
-            auto* bytes = static_cast<uint8_t*>(memAlloc(size, MEMF_FAST));
+            auto* bytes = to<u8*>(memAlloc(size, MEMF_FAST));
             if (!bytes) return nullptr;
 
             if (memType(bytes) != MEMF_FAST)
@@ -130,7 +132,7 @@ namespace NEONengine
         }
 
         /// What the game data says a cached asset is. Reporting only.
-        enum class asset_kind : uint8_t
+        enum class asset_kind : u8
         {
             background,
             bob_frames,
@@ -167,7 +169,7 @@ namespace NEONengine
          * points at it, so the role has to be looked up rather than read off the
          * bitmap itself.
          */
-        asset_kind classify_bitmap(uint16_t bitmap_id)
+        asset_kind classify_bitmap(u16 bitmap_id)
         {
             game_data& gd = g_pEngine->data();
 
@@ -197,7 +199,7 @@ namespace NEONengine
         }
 
         /// @brief Whether any hotspot or keyframe plays the sound @p hash names.
-        bool is_sfx(uint32_t hash)
+        bool is_sfx(u32 hash)
         {
             game_data& gd = g_pEngine->data();
 
@@ -208,11 +210,11 @@ namespace NEONengine
 
             for (auto const& key : gd.keyframes())
             {
-                if (mtl::to<data::keyframe_type>(key.type) != data::keyframe_type::SFX_PLAY)
+                if (to<data::keyframe_type>(key.type) != data::keyframe_type::SFX_PLAY)
                 {
                     continue;
                 }
-                if (mtl::force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash == hash)
+                if (force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash == hash)
                 {
                     return true;
                 }
@@ -228,7 +230,7 @@ namespace NEONengine
          * genuinely overlap, and anything nothing refers to falls to `other`
          * where it stands out as either a stale entry or a gap here.
          */
-        asset_kind classify(uint32_t hash)
+        asset_kind classify(u32 hash)
         {
             game_data& gd = g_pEngine->data();
 
@@ -244,7 +246,7 @@ namespace NEONengine
                 {
                     return asset_kind::bob_mask;
                 }
-                if (ref.bitmap_hash == hash) return classify_bitmap(mtl::to<uint16_t>(i));
+                if (ref.bitmap_hash == hash) return classify_bitmap(to<u16>(i));
             }
 
             if (is_sfx(hash)) return asset_kind::sfx;
@@ -273,7 +275,7 @@ namespace NEONengine
         ++s_generation;
     }
 
-    ace::file_ptr asset_cache_open(ace::pakfile_ptr& pak, uint32_t hash)
+    ace::file_ptr asset_cache_open(ace::pakfile_ptr& pak, u32 hash)
     {
         if (cache_entry* entry = find_entry(hash))
         {
@@ -298,15 +300,15 @@ namespace NEONengine
         // A compressed entry reports what it unpacks to, not what it occupies,
         // so this is the size to hold and the size to read.
         LONG const reported = fileGetSize(file.get());
-        if (reported <= 0 || mtl::to<uint32_t>(reported) > ASSET_CACHE_MAX_ENTRY)
+        if (reported <= 0 || to<u32>(reported) > ASSET_CACHE_MAX_ENTRY)
         {
             return file;
         }
 
-        uint32_t const size = mtl::to<uint32_t>(reported);
+        u32 const size = to<u32>(reported);
         if (!make_room(size)) return file;
 
-        uint8_t* bytes = read_whole(file.get(), size);
+        u8* bytes = read_whole(file.get(), size);
         if (!bytes)
         {
             // Part of the file has been consumed, so the handle cannot be given
@@ -325,32 +327,32 @@ namespace NEONengine
 
     void asset_cache_log()
     {
-        uint32_t counts[mtl::to<size_t>(asset_kind::COUNT)]{};
-        uint32_t bytes[mtl::to<size_t>(asset_kind::COUNT)]{};
+        u32 counts[to<size_t>(asset_kind::COUNT)]{};
+        u32 bytes[to<size_t>(asset_kind::COUNT)]{};
 
         for (auto const& entry : s_entries)
         {
-            size_t const kind = mtl::to<size_t>(classify(entry.hash));
+            size_t const kind = to<size_t>(classify(entry.hash));
             ++counts[kind];
             bytes[kind] += entry.size;
         }
 
         NE_LOG("%lu entries, %lu of %lu KB, gen %lu, %lu hits / %lu misses",
-            mtl::to<ULONG>(s_entries.size()),
-            mtl::to<ULONG>(s_used >> 10),
-            mtl::to<ULONG>(ASSET_CACHE_BUDGET >> 10),
-            mtl::to<ULONG>(s_generation),
-            mtl::to<ULONG>(s_hits),
-            mtl::to<ULONG>(s_misses));
+            to<ULONG>(s_entries.size()),
+            to<ULONG>(s_used >> 10),
+            to<ULONG>(ASSET_CACHE_BUDGET >> 10),
+            to<ULONG>(s_generation),
+            to<ULONG>(s_hits),
+            to<ULONG>(s_misses));
 
-        for (size_t kind = 0; kind < mtl::to<size_t>(asset_kind::COUNT); ++kind)
+        for (size_t kind = 0; kind < to<size_t>(asset_kind::COUNT); ++kind)
         {
             if (!counts[kind]) continue;
 
             NE_LOG("  %s %3lu at %5lu KB",
-                kind_name(mtl::to<asset_kind>(kind)),
-                mtl::to<ULONG>(counts[kind]),
-                mtl::to<ULONG>(bytes[kind] >> 10));
+                kind_name(to<asset_kind>(kind)),
+                to<ULONG>(counts[kind]),
+                to<ULONG>(bytes[kind] >> 10));
         }
     }
 }  // namespace NEONengine

@@ -1,5 +1,7 @@
 #include "scene_bobs.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
@@ -29,9 +31,9 @@ namespace NEONengine
         // BOB palette band: slot 0 sits at indices 72..79 and each higher slot's
         // base drops 8 toward 32. Frame pixel indices are baked into this band at
         // build time, so the engine only overlays each graphic's colors here.
-        constexpr uint8_t BOB_PALETTE_SLOT0_BASE = 72;
-        constexpr uint16_t PALETTE_SIZE          = 256;
-        constexpr uint8_t GFXI_FLAG_VISIBLE      = 1;  // graphic_instance::flags bit 0
+        constexpr u8 BOB_PALETTE_SLOT0_BASE = 72;
+        constexpr u16 PALETTE_SIZE          = 256;
+        constexpr u8 GFXI_FLAG_VISIBLE      = 1;  // graphic_instance::flags bit 0
 
         // One placed graphic: its ACE bob plus the frame strip and optional
         // 1-plane mask it draws from (both Chip RAM for the blitter), its
@@ -47,11 +49,11 @@ namespace NEONengine
             ace::bitmap_ptr mask{ nullptr };
             tBob bob{};
             bool visible          = false;
-            uint8_t frame_count   = 0;  ///< Frames in the strip (1 = static).
-            uint8_t frame_delay   = 0;  ///< Vblanks per frame (0 = static).
-            uint16_t frame_height = 0;  ///< Rows per frame, for the frame address.
-            uint8_t frame_index   = 0;  ///< Current frame.
-            uint16_t tick         = 0;  ///< Vblanks on the current frame (16-bit: delay 255 safe).
+            u8 frame_count   = 0;  ///< Frames in the strip (1 = static).
+            u8 frame_delay   = 0;  ///< Vblanks per frame (0 = static).
+            u16 frame_height = 0;  ///< Rows per frame, for the frame address.
+            u8 frame_index   = 0;  ///< Current frame.
+            u16 tick         = 0;  ///< Vblanks on the current frame (16-bit: delay 255 safe).
         };
 
         /// One animation frame's blit pointers: the frame plus its optional mask.
@@ -65,9 +67,9 @@ namespace NEONengine
         // stacked vertically and the mask (when present) shares that layout, so
         // both step by index * frame_height rows. bitmap_ptr::get() is non-const,
         // hence the mutable reference.
-        frame_ptrs frame_at(graphic_asset& a, uint8_t index)
+        frame_ptrs frame_at(graphic_asset& a, u8 index)
         {
-            UWORD const rowOffset = mtl::to<UWORD>(index * a.frame_height);
+            UWORD const rowOffset = to<UWORD>(index * a.frame_height);
             return {
                 bobCalcFrameAddress(a.frames.get(), rowOffset),
                 a.mask ? bobCalcFrameAddress(a.mask.get(), rowOffset) : nullptr,
@@ -76,27 +78,27 @@ namespace NEONengine
 
         mtl::vector<graphic_asset> s_assets;  ///< The live bobs and their backing data.
 
-        constexpr uint16_t NO_BOB = 0xFFFF;
+        constexpr u16 NO_BOB = 0xFFFF;
 
         /// Scene-local GFXI index -> index into s_assets, or NO_BOB.
         /// An instance naming a missing graphic, or whose frames fail to load,
         /// registers no bob, so the two are not the same numbering.
-        mtl::vector<uint16_t> s_instanceBob;
+        mtl::vector<u16> s_instanceBob;
 
         /// Hotspot state graphics, drawn above the instances.
         mtl::vector<graphic_asset> s_hotspotAssets;
 
         /// Scene-local hotspot index -> index into s_hotspotAssets, or NO_BOB.
         /// Most hotspots carry no graphic, so the mapping is kept out of line.
-        mtl::vector<uint16_t> s_hotspotBob;
+        mtl::vector<u16> s_hotspotBob;
 
         /**
          * @brief The instance bob at scene-local @p index, or nullptr.
          */
-        graphic_asset* instance_at(uint16_t index)
+        graphic_asset* instance_at(u16 index)
         {
             if (index >= s_instanceBob.size()) return nullptr;
-            uint16_t const slot = s_instanceBob[index];
+            u16 const slot = s_instanceBob[index];
             if (slot == NO_BOB) return nullptr;
             return &s_assets[slot];
         }
@@ -107,11 +109,11 @@ namespace NEONengine
         // bitmap flooded with the caption color serves as the frame for every
         // caption and only the mask differs: showing one swaps the mask pointer
         // and the height, with nothing to render, allocate or blit at hover time.
-        constexpr uint16_t CAPTION_MAX_WIDTH = SCREEN_WIDTH / 2;
-        constexpr uint8_t CAPTION_MAX_LINES  = 2;
-        constexpr uint8_t CAPTION_COLOR      = 1;  ///< UI palette index; authorable later.
-        constexpr uint16_t CAPTION_AIR       = 4;  ///< Gap when the caption sits above the pointer.
-        constexpr uint16_t CAPTION_GAP       = 12 + CAPTION_AIR;  ///< Below: clears the 16px cursor.
+        constexpr u16 CAPTION_MAX_WIDTH = SCREEN_WIDTH / 2;
+        constexpr u8 CAPTION_MAX_LINES  = 2;
+        constexpr u8 CAPTION_COLOR      = 1;  ///< UI palette index; authorable later.
+        constexpr u16 CAPTION_AIR       = 4;  ///< Gap when the caption sits above the pointer.
+        constexpr u16 CAPTION_GAP       = 12 + CAPTION_AIR;  ///< Below: clears the 16px cursor.
         constexpr UBYTE CAPTION_MASK_COLOR   = 0xFF;  ///< Sets every plane, making a bob mask.
 
         /// Every pixel is CAPTION_COLOR; the mask decides which ones land.
@@ -121,7 +123,7 @@ namespace NEONengine
         struct caption
         {
             ace::bitmap_ptr mask{ nullptr };
-            uint16_t height = 0;
+            u16 height = 0;
         };
 
         /// Scene-local hotspot index -> its caption; empty entries render nothing.
@@ -132,7 +134,7 @@ namespace NEONengine
         bool s_captionVisible = false;  ///< It should be drawn this frame.
 
         /// The fixed height the caption bob and every mask are built at.
-        uint16_t s_captionBoxHeight = 0;
+        u16 s_captionBoxHeight = 0;
 
         /**
          * @brief Loads @p gfx's frame strip, optional mask and palette band into @p asset.
@@ -159,10 +161,10 @@ namespace NEONengine
 
             // Overlay this graphic's colors into its palette-slot band. The
             // read is capped so a malformed palette can't spill past index 255.
-            uint8_t const base = mtl::to<uint8_t>(BOB_PALETTE_SLOT0_BASE - gfx.palette_slot * 8);
+            u8 const base = to<u8>(BOB_PALETTE_SLOT0_BASE - gfx.palette_slot * 8);
             ace::paletteLoadFromFd(gd.open_asset(ref.palette_hash),
-                mtl::force_to<UWORD*>(pPalette + base),
-                mtl::to<UWORD>(PALETTE_SIZE - base));
+                force_to<UWORD*>(pPalette + base),
+                to<UWORD>(PALETTE_SIZE - base));
 
             asset.frames       = mtl::move(frames);
             asset.mask         = mtl::move(mask);
@@ -183,7 +185,7 @@ namespace NEONengine
         void load_hotspot_graphics(data::scene const& scene,
             mtl::span<data::graphic> graphics,
             ULONG* pPalette,
-            data::point<uint16_t> screenOffset)
+            data::point<u16> screenOffset)
         {
             auto const hotspots = scene.hotspot_range.of(g_pEngine->data().hotspots());
             if (hotspots.is_empty()) return;
@@ -194,7 +196,7 @@ namespace NEONengine
             s_hotspotBob.reserve(hotspots.size());
             s_hotspotAssets.reserve(hotspots.size());
 
-            for (uint16_t i = 0; i < hotspots.size(); ++i)
+            for (u16 i = 0; i < hotspots.size(); ++i)
             {
                 s_hotspotBob.push_back(NO_BOB);
 
@@ -210,7 +212,7 @@ namespace NEONengine
                 if (gfx.frame_count < HOTSPOT_STATE_FRAMES)
                 {
                     NE_LOG("hotspot %hu graphic has %hhu frame(s), needs %hhu",
-                        mtl::to<UWORD>(scene.hotspot_range.start + i),
+                        to<UWORD>(scene.hotspot_range.start + i),
                         gfx.frame_count,
                         HOTSPOT_STATE_FRAMES);
                     continue;
@@ -221,7 +223,7 @@ namespace NEONengine
 
                 asset.visible = true;
                 s_hotspotAssets.push_back(mtl::move(asset));
-                s_hotspotBob[i] = mtl::to<uint16_t>(s_hotspotAssets.size() - 1);
+                s_hotspotBob[i] = to<u16>(s_hotspotAssets.size() - 1);
 
                 graphic_asset& stored      = s_hotspotAssets.back();
                 auto const [pFrame, pMask] = frame_at(stored, 0);
@@ -244,11 +246,11 @@ namespace NEONengine
          * must be registered at that size for ACE to size its undraw buffer for
          * the worst case.
          */
-        uint16_t caption_max_height()
+        u16 caption_max_height()
         {
             auto const* pFont = g_pEngine->default_font();
             if (!pFont) return 0;
-            return mtl::round_up<16>(mtl::to<uint16_t>(pFont->uwHeight * CAPTION_MAX_LINES));
+            return mtl::round_up<16>(to<u16>(pFont->uwHeight * CAPTION_MAX_LINES));
         }
 
         /**
@@ -264,7 +266,7 @@ namespace NEONengine
          *                  a long string is clamped to this rather than allowed
          *                  to drive the bob past its undraw buffer.
          */
-        bool render_captions(data::scene const& scene, uint16_t maxHeight)
+        bool render_captions(data::scene const& scene, u16 maxHeight)
         {
             s_captions.clear();
 
@@ -277,7 +279,7 @@ namespace NEONengine
 
             bool any          = false;
             UBYTE const depth = screenGetBackBuffer(g_mainScreen)->Depth;
-            for (uint16_t i = 0; i < hotspots.size(); ++i)
+            for (u16 i = 0; i < hotspots.size(); ++i)
             {
                 s_captions.push_back(caption{});
 
@@ -341,7 +343,7 @@ namespace NEONengine
             s_captionReady   = false;
             s_captionVisible = false;
 
-            uint16_t const maxHeight = caption_max_height();
+            u16 const maxHeight = caption_max_height();
             if (maxHeight == 0) return;
             if (!render_captions(scene, maxHeight)) return;
 
@@ -415,7 +417,7 @@ namespace NEONengine
         // AGA palette entries are ULONG; screenGetPalette() types the buffer
         // as UWORD* for the ACE API, so index it with ULONG stride to land on
         // the right entry.
-        ULONG* pPalette           = mtl::force_to<ULONG*>(screenGetPalette(g_mainScreen));
+        ULONG* pPalette           = force_to<ULONG*>(screenGetPalette(g_mainScreen));
         auto const screenOffset = screenGetOffset(g_mainScreen);
 
         // An empty or out-of-bounds range simply yields no bobs.
@@ -427,7 +429,7 @@ namespace NEONengine
             s_assets.reserve(instances.size());
             s_instanceBob.reserve(instances.size());
 
-            for (uint16_t i = 0; i < instances.size(); ++i)
+            for (u16 i = 0; i < instances.size(); ++i)
             {
                 // Every instance gets an entry, so a caller can index by the
                 // scene-local id whether or not this one ended up drawable.
@@ -443,7 +445,7 @@ namespace NEONengine
                 asset.visible     = (inst.flags & GFXI_FLAG_VISIBLE) != 0;
                 asset.frame_delay = gfx.frame_delay;
                 s_assets.push_back(mtl::move(asset));
-                s_instanceBob[i] = mtl::to<uint16_t>(s_assets.size() - 1);
+                s_instanceBob[i] = to<u16>(s_assets.size() - 1);
 
                 // frames/mask now live in the asset; resolve frame 0 from that
                 // stable storage and register the bob on it.
@@ -475,19 +477,19 @@ namespace NEONengine
         }
 
         NE_LOG("%lu bob(s), %lu hotspot graphic(s), caption %s",
-            mtl::to<ULONG>(s_assets.size()),
-            mtl::to<ULONG>(s_hotspotAssets.size()),
+            to<ULONG>(s_assets.size()),
+            to<ULONG>(s_hotspotAssets.size()),
             s_captionReady ? "ready" : "none");
     }
 
-    void scene_bobs_set_hotspot_frame(uint16_t index, hotspot_frame frame)
+    void scene_bobs_set_hotspot_frame(u16 index, hotspot_frame frame)
     {
         if (index >= s_hotspotBob.size()) return;
-        uint16_t const slot = s_hotspotBob[index];
+        u16 const slot = s_hotspotBob[index];
         if (slot == NO_BOB) return;
 
         graphic_asset& asset = s_hotspotAssets[slot];
-        auto const wanted    = mtl::to<uint8_t>(frame);
+        auto const wanted    = to<u8>(frame);
         if (asset.frame_index == wanted) return;
 
         asset.frame_index          = wanted;
@@ -495,7 +497,7 @@ namespace NEONengine
         bobSetFrame(&asset.bob, pFrame, pMask);
     }
 
-    void scene_bobs_set_instance_pos(uint16_t index, data::point<uint16_t> pos)
+    void scene_bobs_set_instance_pos(u16 index, data::point<u16> pos)
     {
         graphic_asset* asset = instance_at(index);
         if (!asset) return;
@@ -506,19 +508,19 @@ namespace NEONengine
         asset->bob.sPos = pos + screenGetOffset(g_mainScreen);
     }
 
-    void scene_bobs_set_instance_visible(uint16_t index, bool visible)
+    void scene_bobs_set_instance_visible(u16 index, bool visible)
     {
         graphic_asset* asset = instance_at(index);
         if (!asset) return;
         asset->visible = visible;
     }
 
-    bool scene_bobs_instance_pos(uint16_t index, data::point<uint16_t>& pos)
+    bool scene_bobs_instance_pos(u16 index, data::point<u16>& pos)
     {
         graphic_asset const* asset = instance_at(index);
         if (!asset) return false;
 
-        pos = data::point<uint16_t>{ asset->bob.sPos.uwY, asset->bob.sPos.uwX }
+        pos = data::point<u16>{ asset->bob.sPos.uwY, asset->bob.sPos.uwX }
             - screenGetOffset(g_mainScreen);
         return true;
     }
@@ -570,7 +572,7 @@ namespace NEONengine
         bobEnd();
     }
 
-    void scene_bobs_show_caption(uint16_t index, uint16_t anchorX, uint16_t anchorY)
+    void scene_bobs_show_caption(u16 index, u16 anchorX, u16 anchorY)
     {
         s_captionVisible = false;
         if (!s_captionReady || index >= s_captions.size()) return;
@@ -579,14 +581,14 @@ namespace NEONengine
         if (!text.mask || text.height == 0) return;
 
         // Centre the box on the pointer, then push it back inside the screen.
-        WORD x = mtl::to<WORD>(anchorX) - CAPTION_MAX_WIDTH / 2;
-        x      = MAX(mtl::to<WORD>(0), MIN(x, mtl::to<WORD>(SCREEN_WIDTH - CAPTION_MAX_WIDTH)));
+        WORD x = to<WORD>(anchorX) - CAPTION_MAX_WIDTH / 2;
+        x      = MAX(to<WORD>(0), MIN(x, to<WORD>(SCREEN_WIDTH - CAPTION_MAX_WIDTH)));
 
         // Bobs are placed in display space, which the screen shifts down in PAL.
         // The box is always the full height even when the text is shorter, so it
         // is the box that has to stay on screen.
-        WORD const top    = mtl::to<WORD>(screenGetOffset(g_mainScreen).y);
-        WORD const bottom = mtl::to<WORD>(top + SCREEN_HEIGHT - s_captionBoxHeight);
+        WORD const top    = to<WORD>(screenGetOffset(g_mainScreen).y);
+        WORD const bottom = to<WORD>(top + SCREEN_HEIGHT - s_captionBoxHeight);
 
         // Below the pointer by preference, above it when that would run off the
         // bottom, so the caption stays with the pointer instead of being pinned
@@ -594,13 +596,13 @@ namespace NEONengine
         // down from the pointer position; above only needs a little air. Above
         // uses the text height so short captions sit close to the pointer, with
         // the box's empty rows falling harmlessly past it.
-        WORD y = mtl::to<WORD>(anchorY) + CAPTION_GAP;
-        if (y > bottom) y = mtl::to<WORD>(anchorY) - CAPTION_AIR - mtl::to<WORD>(text.height);
+        WORD y = to<WORD>(anchorY) + CAPTION_GAP;
+        if (y > bottom) y = to<WORD>(anchorY) - CAPTION_AIR - to<WORD>(text.height);
         y = MAX(top, MIN(y, bottom));
 
         bobSetFrame(&s_captionBob, s_captionInk->Planes[0], text.mask->Planes[0]);
-        s_captionBob.sPos.uwX = mtl::to<UWORD>(x);
-        s_captionBob.sPos.uwY = mtl::to<UWORD>(y);
+        s_captionBob.sPos.uwX = to<UWORD>(x);
+        s_captionBob.sPos.uwY = to<UWORD>(y);
         s_captionVisible      = true;
     }
 

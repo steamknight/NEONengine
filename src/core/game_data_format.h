@@ -15,6 +15,8 @@
 #ifndef __GAME_DATA_FORMAT_H__INCLUDED__
 #define __GAME_DATA_FORMAT_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 #include <mtl/span.h>
 #include <mtl/utility.h>
@@ -28,46 +30,46 @@ namespace NEONengine::data
      *
      * @param code A four-character string literal, e.g. "NEON".
      */
-    constexpr uint32_t make_fourcc(char const (&code)[5])
+    constexpr u32 make_fourcc(char const (&code)[5])
     {
-        return (mtl::to<uint32_t>(mtl::to<uint8_t>(code[0])) << 24)
-             | (mtl::to<uint32_t>(mtl::to<uint8_t>(code[1])) << 16)
-             | (mtl::to<uint32_t>(mtl::to<uint8_t>(code[2])) << 8)
-             | mtl::to<uint32_t>(mtl::to<uint8_t>(code[3]));
+        return (to<u32>(to<u8>(code[0])) << 24)
+             | (to<u32>(to<u8>(code[1])) << 16)
+             | (to<u32>(to<u8>(code[2])) << 8)
+             | to<u32>(to<u8>(code[3]));
     }
 
     /**
      * @brief The .neon file magic, 'NEON'
      */
-    constexpr uint32_t NEON_MAGIC = make_fourcc("NEON");
+    constexpr u32 NEON_MAGIC = make_fourcc("NEON");
     static_assert(NEON_MAGIC == 0x4E454F4Eu, "NEON_MAGIC must be the big-endian 'NEON' FourCC");
 
     /**
      * @brief The id an optional record reference carries when it names nothing.
      */
-    constexpr uint16_t NO_ID = 0xFFFF;
+    constexpr u16 NO_ID = 0xFFFF;
 
     /**
      * @brief The pak-path hash an optional asset reference carries when absent.
      */
-    constexpr uint32_t NO_ASSET = 0xFFFFFFFFu;
+    constexpr u32 NO_ASSET = 0xFFFFFFFFu;
 
     /**
      * @brief The fixed 64-byte header at the start of every .neon file.
      */
     struct header
     {
-        uint32_t magic;         ///< 0:  'NEON' as a big-endian FourCC (== NEON_MAGIC).
-        uint16_t version;       ///< 4:  Container version; must equal NEON_SUPPORTED_VERSION.
-        uint16_t build_period;  ///< 6:  UTC build period, decimal YYMM.
-        uint16_t header_size;   ///< 8:  Size of this header; must equal sizeof(header).
-        uint16_t reserved0;     ///< 10: Reserved, zero.
-        uint32_t format_flags;  ///< 12: Reserved, zero.
-        uint32_t total_size;    ///< 16: Total .neon size in bytes.
-        uint32_t checksum;      ///< 20: Adler32 of bytes 64..EOF.
-        uint32_t chunk_count;   ///< 24: Number of chunks in the file.
-        uint32_t build_number;  ///< 28: Monotonic project build number.
-        uint8_t reserved1[32];  ///< 32: Reserved, zero.
+        u32 magic;         ///< 0:  'NEON' as a big-endian FourCC (== NEON_MAGIC).
+        u16 version;       ///< 4:  Container version; must equal NEON_SUPPORTED_VERSION.
+        u16 build_period;  ///< 6:  UTC build period, decimal YYMM.
+        u16 header_size;   ///< 8:  Size of this header; must equal sizeof(header).
+        u16 reserved0;     ///< 10: Reserved, zero.
+        u32 format_flags;  ///< 12: Reserved, zero.
+        u32 total_size;    ///< 16: Total .neon size in bytes.
+        u32 checksum;      ///< 20: Adler32 of bytes 64..EOF.
+        u32 chunk_count;   ///< 24: Number of chunks in the file.
+        u32 build_number;  ///< 28: Monotonic project build number.
+        u8 reserved1[32];  ///< 32: Reserved, zero.
     };
 
     static_assert(sizeof(header) == 64, "header must be exactly 64 bytes");
@@ -84,10 +86,10 @@ namespace NEONengine::data
      */
     struct chunk_header
     {
-        uint32_t fourcc;         ///< 0:  Chunk id as a big-endian FourCC.
-        uint32_t body_size;      ///< 4:  Payload bytes after this header, incl. align-4 padding.
-        uint32_t element_count;  ///< 8:  Logical element count; 0 for Data chunks.
-        uint32_t element_size;   ///< 12: Element size, or 0 for Data chunks.
+        u32 fourcc;         ///< 0:  Chunk id as a big-endian FourCC.
+        u32 body_size;      ///< 4:  Payload bytes after this header, incl. align-4 padding.
+        u32 element_count;  ///< 8:  Logical element count; 0 for Data chunks.
+        u32 element_size;   ///< 12: Element size, or 0 for Data chunks.
     };
 
     static_assert(sizeof(chunk_header) == 16, "chunk_header must be exactly 16 bytes");
@@ -102,8 +104,8 @@ namespace NEONengine::data
      */
     struct range
     {
-        uint16_t start;  ///< 0: Index of the first element.
-        uint16_t count;  ///< 2: Number of elements.
+        u16 start;  ///< 0: Index of the first element.
+        u16 count;  ///< 2: Number of elements.
 
         /**
          * @brief The elements of @p all this range addresses.
@@ -113,7 +115,7 @@ namespace NEONengine::data
         template<class T>
         [[nodiscard]] constexpr mtl::span<T> of(mtl::span<T> all) const noexcept
         {
-            if (count == 0 || static_cast<size_t>(start) + count > all.size())
+            if (count == 0 || to<size_t>(start) + count > all.size())
             {
                 return mtl::span<T>();
             }
@@ -141,10 +143,10 @@ namespace NEONengine::data
      */
     struct config
     {
-        uint16_t width;                ///< 0: Scene/display width.
-        uint16_t height;               ///< 2: Scene/display height.
-        uint16_t default_fade_frames;  ///< 4: Default fade duration in PAL frames.
-        uint16_t boot_scene_id;        ///< 6: SCEN id the engine boots into (0 by default).
+        u16 width;                ///< 0: Scene/display width.
+        u16 height;               ///< 2: Scene/display height.
+        u16 default_fade_frames;  ///< 4: Default fade duration in PAL frames.
+        u16 boot_scene_id;        ///< 6: SCEN id the engine boots into (0 by default).
     };
 
     static_assert(sizeof(config) == 8, "config must be exactly 8 bytes");
@@ -158,18 +160,18 @@ namespace NEONengine::data
      */
     struct ui_state
     {
-        uint32_t ui_palette_hash;       ///< 0:  UI palette pak-path hash (0xFFFFFFFF invalid).
-        uint32_t font_hash;             ///< 4:  Font pak-path hash (0xFFFFFFFF invalid).
-        uint16_t nine_patch_bitmap_id;  ///< 8:  Nine-patch BMPS id, or 0xFFFF.
-        uint16_t cursor_bitmap_id;      ///< 10: Cursor-sheet BMPS id, or 0xFFFF.
-        uint16_t nine_patch_left;       ///< 12: Nine-patch left border.
-        uint16_t nine_patch_top;        ///< 14: Nine-patch top border.
-        uint16_t nine_patch_right;      ///< 16: Nine-patch right border.
-        uint16_t nine_patch_bottom;     ///< 18: Nine-patch bottom border.
-        uint16_t cursor_frame_width;    ///< 20: Cursor frame width.
-        uint16_t cursor_frame_height;   ///< 22: Cursor frame height.
+        u32 ui_palette_hash;       ///< 0:  UI palette pak-path hash (0xFFFFFFFF invalid).
+        u32 font_hash;             ///< 4:  Font pak-path hash (0xFFFFFFFF invalid).
+        u16 nine_patch_bitmap_id;  ///< 8:  Nine-patch BMPS id, or 0xFFFF.
+        u16 cursor_bitmap_id;      ///< 10: Cursor-sheet BMPS id, or 0xFFFF.
+        u16 nine_patch_left;       ///< 12: Nine-patch left border.
+        u16 nine_patch_top;        ///< 14: Nine-patch top border.
+        u16 nine_patch_right;      ///< 16: Nine-patch right border.
+        u16 nine_patch_bottom;     ///< 18: Nine-patch bottom border.
+        u16 cursor_frame_width;    ///< 20: Cursor frame width.
+        u16 cursor_frame_height;   ///< 22: Cursor frame height.
         range cursor_range;             ///< 24: CURS range.
-        uint32_t reserved0;             ///< 28: Reserved, zero.
+        u32 reserved0;             ///< 28: Reserved, zero.
     };
 
     static_assert(sizeof(ui_state) == 32, "ui_state must be exactly 32 bytes");
@@ -186,11 +188,11 @@ namespace NEONengine::data
      */
     struct inventory_config
     {
-        uint16_t sheet_bitmap_id;   ///< 0:  Inventory-sheet BMPS id, or 0xFFFF when disabled.
-        uint16_t frame_width;       ///< 2:  Item frame width.
-        uint16_t frame_height;      ///< 4:  Item frame height.
+        u16 sheet_bitmap_id;   ///< 0:  Inventory-sheet BMPS id, or 0xFFFF when disabled.
+        u16 frame_width;       ///< 2:  Item frame width.
+        u16 frame_height;      ///< 4:  Item frame height.
         range item_range;           ///< 6:  INVT range.
-        uint16_t reserved0;         ///< 10: Reserved, zero.
+        u16 reserved0;         ///< 10: Reserved, zero.
     };
 
     static_assert(sizeof(inventory_config) == 12, "inventory_config must be exactly 12 bytes");
@@ -203,9 +205,9 @@ namespace NEONengine::data
      */
     struct cursor
     {
-        uint16_t frame;           ///< 0: Frame index in the cursor sheet.
-        point<uint16_t> hotspot;  ///< 2: Click hotspot within the frame.
-        uint16_t reserved0;       ///< 6: Reserved, zero.
+        u16 frame;           ///< 0: Frame index in the cursor sheet.
+        point<u16> hotspot;  ///< 2: Click hotspot within the frame.
+        u16 reserved0;       ///< 6: Reserved, zero.
     };
 
     static_assert(sizeof(cursor) == 8, "cursor must be exactly 8 bytes");
@@ -219,10 +221,10 @@ namespace NEONengine::data
      */
     struct bitmap_ref
     {
-        uint32_t bitmap_hash;   ///< 0:  Bitmap pak-path hash.
-        uint32_t mask_hash;     ///< 4:  Mask bitmap pak-path hash, or 0xFFFFFFFF.
-        uint32_t palette_hash;  ///< 8:  Palette pak-path hash.
-        uint32_t reserved0;     ///< 12: Reserved, zero.
+        u32 bitmap_hash;   ///< 0:  Bitmap pak-path hash.
+        u32 mask_hash;     ///< 4:  Mask bitmap pak-path hash, or 0xFFFFFFFF.
+        u32 palette_hash;  ///< 8:  Palette pak-path hash.
+        u32 reserved0;     ///< 12: Reserved, zero.
     };
 
     static_assert(sizeof(bitmap_ref) == 16, "bitmap_ref must be exactly 16 bytes");
@@ -236,10 +238,10 @@ namespace NEONengine::data
      */
     struct inventory_item
     {
-        uint16_t frame;                  ///< 0: Inventory-sheet frame index.
-        uint16_t name_string_id;         ///< 2: Name string id.
-        uint16_t description_string_id;  ///< 4: Description string id.
-        uint16_t reserved0;              ///< 6: Reserved, zero.
+        u16 frame;                  ///< 0: Inventory-sheet frame index.
+        u16 name_string_id;         ///< 2: Name string id.
+        u16 description_string_id;  ///< 4: Description string id.
+        u16 reserved0;              ///< 6: Reserved, zero.
     };
 
     static_assert(sizeof(inventory_item) == 8, "inventory_item must be exactly 8 bytes");
@@ -251,8 +253,8 @@ namespace NEONengine::data
      */
     struct speaker
     {
-        uint16_t name_string_id;     ///< 0: Display-name string id.
-        uint16_t portrait_bitmap_id; ///< 2: Portrait BMPS id, or 0xFFFF.
+        u16 name_string_id;     ///< 0: Display-name string id.
+        u16 portrait_bitmap_id; ///< 2: Portrait BMPS id, or 0xFFFF.
     };
 
     static_assert(sizeof(speaker) == 4, "speaker must be exactly 4 bytes");
@@ -272,14 +274,14 @@ namespace NEONengine::data
     struct hotspot
     {
         rect bounds;               ///< 0:  Interaction region.
-        uint16_t z_order;          ///< 8:  Hit-test priority.
-        uint8_t cursor;            ///< 10: Cursor role 0-4.
-        uint8_t flags;             ///< 11: bit0 = initially enabled.
-        uint16_t hover_string_id;  ///< 12: Hover string id, or 0xFFFF.
-        uint16_t click_function_id;///< 14: Click FUNC id, or 0xFFFF.
-        uint16_t goto_scene_id;    ///< 16: Goto SCEN id, or 0xFFFF.
-        uint16_t graphic_id;       ///< 18: State-graphic GFXS id, or 0xFFFF.
-        uint32_t click_sfx_hash;   ///< 20: Click SFX pak-path hash, or 0xFFFFFFFF.
+        u16 z_order;          ///< 8:  Hit-test priority.
+        u8 cursor;            ///< 10: Cursor role 0-4.
+        u8 flags;             ///< 11: bit0 = initially enabled.
+        u16 hover_string_id;  ///< 12: Hover string id, or 0xFFFF.
+        u16 click_function_id;///< 14: Click FUNC id, or 0xFFFF.
+        u16 goto_scene_id;    ///< 16: Goto SCEN id, or 0xFFFF.
+        u16 graphic_id;       ///< 18: State-graphic GFXS id, or 0xFFFF.
+        u32 click_sfx_hash;   ///< 20: Click SFX pak-path hash, or 0xFFFFFFFF.
     };
 
     static_assert(sizeof(hotspot) == 24, "hotspot must be exactly 24 bytes");
@@ -298,11 +300,11 @@ namespace NEONengine::data
     struct text_region
     {
         rect bounds;           ///< 0:  Layout rectangle.
-        uint16_t z_order;      ///< 8:  Draw order.
-        uint8_t color_index;   ///< 10: UI palette color index, 0-31.
-        uint8_t control_bits;  ///< 11: Alignment and full-scene layout bits.
-        uint16_t string_id;    ///< 12: Text string id.
-        uint16_t reserved0;    ///< 14: Reserved, zero.
+        u16 z_order;      ///< 8:  Draw order.
+        u8 color_index;   ///< 10: UI palette color index, 0-31.
+        u8 control_bits;  ///< 11: Alignment and full-scene layout bits.
+        u16 string_id;    ///< 12: Text string id.
+        u16 reserved0;    ///< 14: Reserved, zero.
     };
 
     static_assert(sizeof(text_region) == 16, "text_region must be exactly 16 bytes");
@@ -324,14 +326,14 @@ namespace NEONengine::data
      */
     struct graphic
     {
-        uint16_t source_bitmap_id;  ///< 0:  Source bitmap BMPS id.
-        uint16_t frame_width;       ///< 2:  Frame width (equals the bitmap width).
-        uint16_t frame_height;      ///< 4:  Frame height.
-        uint8_t frame_count;        ///< 6:  Frame count, 1-255.
-        uint8_t frame_delay;        ///< 7:  Frame delay in PAL frames; 0 when static.
-        uint8_t palette_slot;       ///< 8:  BOB palette slot, 0-5.
-        uint8_t reserved0;          ///< 9:  Reserved, zero.
-        uint16_t reserved1;         ///< 10: Reserved, zero.
+        u16 source_bitmap_id;  ///< 0:  Source bitmap BMPS id.
+        u16 frame_width;       ///< 2:  Frame width (equals the bitmap width).
+        u16 frame_height;      ///< 4:  Frame height.
+        u8 frame_count;        ///< 6:  Frame count, 1-255.
+        u8 frame_delay;        ///< 7:  Frame delay in PAL frames; 0 when static.
+        u8 palette_slot;       ///< 8:  BOB palette slot, 0-5.
+        u8 reserved0;          ///< 9:  Reserved, zero.
+        u16 reserved1;         ///< 10: Reserved, zero.
     };
 
     static_assert(sizeof(graphic) == 12, "graphic must be exactly 12 bytes");
@@ -348,12 +350,12 @@ namespace NEONengine::data
      */
     struct graphic_instance
     {
-        uint16_t graphic_id;       ///< 0:  Global GFXS id.
-        point<uint16_t> pos;       ///< 2:  Placement position (Y, X).
-        uint16_t z_order;          ///< 6:  Draw order.
-        uint8_t reserved0;         ///< 8:  Reserved, zero (palette slot lives on GFXS).
-        uint8_t flags;             ///< 9:  bit0 = initially visible.
-        uint16_t reserved1;        ///< 10: Reserved, zero.
+        u16 graphic_id;       ///< 0:  Global GFXS id.
+        point<u16> pos;       ///< 2:  Placement position (Y, X).
+        u16 z_order;          ///< 6:  Draw order.
+        u8 reserved0;         ///< 8:  Reserved, zero (palette slot lives on GFXS).
+        u8 flags;             ///< 9:  bit0 = initially visible.
+        u16 reserved1;        ///< 10: Reserved, zero.
     };
 
     static_assert(sizeof(graphic_instance) == 12, "graphic_instance must be exactly 12 bytes");
@@ -369,10 +371,10 @@ namespace NEONengine::data
      */
     struct keyframe
     {
-        uint16_t time;        ///< 0: Time in PAL frames.
-        uint8_t type;         ///< 2: Keyframe type.
-        uint8_t flags;        ///< 3: bit0 fire_once; bit1 interpolate (GFX_MOVE only).
-        uint8_t payload[8];   ///< 4: Type-specific payload.
+        u16 time;        ///< 0: Time in PAL frames.
+        u8 type;         ///< 2: Keyframe type.
+        u8 flags;        ///< 3: bit0 fire_once; bit1 interpolate (GFX_MOVE only).
+        u8 payload[8];   ///< 4: Type-specific payload.
     };
 
     static_assert(sizeof(keyframe) == 12, "keyframe must be exactly 12 bytes");
@@ -385,7 +387,7 @@ namespace NEONengine::data
      * The enumerators are the record's own ids, so track::loop_mode converts
      * straight to one of these.
      */
-    enum class loop_mode : uint8_t
+    enum class loop_mode : u8
     {
         NONE      = 0,  ///< Play once and stop.
         RESTART   = 1,  ///< Jump back to the start and play forwards again.
@@ -398,7 +400,7 @@ namespace NEONengine::data
      * The enumerators are the record's own ids, so keyframe::type converts
      * straight to one of these.
      */
-    enum class keyframe_type : uint8_t
+    enum class keyframe_type : u8
     {
         GFX_MOVE            = 0,
         GFX_VISIBILITY      = 1,
@@ -412,13 +414,13 @@ namespace NEONengine::data
     };
 
     /// One past the highest keyframe_type this build knows about.
-    constexpr uint8_t KEYFRAME_TYPE_COUNT = 9;
+    constexpr u8 KEYFRAME_TYPE_COUNT = 9;
 
     /// keyframe::flags bit 0: the keyframe fires only on its first encounter.
-    constexpr uint8_t KEYFRAME_FLAG_FIRE_ONCE = 1 << 0;
+    constexpr u8 KEYFRAME_FLAG_FIRE_ONCE = 1 << 0;
 
     /// keyframe::flags bit 1: GFX_MOVE interpolates towards its position.
-    constexpr uint8_t KEYFRAME_FLAG_INTERPOLATE = 1 << 1;
+    constexpr u8 KEYFRAME_FLAG_INTERPOLATE = 1 << 1;
 
     /**
      * @brief 'KEYS' GFX_MOVE payload: where a graphic instance is to be.
@@ -430,9 +432,9 @@ namespace NEONengine::data
      */
     struct gfx_move_payload
     {
-        uint16_t instance_id;  ///< 0: Global GFXI id.
-        point<uint16_t> pos;   ///< 2: Position (Y, X).
-        uint16_t reserved;     ///< 6: Reserved, zero.
+        u16 instance_id;  ///< 0: Global GFXI id.
+        point<u16> pos;   ///< 2: Position (Y, X).
+        u16 reserved;     ///< 6: Reserved, zero.
     };
 
     static_assert(sizeof(gfx_move_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -443,9 +445,9 @@ namespace NEONengine::data
      */
     struct gfx_visibility_payload
     {
-        uint16_t instance_id;  ///< 0: Global GFXI id.
-        uint8_t visible;       ///< 2: Nonzero to draw the instance.
-        uint8_t reserved[5];   ///< 3: Reserved, zero.
+        u16 instance_id;  ///< 0: Global GFXI id.
+        u8 visible;       ///< 2: Nonzero to draw the instance.
+        u8 reserved[5];   ///< 3: Reserved, zero.
     };
 
     static_assert(sizeof(gfx_visibility_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -465,11 +467,11 @@ namespace NEONengine::data
      */
     struct palette_cycle_start_payload
     {
-        uint16_t cycle_id;  ///< 0: Identifies the pair within the timeline.
-        uint8_t first;      ///< 2: First palette entry of the band.
-        uint8_t last;       ///< 3: Last palette entry of the band, inclusive.
-        uint16_t delay;     ///< 4: Frames each rotation step is held for.
-        uint16_t reserved;  ///< 6: Reserved, zero.
+        u16 cycle_id;  ///< 0: Identifies the pair within the timeline.
+        u8 first;      ///< 2: First palette entry of the band.
+        u8 last;       ///< 3: Last palette entry of the band, inclusive.
+        u16 delay;     ///< 4: Frames each rotation step is held for.
+        u16 reserved;  ///< 6: Reserved, zero.
     };
 
     static_assert(sizeof(palette_cycle_start_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -484,8 +486,8 @@ namespace NEONengine::data
      */
     struct palette_cycle_end_payload
     {
-        uint16_t cycle_id;    ///< 0: Identifies the pair within the timeline.
-        uint8_t reserved[6];  ///< 2: Reserved, zero.
+        u16 cycle_id;    ///< 0: Identifies the pair within the timeline.
+        u8 reserved[6];  ///< 2: Reserved, zero.
     };
 
     static_assert(sizeof(palette_cycle_end_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -500,9 +502,9 @@ namespace NEONengine::data
      */
     struct sfx_play_payload
     {
-        uint32_t sfx_hash;    ///< 0: SFX pak-path hash.
-        int8_t channel;       ///< 4: Unused; -1 picks a channel, 0 and 1 name one.
-        uint8_t reserved[3];  ///< 5: Reserved, zero.
+        u32 sfx_hash;    ///< 0: SFX pak-path hash.
+        i8 channel;       ///< 4: Unused; -1 picks a channel, 0 and 1 name one.
+        u8 reserved[3];  ///< 5: Reserved, zero.
     };
 
     static_assert(sizeof(sfx_play_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -513,9 +515,9 @@ namespace NEONengine::data
      */
     struct music_play_payload
     {
-        uint32_t music_hash;  ///< 0: MOD pak-path hash.
-        uint8_t loop;         ///< 4: Nonzero to repeat the song.
-        uint8_t reserved[3];  ///< 5: Reserved, zero.
+        u32 music_hash;  ///< 0: MOD pak-path hash.
+        u8 loop;         ///< 4: Nonzero to repeat the song.
+        u8 reserved[3];  ///< 5: Reserved, zero.
     };
 
     static_assert(sizeof(music_play_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -531,8 +533,8 @@ namespace NEONengine::data
      */
     struct execute_script_payload
     {
-        uint16_t function_id;  ///< 0: FUNC id to execute.
-        uint16_t reserved[3];  ///< 2: Reserved, zero.
+        u16 function_id;  ///< 0: FUNC id to execute.
+        u16 reserved[3];  ///< 2: Reserved, zero.
     };
 
     static_assert(sizeof(execute_script_payload) == 8, "a keyframe payload is exactly 8 bytes");
@@ -551,16 +553,16 @@ namespace NEONengine::data
     struct track
     {
         range keyframe_range;  ///< 0:  KEYS range.
-        uint16_t duration;     ///< 4:  Last playhead position, in PAL frames.
-        uint8_t loop_mode;     ///< 6:  A data::loop_mode.
-        uint8_t loop_count;    ///< 7:  Complete cycles; 0 = infinite.
-        uint8_t flags;         ///< 8:  bit0 auto_start.
-        uint8_t reserved0;     ///< 9:  Reserved, zero.
-        uint16_t name_id;      ///< 10: Track name id, shared by tracks of the same name.
+        u16 duration;     ///< 4:  Last playhead position, in PAL frames.
+        u8 loop_mode;     ///< 6:  A data::loop_mode.
+        u8 loop_count;    ///< 7:  Complete cycles; 0 = infinite.
+        u8 flags;         ///< 8:  bit0 auto_start.
+        u8 reserved0;     ///< 9:  Reserved, zero.
+        u16 name_id;      ///< 10: Track name id, shared by tracks of the same name.
     };
 
     /// track::flags bit 0: the track starts by itself when the scene loads.
-    constexpr uint8_t TRACK_FLAG_AUTO_START = 1 << 0;
+    constexpr u8 TRACK_FLAG_AUTO_START = 1 << 0;
 
     static_assert(sizeof(track) == 12, "track must be exactly 12 bytes");
     static_assert(__builtin_offsetof(track, duration) == 4, "duration must be at offset 4");
@@ -577,7 +579,7 @@ namespace NEONengine::data
     struct timeline
     {
         range track_range;   ///< 0: TRAK range.
-        uint32_t reserved0;  ///< 4: Reserved, zero.
+        u32 reserved0;  ///< 4: Reserved, zero.
     };
 
     static_assert(sizeof(timeline) == 8, "timeline must be exactly 8 bytes");
@@ -590,14 +592,14 @@ namespace NEONengine::data
      */
     struct choice
     {
-        uint16_t text_string_id;   ///< 0:  Text string id.
-        uint16_t set_flag_id;      ///< 2:  Set flag id, or 0xFFFF.
-        uint16_t clear_flag_id;    ///< 4:  Clear flag id, or 0xFFFF.
-        uint16_t check_flag_id;    ///< 6:  Check flag id, or 0xFFFF.
-        uint16_t goto_page_id;     ///< 8:  Goto global PAGS id, or 0xFFFF.
-        uint16_t click_function_id;///< 10: On-click FUNC id, or 0xFFFF.
-        uint16_t flags;            ///< 12: bit0 enabled; bit1 disable-after-read.
-        uint16_t reserved0;        ///< 14: Reserved, zero.
+        u16 text_string_id;   ///< 0:  Text string id.
+        u16 set_flag_id;      ///< 2:  Set flag id, or 0xFFFF.
+        u16 clear_flag_id;    ///< 4:  Clear flag id, or 0xFFFF.
+        u16 check_flag_id;    ///< 6:  Check flag id, or 0xFFFF.
+        u16 goto_page_id;     ///< 8:  Goto global PAGS id, or 0xFFFF.
+        u16 click_function_id;///< 10: On-click FUNC id, or 0xFFFF.
+        u16 flags;            ///< 12: bit0 enabled; bit1 disable-after-read.
+        u16 reserved0;        ///< 14: Reserved, zero.
     };
 
     static_assert(sizeof(choice) == 16, "choice must be exactly 16 bytes");
@@ -611,14 +613,14 @@ namespace NEONengine::data
      */
     struct page
     {
-        uint16_t speaker_id;         ///< 0:  Speaker id, or 0xFFFF.
-        uint16_t text_string_id;     ///< 2:  Text string id.
-        uint16_t set_flag_id;        ///< 4:  Set flag id, or 0xFFFF.
-        uint16_t clear_flag_id;      ///< 6:  Clear flag id, or 0xFFFF.
-        uint16_t check_flag_id;      ///< 8:  Check flag id, or 0xFFFF.
-        uint16_t next_page_id;       ///< 10: Next global PAGS id, or 0xFFFF.
-        uint16_t display_function_id;///< 12: On-display FUNC id, or 0xFFFF.
-        uint16_t flags;              ///< 14: bit0 enabled; bit1 disable-after-read.
+        u16 speaker_id;         ///< 0:  Speaker id, or 0xFFFF.
+        u16 text_string_id;     ///< 2:  Text string id.
+        u16 set_flag_id;        ///< 4:  Set flag id, or 0xFFFF.
+        u16 clear_flag_id;      ///< 6:  Clear flag id, or 0xFFFF.
+        u16 check_flag_id;      ///< 8:  Check flag id, or 0xFFFF.
+        u16 next_page_id;       ///< 10: Next global PAGS id, or 0xFFFF.
+        u16 display_function_id;///< 12: On-display FUNC id, or 0xFFFF.
+        u16 flags;              ///< 14: bit0 enabled; bit1 disable-after-read.
         range choice_range;          ///< 16: CHOC range.
     };
 
@@ -634,8 +636,8 @@ namespace NEONengine::data
     struct dialogue
     {
         range page_range;           ///< 0: PAGS range.
-        uint16_t first_page_id;     ///< 4: First global PAGS id, or 0xFFFF.
-        uint16_t reserved0;         ///< 6: Reserved, zero.
+        u16 first_page_id;     ///< 4: First global PAGS id, or 0xFFFF.
+        u16 reserved0;         ///< 6: Reserved, zero.
     };
 
     static_assert(sizeof(dialogue) == 8, "dialogue must be exactly 8 bytes");
@@ -648,16 +650,16 @@ namespace NEONengine::data
      */
     struct scene
     {
-        uint32_t music_hash;                    ///< 0:  MOD hash, 0xFFFFFFFF keep, 0xFFFFFFFE silence.
-        uint16_t background_bitmap_id;          ///< 4:  Background BMPS id, or 0xFFFF.
-        uint16_t timeline_id;                   ///< 6:  TIME id, or 0xFFFF.
-        uint16_t on_enter_function_id;          ///< 8:  On-enter FUNC id, or 0xFFFF.
-        uint16_t on_exit_function_id;           ///< 10: On-exit FUNC id, or 0xFFFF.
-        uint16_t goto_scene_id;                 ///< 12: Goto SCEN id, or 0xFFFF.
-        uint16_t flags;                         ///< 14: bit0 constrains mouse; bit1 shows UI overlay.
-        point<uint16_t> offset;                 ///< 16: Screen position of the background top-left.
-        uint16_t width;                         ///< 20: Width.
-        uint16_t height;                        ///< 22: Height.
+        u32 music_hash;                    ///< 0:  MOD hash, 0xFFFFFFFF keep, 0xFFFFFFFE silence.
+        u16 background_bitmap_id;          ///< 4:  Background BMPS id, or 0xFFFF.
+        u16 timeline_id;                   ///< 6:  TIME id, or 0xFFFF.
+        u16 on_enter_function_id;          ///< 8:  On-enter FUNC id, or 0xFFFF.
+        u16 on_exit_function_id;           ///< 10: On-exit FUNC id, or 0xFFFF.
+        u16 goto_scene_id;                 ///< 12: Goto SCEN id, or 0xFFFF.
+        u16 flags;                         ///< 14: bit0 constrains mouse; bit1 shows UI overlay.
+        point<u16> offset;                 ///< 16: Screen position of the background top-left.
+        u16 width;                         ///< 20: Width.
+        u16 height;                        ///< 22: Height.
         range scene_description_range;          ///< 24: SDES range.
         range hotspot_range;                    ///< 28: HOTS range.
         range text_region_range;                ///< 32: TXTR range.
@@ -666,10 +668,10 @@ namespace NEONengine::data
     };
 
     /// scene::flags bit 0: the mouse is held inside the scene rectangle.
-    constexpr uint16_t SCENE_FLAG_CONSTRAIN_MOUSE = 1 << 0;
+    constexpr u16 SCENE_FLAG_CONSTRAIN_MOUSE = 1 << 0;
 
     /// scene::flags bit 1: the scene shows the game UI overlay and the pointer.
-    constexpr uint16_t SCENE_FLAG_SHOW_UI = 1 << 1;
+    constexpr u16 SCENE_FLAG_SHOW_UI = 1 << 1;
 
     static_assert(sizeof(scene) == 44, "scene must be exactly 44 bytes");
     static_assert(__builtin_offsetof(scene, background_bitmap_id) == 4, "background_bitmap_id must be at offset 4");
@@ -679,8 +681,8 @@ namespace NEONengine::data
     static_assert(__builtin_offsetof(scene, graphic_instance_range) == 40, "graphic_instance_range must be at offset 40");
 
     // 'SDES', 'FUNC', and 'VALS' are scalar collections with no record struct:
-    // they are exposed as spans of uint16_t (string ids), uint32_t (SCRP byte
-    // offsets), and int16_t (initial values) respectively. 'SCRP' is a raw
+    // they are exposed as spans of u16 (string ids), u32 (SCRP byte
+    // offsets), and i16 (initial values) respectively. 'SCRP' is a raw
     // bytecode byte payload and 'FLGS' is a uint16 flag count followed by packed
     // initial bits; both are variable Data chunks accessed without a record type.
 
@@ -691,7 +693,7 @@ namespace NEONengine::data
      * FourCC is given by fourcc_of(); the four-character codes appear only as
      * data in KNOWN_CHUNK_FOURCCS, never as identifiers.
      */
-    enum class known_chunk : uint32_t
+    enum class known_chunk : u32
     {
         config,              ///< 'CONF' Data: display geometry and default fade.
         ui_state,            ///< 'UIST' Data: UI palette/font, nine-patch, and cursor config.
@@ -722,12 +724,12 @@ namespace NEONengine::data
     /**
      * @brief The number of known chunks a valid version 2 file contains.
      */
-    inline constexpr uint32_t KNOWN_CHUNK_COUNT = mtl::to<uint32_t>(known_chunk::count);
+    inline constexpr u32 KNOWN_CHUNK_COUNT = to<u32>(known_chunk::count);
 
     /**
      * @brief The on-disk big-endian FourCC for each known chunk, in enum order.
      */
-    inline constexpr uint32_t KNOWN_CHUNK_FOURCCS[] = {
+    inline constexpr u32 KNOWN_CHUNK_FOURCCS[] = {
         make_fourcc("CONF"), make_fourcc("UIST"), make_fourcc("CURS"), make_fourcc("BMPS"),
         make_fourcc("INVC"), make_fourcc("INVT"), make_fourcc("SPKR"), make_fourcc("HOTS"),
         make_fourcc("TXTR"), make_fourcc("GFXS"), make_fourcc("GFXI"), make_fourcc("SDES"),
@@ -736,13 +738,13 @@ namespace NEONengine::data
         make_fourcc("PAGS"), make_fourcc("DLGS"), make_fourcc("SCEN"),
     };
 
-    static_assert(sizeof(KNOWN_CHUNK_FOURCCS) / sizeof(uint32_t) == mtl::to<uint32_t>(known_chunk::count),
+    static_assert(sizeof(KNOWN_CHUNK_FOURCCS) / sizeof(u32) == to<u32>(known_chunk::count),
         "KNOWN_CHUNK_FOURCCS must have one entry per known_chunk");
 
     /**
      * @brief The on-disk FourCC for a known chunk.
      */
-    constexpr uint32_t fourcc_of(known_chunk chunk) { return KNOWN_CHUNK_FOURCCS[mtl::to<uint32_t>(chunk)]; }
+    constexpr u32 fourcc_of(known_chunk chunk) { return KNOWN_CHUNK_FOURCCS[to<u32>(chunk)]; }
 
     /**
      * @brief The on-disk element size for each known chunk, in enum order.
@@ -751,7 +753,7 @@ namespace NEONengine::data
      * SCRP, FLGS) carry 0, as they have no fixed element stride. The loader uses
      * this to reject any chunk whose stride disagrees with this build.
      */
-    inline constexpr uint32_t KNOWN_CHUNK_ELEMENT_SIZES[] = {
+    inline constexpr u32 KNOWN_CHUNK_ELEMENT_SIZES[] = {
         0,                         // CONF
         0,                         // UIST
         sizeof(cursor),            // CURS
@@ -763,21 +765,21 @@ namespace NEONengine::data
         sizeof(text_region),       // TXTR
         sizeof(graphic),           // GFXS
         sizeof(graphic_instance),  // GFXI
-        sizeof(uint16_t),          // SDES
+        sizeof(u16),          // SDES
         sizeof(keyframe),          // KEYS
         sizeof(track),             // TRAK
         sizeof(timeline),          // TIME
-        sizeof(uint32_t),          // FUNC
+        sizeof(u32),          // FUNC
         0,                         // SCRP
         0,                         // FLGS
-        sizeof(int16_t),           // VALS
+        sizeof(i16),           // VALS
         sizeof(choice),            // CHOC
         sizeof(page),              // PAGS
         sizeof(dialogue),          // DLGS
         sizeof(scene),             // SCEN
     };
 
-    static_assert(sizeof(KNOWN_CHUNK_ELEMENT_SIZES) / sizeof(uint32_t) == KNOWN_CHUNK_COUNT,
+    static_assert(sizeof(KNOWN_CHUNK_ELEMENT_SIZES) / sizeof(u32) == KNOWN_CHUNK_COUNT,
         "KNOWN_CHUNK_ELEMENT_SIZES must have one entry per known_chunk");
 
     /**
@@ -786,9 +788,9 @@ namespace NEONengine::data
      * @return The index in [0, KNOWN_CHUNK_COUNT), or KNOWN_CHUNK_COUNT if the
      *         FourCC is not a known chunk.
      */
-    constexpr uint32_t known_chunk_index(uint32_t fourcc)
+    constexpr u32 known_chunk_index(u32 fourcc)
     {
-        for (uint32_t index = 0; index < KNOWN_CHUNK_COUNT; ++index)
+        for (u32 index = 0; index < KNOWN_CHUNK_COUNT; ++index)
         {
             if (KNOWN_CHUNK_FOURCCS[index] == fourcc)
             {

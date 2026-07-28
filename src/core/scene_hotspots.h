@@ -6,6 +6,8 @@
 #ifndef __SCENE_HOTSPOTS_H__INCLUDED__
 #define __SCENE_HOTSPOTS_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include "game_data_format.h"
@@ -43,7 +45,7 @@ namespace NEONengine
      * @param id A global HOTS id; ids outside the current scene are ignored.
      * @param enabled True to let the hotspot respond to the pointer.
      */
-    void scene_hotspots_set_enabled(uint16_t id, bool enabled);
+    void scene_hotspots_set_enabled(u16 id, bool enabled);
 }  // namespace NEONengine
 
 #endif  // __SCENE_HOTSPOTS_H__INCLUDED__

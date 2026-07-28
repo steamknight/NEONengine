@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -17,7 +19,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_mov16_imm16_to_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -36,7 +38,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_mov16_imm8_to_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // MOV16 with imm8 source — should zero-extend
         bc.emit(noir_op::MOV16);
@@ -56,7 +58,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_mov16_reg_to_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
@@ -80,7 +82,7 @@ namespace NEONengine
     {
         // Verify all 4 data registers can be independently loaded and read
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -115,7 +117,7 @@ namespace NEONengine
     {
         // Write imm16 to a local variable, read it back into a register
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(4);  // 2 x 16-bit locals
@@ -123,13 +125,13 @@ namespace NEONengine
         // MOV16 [FP-2], #0xCAFE   (dst=LOCAL inline first, then src=IMM16)
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));  // dst: LOCAL offset
+        bc.emit(to<u8>(-2));  // dst: LOCAL offset
         bc.emit_u16(0xCAFE);                // src: IMM16
 
         // MOV16 D0, [FP-2]
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));  // src: LOCAL offset
+        bc.emit(to<u8>(-2));  // src: LOCAL offset
 
         bc.emit(noir_op::RET);
 
@@ -145,7 +147,7 @@ namespace NEONengine
     {
         // Write different values to two local slots, read both back
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(4);  // 2 x 16-bit locals
@@ -153,24 +155,24 @@ namespace NEONengine
         // [FP-2] = 0xAAAA
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit_u16(0xAAAA);
 
         // [FP-4] = 0xBBBB
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-4));
+        bc.emit(to<u8>(-4));
         bc.emit_u16(0xBBBB);
 
         // D0 = [FP-2]
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         // D1 = [FP-4]
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-4));
+        bc.emit(to<u8>(-4));
 
         bc.emit(noir_op::RET);
 
@@ -187,7 +189,7 @@ namespace NEONengine
     {
         // MOV16 [FP-2], D1 — register as source, local as destination
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(2);
@@ -200,12 +202,12 @@ namespace NEONengine
         // [FP-2] = D1
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::REG_D1);
-        bc.emit(static_cast<uint8_t>(-2));  // dst: LOCAL offset (no src inline data)
+        bc.emit(to<u8>(-2));  // dst: LOCAL offset (no src inline data)
 
         // D0 = [FP-2]
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         bc.emit(noir_op::RET);
 
@@ -221,7 +223,7 @@ namespace NEONengine
     {
         // Write to VALUES[3] via mode byte, read it back
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // MOV16 value[3], #0xDEAD
         bc.emit(noir_op::MOV16);
@@ -248,7 +250,7 @@ namespace NEONengine
     {
         // Write to VALUES[D0], then read back via VALUES[D0]
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // D0 = 5 (index)
         bc.emit(noir_op::MOV16);
@@ -289,7 +291,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_mov8_imm8_to_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // First set D0 to a value with high byte set
         bc.emit(noir_op::MOV16);
@@ -315,7 +317,7 @@ namespace NEONengine
     {
         // MOV8 copies only the low byte and zeroes the high byte of dst
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
@@ -339,7 +341,7 @@ namespace NEONengine
     {
         // Write a byte to local, read it back with MOV8
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(2);
@@ -347,13 +349,13 @@ namespace NEONengine
         // MOV8 [FP-2], #0x7F
         bc.emit(noir_op::MOV8);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM8);
-        bc.emit(static_cast<uint8_t>(-2));  // dst: LOCAL offset
+        bc.emit(to<u8>(-2));  // dst: LOCAL offset
         bc.emit(0x7F);                      // src: imm8
 
         // MOV8 D0, [FP-2] — reads back the 16-bit word, masked to 8 bits
         bc.emit(noir_op::MOV8);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         bc.emit(noir_op::RET);
 
@@ -371,7 +373,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_xchg_registers)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -400,7 +402,7 @@ namespace NEONengine
     {
         // XCHG D2, D2 — should be a no-op
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
@@ -427,7 +429,7 @@ namespace NEONengine
     {
         // Test XCHG with non-D0/D1 registers
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
@@ -457,7 +459,7 @@ namespace NEONengine
     {
         // PUSH D0, POP D1 — basic register round-trip through stack
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -494,7 +496,7 @@ namespace NEONengine
     {
         // PUSH #imm16, POP D0 — push an immediate, pop it back
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // PUSH #0x5555
         bc.emit(noir_op::PUSH);
@@ -519,7 +521,7 @@ namespace NEONengine
     {
         // PUSH A, PUSH B → POP should give B first (LIFO)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -560,7 +562,7 @@ namespace NEONengine
     {
         // PUSH from a local variable, POP into a register
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(2);
@@ -568,13 +570,13 @@ namespace NEONengine
         // [FP-2] = 0x7777
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit_u16(0x7777);
 
         // PUSH [FP-2]
         bc.emit(noir_op::PUSH);
         bc.emit_mode(0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         // POP D0
         bc.emit(noir_op::POP);
@@ -596,7 +598,7 @@ namespace NEONengine
     {
         // TOP reads stack top without removing it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // PUSH #0x3333
         bc.emit(noir_op::PUSH);
@@ -633,7 +635,7 @@ namespace NEONengine
     {
         // DUP should push a copy of the top value
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // PUSH #0x4444
         bc.emit(noir_op::PUSH);
@@ -666,7 +668,7 @@ namespace NEONengine
     {
         // Push two values, DUP, verify the deeper value is untouched
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // PUSH #0x1111 (deep)
         bc.emit(noir_op::PUSH);
@@ -710,7 +712,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_clr_register)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -734,7 +736,7 @@ namespace NEONengine
     {
         // CLR D0 should not touch D1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -763,7 +765,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_data_move_invalid_opcode)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // 0x13 and 0x19 are reserved in the data movement range
         bc.emit(0x13);

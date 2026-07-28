@@ -53,17 +53,19 @@ namespace mtl
     if (__builtin_is_constant_evaluated()) { static_assert(false, error); } \
     else { LOG_CRASH(error) }
 
-    // Convenience functions to make casting easier to type and read
+    // static_cast and reinterpret_cast, spelled shorter. The forwarding
+    // reference keeps move-only types working and avoids copying the argument,
+    // so to<T&&> can express a move cast as well.
     template<typename T, typename U>
-    constexpr auto to(U value) -> T
+    constexpr auto to(U&& value) -> T
     {
-        return static_cast<T>(value);
+        return static_cast<T>(forward<U>(value));
     }
 
     template<typename T, typename U>
-    auto force_to(U value) -> T
+    auto force_to(U&& value) -> T
     {
-        return reinterpret_cast<T>(value);
+        return reinterpret_cast<T>(forward<U>(value));
     }
 
     // Convenience macros for class definitions

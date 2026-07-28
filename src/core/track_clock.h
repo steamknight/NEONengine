@@ -25,6 +25,8 @@
 #ifndef __TRACK_CLOCK_H__INCLUDED__
 #define __TRACK_CLOCK_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <mtl/span.h>
@@ -37,7 +39,7 @@ namespace NEONengine
     /**
      * @brief What one tick of a track_clock did, beyond moving the playhead.
      */
-    enum class tick_result : uint8_t
+    enum class tick_result : u8
     {
         IDLE,       ///< The track was not running; nothing moved.
         RUNNING,    ///< The playhead advanced within the current cycle.
@@ -53,8 +55,8 @@ namespace NEONengine
      */
     struct key_run
     {
-        uint16_t first;  ///< Index of the first keyframe at the playhead.
-        uint16_t count;  ///< How many share that position; 0 when none do.
+        u16 first;  ///< Index of the first keyframe at the playhead.
+        u16 count;  ///< How many share that position; 0 when none do.
     };
 
     /**
@@ -95,10 +97,10 @@ namespace NEONengine
         bool is_running() const { return m_running; }
 
         /// @brief The position the playhead occupies this frame.
-        uint16_t position() const { return m_position; }
+        u16 position() const { return m_position; }
 
         /// @brief Cycles completed since start(), saturating rather than wrapping.
-        uint16_t cycles_done() const { return m_cycles; }
+        u16 cycles_done() const { return m_cycles; }
 
         /// @brief Whether a ping-pong playhead is on its way back to the start.
         bool is_reversing() const { return m_reverse; }
@@ -117,13 +119,13 @@ namespace NEONengine
          */
         key_run keys_at(mtl::span<data::keyframe> keys) const
         {
-            uint16_t first = 0;
+            u16 first = 0;
             while (first < keys.size() && keys[first].time < m_position) ++first;
 
-            uint16_t last = first;
+            u16 last = first;
             while (last < keys.size() && keys[last].time == m_position) ++last;
 
-            return key_run{ first, mtl::to<uint16_t>(last - first) };
+            return key_run{ first, to<u16>(last - first) };
         }
 
         /**
@@ -139,7 +141,7 @@ namespace NEONengine
         {
             if (!m_running) return tick_result::IDLE;
 
-            auto const mode    = mtl::to<data::loop_mode>(track.loop_mode);
+            auto const mode    = to<data::loop_mode>(track.loop_mode);
             bool const wrapped = (mode == data::loop_mode::PING_PONG)
                 ? advance_ping_pong(track.duration)
                 : advance_forward(track.duration);
@@ -172,7 +174,7 @@ namespace NEONengine
          * @brief Steps 0, 1, ... duration and back to 0.
          * @return Whether the playhead landed on 0, completing a cycle.
          */
-        bool advance_forward(uint16_t duration)
+        bool advance_forward(u16 duration)
         {
             if (m_position >= effective_duration(duration))
             {
@@ -191,7 +193,7 @@ namespace NEONengine
          *
          * @return Whether the playhead landed on 0, completing a cycle.
          */
-        bool advance_ping_pong(uint16_t duration)
+        bool advance_ping_pong(u16 duration)
         {
             if (!m_reverse)
             {
@@ -221,10 +223,10 @@ namespace NEONengine
          * that: reversing away from position 0 would take the playhead below
          * zero and wrap it to the top of the range.
          */
-        static uint16_t effective_duration(uint16_t duration) { return duration == 0 ? 1 : duration; }
+        static u16 effective_duration(u16 duration) { return duration == 0 ? 1 : duration; }
 
-        uint16_t m_position = 0;      ///< The position occupied this frame.
-        uint16_t m_cycles   = 0;      ///< Cycles completed since start().
+        u16 m_position = 0;      ///< The position occupied this frame.
+        u16 m_cycles   = 0;      ///< Cycles completed since start().
         bool m_running      = false;  ///< Whether tick() moves the playhead.
         bool m_reverse      = false;  ///< Whether a ping-pong is heading back to 0.
     };

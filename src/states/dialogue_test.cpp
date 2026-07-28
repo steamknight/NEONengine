@@ -1,3 +1,5 @@
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <stdint.h>
@@ -31,27 +33,27 @@ namespace NEONengine
             = "I'm the love child of Icarus and Sisyphus; no matter how hard I try to rise above, "
               "my hubris crashes me face first back into the Gutter.\n\nAnd the cycle continues.";
 
-        uint16_t uwMargins = 8;
-        uint16_t uwWidth   = 240;
+        u16 uwMargins = 8;
+        u16 uwWidth   = 240;
 
-        uint32_t ulStartText = timerGetPrec();
+        u32 ulStartText = timerGetPrec();
         auto pTextBitmap     = g_pEngine->default_text_renderer()->create_text(
             text, uwWidth - uwMargins * 2, text_justify::LEFT);
-        uint32_t ulEndText = timerGetPrec();
+        u32 ulEndText = timerGetPrec();
 
         auto patch        = nine_patch(pPatchBitmap, 16, 16, 16, 16);
-        uint16_t uwHeight = pTextBitmap->uwActualHeight + uwMargins * 2;
+        u16 uwHeight = pTextBitmap->uwActualHeight + uwMargins * 2;
 
-        uint32_t ulStartPatch = timerGetPrec();
+        u32 ulStartPatch = timerGetPrec();
         auto pRenderedPatch   = patch.render(uwWidth, uwHeight, 0);
-        uint32_t ulEndPatch   = timerGetPrec();
+        u32 ulEndPatch   = timerGetPrec();
 
-        uint32_t ulStartRender = timerGetPrec();
+        u32 ulStartRender = timerGetPrec();
         screenBlitCopy(
             g_mainScreen, pRenderedPatch.get(), 0, 0, 0, 0, uwWidth, uwHeight, MINTERM_COOKIE);
         screenTextCopy(
             g_mainScreen, pTextBitmap.get(), uwMargins, uwMargins, 1, FONT_COOKIE | FONT_SHADOW);
-        uint32_t ulEndRender = timerGetPrec();
+        u32 ulEndRender = timerGetPrec();
 
         char timerBuffer[64];
         char renderBuffer[128];

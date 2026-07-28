@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -31,7 +33,7 @@ namespace NEONengine
     {
         // INV_ADD with D0=42 → bridge->inv_add(42)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -54,7 +56,7 @@ namespace NEONengine
     {
         // D0 should not be modified by INV_ADD
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -76,7 +78,7 @@ namespace NEONengine
     {
         // Add several items in sequence
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -110,7 +112,7 @@ namespace NEONengine
     {
         // INV_ADD should not modify SR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set up known SR: CMP 10,10 → Z=1
         bc.emit(noir_op::MOV16);
@@ -138,7 +140,7 @@ namespace NEONengine
     {
         // D1-D3 should be untouched
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -174,7 +176,7 @@ namespace NEONengine
     {
         // item_id = 0 should still call bridge
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, 0);
@@ -194,9 +196,9 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_inv_add_max_item_id)
     {
-        // item_id = 0xFFFF (max uint16_t)
+        // item_id = 0xFFFF (max u16)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -220,7 +222,7 @@ namespace NEONengine
     {
         // INV_REMOVE with D0=7 → bridge->inv_remove(7)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -242,7 +244,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_remove_preserves_d0)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -264,7 +266,7 @@ namespace NEONengine
     {
         // INV_REMOVE should not modify SR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -293,7 +295,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_remove_multiple)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -323,7 +325,7 @@ namespace NEONengine
     {
         // bridge returns true → Z=0 (has item)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -347,7 +349,7 @@ namespace NEONengine
     {
         // bridge returns false → Z=1 (doesn't have item)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -371,7 +373,7 @@ namespace NEONengine
     {
         // D0 is input only — should not be modified
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -394,7 +396,7 @@ namespace NEONengine
     {
         // INV_HAS should clear N, C, V flags
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set up SR with N=1: CMP 0, 100 → 0-100 = negative
         bc.emit(noir_op::MOV16);
@@ -427,7 +429,7 @@ namespace NEONengine
         // Common pattern: INV_HAS + BEQ = branch if NOT has
         // If item not found (Z=1), BEQ taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -462,7 +464,7 @@ namespace NEONengine
         // Common pattern: INV_HAS + BNE = branch if HAS
         // If item found (Z=0), BNE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -495,7 +497,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_has_preserves_other_regs)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -534,7 +536,7 @@ namespace NEONengine
     {
         // bridge returns 5 → D0 = 5
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -553,7 +555,7 @@ namespace NEONengine
     {
         // Empty inventory: bridge returns 0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -572,7 +574,7 @@ namespace NEONengine
     {
         // Large count value
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -591,7 +593,7 @@ namespace NEONengine
     {
         // D0 had a previous value — INV_COUNT should overwrite it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -614,7 +616,7 @@ namespace NEONengine
     {
         // D1-D3 should be untouched
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
@@ -648,7 +650,7 @@ namespace NEONengine
     {
         // INV_COUNT should not modify SR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -676,7 +678,7 @@ namespace NEONengine
     {
         // Common pattern: INV_COUNT + CMP to check if inventory has enough items
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INV_COUNT);  // D0 = 3
 
@@ -702,7 +704,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_clear_basic)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INV_CLEAR);
 
@@ -720,7 +722,7 @@ namespace NEONengine
     {
         // All registers should be preserved
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -756,7 +758,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_clear_preserves_sr)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Set N=1: CMP 0, 100
         bc.emit(noir_op::MOV16);
@@ -787,7 +789,7 @@ namespace NEONengine
     {
         // Typical game pattern: add item, then check if has it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -816,7 +818,7 @@ namespace NEONengine
     {
         // Add item, then remove it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -843,7 +845,7 @@ namespace NEONengine
     {
         // Add several items, then count
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -873,7 +875,7 @@ namespace NEONengine
     {
         // Clear inventory, then count → 0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INV_CLEAR);
 
@@ -896,7 +898,7 @@ namespace NEONengine
         // Game pattern: if not has item → add it
         // INV_HAS + BNE (skip add if already have) + INV_ADD
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -926,7 +928,7 @@ namespace NEONengine
     {
         // Same pattern but already has item → skip add
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -956,7 +958,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_invalid_opcode_0x85)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0x85);
 
@@ -972,7 +974,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_inv_invalid_opcode_0x8f)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0x8F);
 

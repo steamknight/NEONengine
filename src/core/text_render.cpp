@@ -1,5 +1,7 @@
 #include "text_render.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/system.h>
@@ -21,8 +23,8 @@ namespace NEONengine
     constexpr size_t DEFAULT_SCRATCH_CAPACITY = 256;
 
     bool text_renderer::break_text_into_lines(bstr_view const& text,
-                                              uint32_t* pStartIndex,
-                                              uint32_t maxWidth,
+                                              u32* pStartIndex,
+                                              u32 maxWidth,
                                               line_data* pOutData)
     {
         if (text.is_empty() || *pStartIndex >= text.length()) { return false; }
@@ -40,11 +42,11 @@ namespace NEONengine
             return start + 1 <= textLength;
         }
 
-        uint32_t lineWidth    = 0;
-        uint32_t lastBreakPos = 0;
+        u32 lineWidth    = 0;
+        u32 lastBreakPos = 0;
         bool     hasBreak     = false;
 
-        for (uint32_t idx = start; idx <= textLength; ++idx)
+        for (u32 idx = start; idx <= textLength; ++idx)
         {
             char c = (idx < textLength) ? textData[idx] : '\0';
 
@@ -65,7 +67,7 @@ namespace NEONengine
             }
 
             // Measure width (1px inter-character spacing per ACE font spec)
-            lineWidth += _glyphCache[to<uint8_t>(c)] + 1;
+            lineWidth += _glyphCache[to<u8>(c)] + 1;
 
             // Soft wrap when exceeding maxWidth (0 = no wrapping)
             if (maxWidth > 0 && lineWidth > maxWidth)
@@ -126,7 +128,7 @@ namespace NEONengine
         return text_renderer_ptr(new (MemF::Fast) text_renderer(pFont));
     }
 
-    void text_renderer::ensure_line_bitmap(uint16_t width)
+    void text_renderer::ensure_line_bitmap(u16 width)
     {
         auto const alignedWidth = mtl::round_up<16>(width);
         if (_pLineBitmap && _lineBitmapWidth >= alignedWidth) { return; }
@@ -140,7 +142,7 @@ namespace NEONengine
     }
 
     ace::text_bitmap_ptr text_renderer::create_text(bstr_view const& text,
-                                                    uint16_t maxWidth,
+                                                    u16 maxWidth,
                                                     text_justify justification)
     {
         if (text.is_empty())
@@ -158,10 +160,10 @@ namespace NEONengine
         ensure_line_bitmap(maxWidth);
 
         // Break text into lines
-        uint32_t startIndex = 0;
+        u32 startIndex = 0;
         auto lines = mtl::array<line_data, MAX_LINES>();
         line_data line{};
-        uint32_t lineCount = 0;
+        u32 lineCount = 0;
 
         while (lineCount < MAX_LINES
                && break_text_into_lines(text, &startIndex, maxWidth, &line))
@@ -172,7 +174,7 @@ namespace NEONengine
         if (lineCount == 0) { return ace::text_bitmap_ptr(nullptr); }
 
         // Allocate the result bitmap
-        uint16_t height = _pFont->uwHeight * lineCount;
+        u16 height = _pFont->uwHeight * lineCount;
         auto pResult
             = ace::fontCreateTextBitMap(mtl::round_up<16>(maxWidth), mtl::round_up<16>(height));
 
@@ -195,7 +197,7 @@ namespace NEONengine
             fontFillTextBitMap(_pFont, _pLineBitmap.get(), _scratchArea.data());
             NE_LOG("-> %s", _scratchArea.data());
 
-            uint16_t x = 0;
+            u16 x = 0;
             switch (justification)
             {
                 case text_justify::RIGHT:

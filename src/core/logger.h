@@ -23,6 +23,8 @@
 #ifndef __LOGGER_H__INCLUDED__
 #define __LOGGER_H__INCLUDED__
 
+#include "types.h"
+
 #include <ace/types.h>
 
 namespace NEONengine
@@ -58,7 +60,7 @@ namespace NEONengine
             COUNT
     };
 
-    static_assert(static_cast<ULONG>(log_domain::COUNT) <= 32,
+    static_assert(to<ULONG>(log_domain::COUNT) <= 32,
         "the domain mask is 32 bits wide, so there is room for 32 domains");
 
     /**
@@ -66,7 +68,7 @@ namespace NEONengine
      */
     constexpr ULONG log_bit(log_domain domain)
     {
-        return 1UL << static_cast<ULONG>(domain);
+        return 1UL << to<ULONG>(domain);
     }
 
     /**

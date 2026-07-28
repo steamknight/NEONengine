@@ -1,3 +1,5 @@
+#include "types.h"
+
 #include "core/logger.h"
 
 #include <stdarg.h>
@@ -25,7 +27,7 @@ namespace NEONengine
 
         static_assert(
             sizeof(s_pDomainPrefixes) / sizeof(s_pDomainPrefixes[0])
-                == static_cast<ULONG>(log_domain::COUNT),
+                == to<ULONG>(log_domain::COUNT),
             "every domain needs a prefix");
 
         /**
@@ -62,7 +64,7 @@ namespace NEONengine
     {
         // The console ends a line on every write, so the prefix, the message and
         // the newline all have to leave here as one string.
-        const char* szPrefix = s_pDomainPrefixes[static_cast<UBYTE>(domain)];
+        const char* szPrefix = s_pDomainPrefixes[to<UBYTE>(domain)];
 
         ULONG ulOffset = 0;
         while (szPrefix[ulOffset])

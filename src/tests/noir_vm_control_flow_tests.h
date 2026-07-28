@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -30,7 +32,7 @@ namespace NEONengine
     {
         // JMP skips a MOV16 instruction (4 bytes)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -67,7 +69,7 @@ namespace NEONengine
         //   BNE offset     (3 bytes) → back to loop_top
         //   RET
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, 0);  // 2 bytes
@@ -76,7 +78,7 @@ namespace NEONengine
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
         bc.emit_u16(3);  // 4 bytes
 
-        uint16_t loop_top = bc.mark();  // offset 6
+        u16 loop_top = bc.mark();  // offset 6
 
         bc.emit(noir_op::INC);
         bc.emit_mode(noir_mode::REG_D0, 0);  // 2 bytes
@@ -88,10 +90,10 @@ namespace NEONengine
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
         bc.emit_u16(0);  // 4 bytes
 
-        uint16_t bne_pos = bc.mark();  // position of BNE
+        u16 bne_pos = bc.mark();  // position of BNE
         bc.emit(noir_op::BNE);
         // offset = loop_top - (bne_pos + 3)
-        bc.emit_s16(static_cast<int16_t>(loop_top - (bne_pos + 3)));
+        bc.emit_s16(to<i16>(loop_top - (bne_pos + 3)));
 
         bc.emit(noir_op::RET);
 
@@ -107,7 +109,7 @@ namespace NEONengine
     {
         // JMP +0 is effectively a nop — lands on next instruction
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -130,7 +132,7 @@ namespace NEONengine
     {
         // JMP skips two MOV16 instructions (8 bytes)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -163,7 +165,7 @@ namespace NEONengine
     {
         // CMP 10 == 10 → Z=1 → BEQ taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -194,7 +196,7 @@ namespace NEONengine
     {
         // CMP 10 != 20 → Z=0 → BEQ not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -227,7 +229,7 @@ namespace NEONengine
     {
         // CMP 10 != 20 → Z=0 → BNE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -258,7 +260,7 @@ namespace NEONengine
     {
         // CMP 10 == 10 → Z=1 → BNE not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -291,7 +293,7 @@ namespace NEONengine
     {
         // CMP 5, 10 → 5-10 = -5 → N=1, V=0 → N⊕V=1 → BLT taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -322,7 +324,7 @@ namespace NEONengine
     {
         // CMP 10, 10 → 0 → N=0, V=0 → N⊕V=0 → BLT not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -353,7 +355,7 @@ namespace NEONengine
     {
         // CMP 20, 10 → 10 → N=0, V=0 → N⊕V=0 → BLT not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -384,11 +386,11 @@ namespace NEONengine
     {
         // CMP -5 (0xFFFB), 5 → signed: -5 < 5 → BLT taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(static_cast<uint16_t>(-5));
+        bc.emit_u16(to<u16>(-5));
 
         bc.emit(noir_op::CMP);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -407,7 +409,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == static_cast<uint16_t>(-5), "-5 < 5 → BLT taken");
+        TEST_ASSERT(vm.exit_code() == to<u16>(-5), "-5 < 5 → BLT taken");
         TEST_SUCCESS;
     }
 
@@ -417,7 +419,7 @@ namespace NEONengine
     {
         // CMP 20, 10 → N=0, V=0 → N⊕V=0 → BGE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -448,7 +450,7 @@ namespace NEONengine
     {
         // CMP 10, 10 → N=0, V=0 → N⊕V=0 → BGE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -479,7 +481,7 @@ namespace NEONengine
     {
         // CMP 5, 10 → 5-10 = -5 → N=1, V=0 → N⊕V=1 → BGE not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -512,7 +514,7 @@ namespace NEONengine
     {
         // CMP 20, 10 → Z=0, N=0, V=0 → Z=0 AND N⊕V=0 → BGT taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -543,7 +545,7 @@ namespace NEONengine
     {
         // CMP 10, 10 → Z=1 → Z=0 condition fails → BGT not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -574,7 +576,7 @@ namespace NEONengine
     {
         // CMP 5, 10 → N⊕V=1 → BGT not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -607,7 +609,7 @@ namespace NEONengine
     {
         // CMP 5, 10 → N⊕V=1 → BLE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -638,7 +640,7 @@ namespace NEONengine
     {
         // CMP 10, 10 → Z=1 → BLE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -669,7 +671,7 @@ namespace NEONengine
     {
         // CMP 20, 10 → Z=0, N=0, V=0 → N⊕V=0 → BLE not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -702,7 +704,7 @@ namespace NEONengine
     {
         // CMP 3, 10 → 3 < 10 unsigned → C=1 → BCS taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -733,7 +735,7 @@ namespace NEONengine
     {
         // CMP 10, 3 → 10 >= 3 unsigned → C=0 → BCS not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -765,7 +767,7 @@ namespace NEONengine
         // CMP 0x8000, 0xFFFF → 0x8000 < 0xFFFF unsigned → C=1 → BCS taken
         // Even though 0x8000 is negative signed, unsigned it's less than 0xFFFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -798,7 +800,7 @@ namespace NEONengine
     {
         // CMP 10, 3 → 10 >= 3 unsigned → C=0 → BCC taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -829,7 +831,7 @@ namespace NEONengine
     {
         // CMP 3, 10 → 3 < 10 unsigned → C=1 → BCC not taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -860,7 +862,7 @@ namespace NEONengine
     {
         // CMP 10, 10 → 10 == 10 → C=0 (no borrow) → BCC taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -899,12 +901,12 @@ namespace NEONengine
         //   BLT offset         (3 bytes) → back to loop
         //   RET
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, 0);
 
-        uint16_t loop = bc.mark();
+        u16 loop = bc.mark();
 
         bc.emit(noir_op::INC);
         bc.emit_mode(noir_mode::REG_D0, 0);  // 2 bytes
@@ -913,9 +915,9 @@ namespace NEONengine
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(5);  // 4 bytes
 
-        uint16_t blt_pos = bc.mark();
+        u16 blt_pos = bc.mark();
         bc.emit(noir_op::BLT);
-        bc.emit_s16(static_cast<int16_t>(loop - (blt_pos + 3)));
+        bc.emit_s16(to<i16>(loop - (blt_pos + 3)));
 
         bc.emit(noir_op::RET);
 
@@ -938,7 +940,7 @@ namespace NEONengine
         //   MOV16 D0, 2 (else)     (4 bytes)
         //   RET                     (end)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -979,7 +981,7 @@ namespace NEONengine
     {
         // if (D0 == 10) { D0 = 1 } else { D0 = 2 }, with D0=99 (else path)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1020,15 +1022,15 @@ namespace NEONengine
     {
         // CMP -1 (0xFFFF), -5 (0xFFFB) → signed: -1 > -5 → BGT taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(static_cast<uint16_t>(-1));
+        bc.emit_u16(to<u16>(-1));
 
         bc.emit(noir_op::CMP);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(static_cast<uint16_t>(-5));
+        bc.emit_u16(to<u16>(-5));
 
         bc.emit(noir_op::BGT);
         bc.emit_s16(4);
@@ -1043,7 +1045,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == static_cast<uint16_t>(-1), "-1 > -5 → BGT taken");
+        TEST_ASSERT(vm.exit_code() == to<u16>(-1), "-1 > -5 → BGT taken");
         TEST_SUCCESS;
     }
 
@@ -1051,15 +1053,15 @@ namespace NEONengine
     {
         // CMP -5 (0xFFFB), -1 (0xFFFF) → signed: -5 <= -1 → BLE taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(static_cast<uint16_t>(-5));
+        bc.emit_u16(to<u16>(-5));
 
         bc.emit(noir_op::CMP);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(static_cast<uint16_t>(-1));
+        bc.emit_u16(to<u16>(-1));
 
         bc.emit(noir_op::BLE);
         bc.emit_s16(4);
@@ -1074,7 +1076,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == static_cast<uint16_t>(-5), "-5 <= -1 → BLE taken");
+        TEST_ASSERT(vm.exit_code() == to<u16>(-5), "-5 <= -1 → BLE taken");
         TEST_SUCCESS;
     }
 
@@ -1083,7 +1085,7 @@ namespace NEONengine
         // SUB sets flags too — branch should work after SUB, not just CMP
         // D0 = 10, D0 -= 10 → D0 = 0, Z=1 → BEQ taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1115,7 +1117,7 @@ namespace NEONengine
         // ADD 0x7FFF + 1 = 0x8000 → N=1, V=1 → BLT checks N⊕V
         // N=1, V=1 → N⊕V=0 → BLT NOT taken
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1147,7 +1149,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_control_flow_invalid_opcode)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // 0x4F is not a valid control flow opcode
         bc.emit(0x4F);

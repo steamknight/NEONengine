@@ -12,6 +12,8 @@
 #ifndef __ACEPP__MEMORY_FILE_H___INCLUDED__
 #define __ACEPP__MEMORY_FILE_H___INCLUDED__
 
+#include "types.h"
+
 #include <ace/utils/file.h>
 
 #include <stdint.h>
@@ -32,7 +34,7 @@ namespace ace
      * @param ulSize How many bytes are readable at @p pData.
      * @return An open file, or nullptr if the handle could not be allocated.
      */
-    tFile* memoryFileOpen(uint8_t const* pData, ULONG ulSize);
+    tFile* memoryFileOpen(u8 const* pData, ULONG ulSize);
 }  // namespace ace
 
 #endif  // __ACEPP__MEMORY_FILE_H___INCLUDED__

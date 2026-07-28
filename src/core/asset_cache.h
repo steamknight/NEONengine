@@ -16,6 +16,8 @@
 #ifndef __ASSET_CACHE_H__INCLUDED__
 #define __ASSET_CACHE_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace++/file.h>
@@ -28,7 +30,7 @@ namespace NEONengine
      *
      * Sized for the 4 MB A1200 the engine targets.
      */
-    constexpr uint32_t ASSET_CACHE_BUDGET = 2u * 1024u * 1024u;
+    constexpr u32 ASSET_CACHE_BUDGET = 2u * 1024u * 1024u;
 
     /**
      * @brief The largest single asset the cache will hold, in bytes.
@@ -36,7 +38,7 @@ namespace NEONengine
      * One asset is not allowed to crowd out every other, so nothing above a
      * quarter of the budget is ever stored.
      */
-    constexpr uint32_t ASSET_CACHE_MAX_ENTRY = ASSET_CACHE_BUDGET / 4u;
+    constexpr u32 ASSET_CACHE_MAX_ENTRY = ASSET_CACHE_BUDGET / 4u;
 
     /**
      * @brief Empties the cache and releases every byte it holds.
@@ -73,7 +75,7 @@ namespace NEONengine
      * @return An owning file handle, or an invalid handle when there is no such
      *         asset.
      */
-    ace::file_ptr asset_cache_open(ace::pakfile_ptr& pak, uint32_t hash);
+    ace::file_ptr asset_cache_open(ace::pakfile_ptr& pak, u32 hash);
 
     /**
      * @brief Writes what the cache is holding to the log.

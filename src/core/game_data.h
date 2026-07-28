@@ -11,6 +11,8 @@
 #ifndef __GAME_DATA_H__INCLUDED__
 #define __GAME_DATA_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace++/pak_file.h>
@@ -40,7 +42,7 @@ namespace NEONengine
     /**
      * @brief The only .neon container version this engine can load.
      */
-    constexpr uint16_t NEON_SUPPORTED_VERSION = 2;
+    constexpr u16 NEON_SUPPORTED_VERSION = 2;
 
     class game_data;
     using game_data_ptr = mtl::unique_ptr<game_data>;
@@ -96,7 +98,7 @@ namespace NEONengine
          * @param out_error Set to the failure reason when this returns false.
          * @return True when all known chunks are present and consistent.
          */
-        static bool index_chunks(uint8_t const* image, uint32_t size,
+        static bool index_chunks(u8 const* image, u32 size,
             data::chunk_header const* (&out)[data::KNOWN_CHUNK_COUNT], error& out_error) noexcept;
 
         /**
@@ -104,7 +106,7 @@ namespace NEONengine
          */
         data::header const& header() const noexcept
         {
-            return *mtl::force_to<data::header const*>(_buffer.data());
+            return *force_to<data::header const*>(_buffer.data());
         }
 
         /**
@@ -159,9 +161,9 @@ namespace NEONengine
         }
 
         /** @brief The 'SDES' scene-description string ids. */
-        mtl::span<uint16_t> scene_descriptions() const noexcept
+        mtl::span<u16> scene_descriptions() const noexcept
         {
-            return chunk_span<uint16_t>(data::known_chunk::scene_descriptions);
+            return chunk_span<u16>(data::known_chunk::scene_descriptions);
         }
 
         /** @brief The 'KEYS' timeline keyframes. */
@@ -174,34 +176,34 @@ namespace NEONengine
         mtl::span<data::timeline> timelines() const noexcept { return chunk_span<data::timeline>(data::known_chunk::timelines); }
 
         /** @brief The 'FUNC' script function offsets into 'SCRP'. */
-        mtl::span<uint32_t> function_offsets() const noexcept
+        mtl::span<u32> function_offsets() const noexcept
         {
-            return chunk_span<uint32_t>(data::known_chunk::function_offsets);
+            return chunk_span<u32>(data::known_chunk::function_offsets);
         }
 
         /** @brief The 'SCRP' NoirVM bytecode blob; 'FUNC' offsets index into it. */
-        mtl::span<uint8_t> scripts() const noexcept
+        mtl::span<u8> scripts() const noexcept
         {
-            auto const* chunk = _chunks[mtl::to<uint32_t>(data::known_chunk::bytecode)];
-            return mtl::span<uint8_t>(mtl::force_to<uint8_t const*>(chunk + 1), chunk->body_size);
+            auto const* chunk = _chunks[to<u32>(data::known_chunk::bytecode)];
+            return mtl::span<u8>(force_to<u8 const*>(chunk + 1), chunk->body_size);
         }
 
         /** @brief The 'FLGS' declared flag count. */
-        uint16_t flag_count() const noexcept
+        u16 flag_count() const noexcept
         {
-            return *mtl::force_to<uint16_t const*>(_chunks[mtl::to<uint32_t>(data::known_chunk::flags)] + 1);
+            return *force_to<u16 const*>(_chunks[to<u32>(data::known_chunk::flags)] + 1);
         }
 
         /** @brief The 'FLGS' packed initial flag bits (the body following the 2-byte count). */
-        mtl::span<uint8_t> initial_flags() const noexcept
+        mtl::span<u8> initial_flags() const noexcept
         {
-            auto const* chunk = _chunks[mtl::to<uint32_t>(data::known_chunk::flags)];
-            return mtl::span<uint8_t>(mtl::force_to<uint8_t const*>(chunk + 1) + sizeof(uint16_t),
-                mtl::to<uint32_t>(chunk->body_size - sizeof(uint16_t)));
+            auto const* chunk = _chunks[to<u32>(data::known_chunk::flags)];
+            return mtl::span<u8>(force_to<u8 const*>(chunk + 1) + sizeof(u16),
+                to<u32>(chunk->body_size - sizeof(u16)));
         }
 
         /** @brief The 'VALS' initial signed values. */
-        mtl::span<int16_t> initial_values() const noexcept { return chunk_span<int16_t>(data::known_chunk::initial_values); }
+        mtl::span<i16> initial_values() const noexcept { return chunk_span<i16>(data::known_chunk::initial_values); }
 
         /** @brief The 'CHOC' dialogue choices. */
         mtl::span<data::choice> choices() const noexcept { return chunk_span<data::choice>(data::known_chunk::choices); }
@@ -230,7 +232,7 @@ namespace NEONengine
          * @param hash The asset's adler32 pak-path hash.
          * @return An owning file handle, or an invalid handle if not found.
          */
-        ace::file_ptr open_asset(uint32_t hash) { return asset_cache_open(_pak, hash); }
+        ace::file_ptr open_asset(u32 hash) { return asset_cache_open(_pak, hash); }
 
         /**
          * @brief Opens a pak asset without going through the asset cache.
@@ -245,13 +247,13 @@ namespace NEONengine
          * @param hash The asset's adler32 pak-path hash.
          * @return An owning file handle, or an invalid handle if not found.
          */
-        ace::file_ptr open_asset_uncached(uint32_t hash)
+        ace::file_ptr open_asset_uncached(u32 hash)
         {
             return ace::pakFileGetFileByHash(_pak, hash);
         }
 
         private:  //////////////////////////////////////////////////////////////////////////////////
-        game_data(ace::pakfile_ptr&& pak, mtl::vector<uint8_t>&& image) noexcept
+        game_data(ace::pakfile_ptr&& pak, mtl::vector<u8>&& image) noexcept
             : _pak(mtl::move(pak)), _buffer(mtl::move(image))
         {
         }
@@ -262,7 +264,7 @@ namespace NEONengine
         template<class T>
         T const* chunk_ptr(data::known_chunk kind) const noexcept
         {
-            return mtl::force_to<T const*>(_chunks[mtl::to<uint32_t>(kind)] + 1);
+            return force_to<T const*>(_chunks[to<u32>(kind)] + 1);
         }
 
         /**
@@ -271,12 +273,12 @@ namespace NEONengine
         template<class T>
         mtl::span<T> chunk_span(data::known_chunk kind) const noexcept
         {
-            auto const* chunk = _chunks[mtl::to<uint32_t>(kind)];
-            return mtl::span<T>(mtl::force_to<T const*>(chunk + 1), chunk->element_count);
+            auto const* chunk = _chunks[to<u32>(kind)];
+            return mtl::span<T>(force_to<T const*>(chunk + 1), chunk->element_count);
         }
 
         ace::pakfile_ptr _pak;         ///< The open game pak, kept for the run (self-closing).
-        mtl::vector<uint8_t> _buffer;  ///< The whole .neon image, in Fast RAM (self-freeing).
+        mtl::vector<u8> _buffer;  ///< The whole .neon image, in Fast RAM (self-freeing).
         data::chunk_header const* _chunks[data::KNOWN_CHUNK_COUNT]{};  ///< Each known chunk's header in the buffer.
     };
 }  // namespace NEONengine

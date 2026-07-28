@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -22,7 +24,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_and_reg_imm16)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -45,7 +47,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_and_reg_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -73,7 +75,7 @@ namespace NEONengine
     {
         // Any value & 0 = 0 → Z=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -99,7 +101,7 @@ namespace NEONengine
     {
         // Result with bit 15 set → N=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -125,7 +127,7 @@ namespace NEONengine
     {
         // x & 0xFFFF = x
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -148,24 +150,24 @@ namespace NEONengine
     TEST_IMPL(test_noir_and_local_dst)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(2);
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit_u16(0xFF00);
 
         bc.emit(noir_op::AND);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit_u16(0x0FF0);
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         bc.emit(noir_op::RET);
 
@@ -182,7 +184,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_or_reg_imm16)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -205,7 +207,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_or_reg_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -232,7 +234,7 @@ namespace NEONengine
     {
         // x | 0 = x
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -255,7 +257,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_or_sets_negative_flag)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -280,7 +282,7 @@ namespace NEONengine
     {
         // 0 | 0 = 0 → Z=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, 0);
@@ -305,7 +307,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_xor_reg_imm16)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -328,7 +330,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_xor_reg_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -356,7 +358,7 @@ namespace NEONengine
     {
         // x ^ x = 0 for any x
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -379,7 +381,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_xor_sets_negative_flag)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -404,7 +406,7 @@ namespace NEONengine
     {
         // XOR with 0xFFFF flips all bits
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -430,7 +432,7 @@ namespace NEONengine
     {
         // TST does AND but discards result — only sets flags
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -456,7 +458,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_tst_zero_result)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -481,7 +483,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_tst_reg_reg)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -511,7 +513,7 @@ namespace NEONengine
     {
         // Verify TST leaves both operands unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -542,7 +544,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_not_basic)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -566,7 +568,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_not_all_ones)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -590,7 +592,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_not_zero)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, 0);
@@ -614,7 +616,7 @@ namespace NEONengine
     {
         // NOT twice should restore original value
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -639,23 +641,23 @@ namespace NEONengine
     TEST_IMPL(test_noir_not_local_dst)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(2);
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit_u16(0x0F0F);
 
         bc.emit(noir_op::NOT);
         bc.emit_mode(noir_mode::LOCAL, 0);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         bc.emit(noir_op::RET);
 
@@ -673,7 +675,7 @@ namespace NEONengine
     {
         // 1 << 4 = 16
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -700,7 +702,7 @@ namespace NEONengine
     {
         // 0x8000 << 1 → shifts out bit 15 → C=1, result=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -726,7 +728,7 @@ namespace NEONengine
     {
         // 0x4000 << 1 = 0x8000 → N=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -752,7 +754,7 @@ namespace NEONengine
     {
         // Shifting by 0 should leave value unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -777,7 +779,7 @@ namespace NEONengine
     {
         // Shifting 16-bit value by 16 should give 0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -805,7 +807,7 @@ namespace NEONengine
         // << 8: bit at position 16-8=8 → bit 8 of 0x00FF is 0 → C=0
         // Result: 0xFF00
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -831,24 +833,24 @@ namespace NEONengine
     TEST_IMPL(test_noir_shl_local_dst)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(2);
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit_u16(0x0003);
 
         bc.emit(noir_op::SHL);
         bc.emit_mode(noir_mode::LOCAL, 0);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
         bc.emit(4);  // shift count
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
-        bc.emit(static_cast<uint8_t>(-2));
+        bc.emit(to<u8>(-2));
 
         bc.emit(noir_op::RET);
 
@@ -866,7 +868,7 @@ namespace NEONengine
     {
         // 0x0100 >> 4 = 0x0010
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -892,7 +894,7 @@ namespace NEONengine
     {
         // 0x0001 >> 1 → last bit shifted out = 1 → C=1, result=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -918,7 +920,7 @@ namespace NEONengine
     {
         // Logical shift: 0x8000 >> 1 = 0x4000 (no sign extension)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -943,7 +945,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_shr_by_zero)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -967,7 +969,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_shr_by_16)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -994,7 +996,7 @@ namespace NEONengine
         // 0x0008 = 0000_0000_0000_1000 → bit 2 = 0 → C=0
         // result = 0x0001
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1021,7 +1023,7 @@ namespace NEONengine
     {
         // 0x0040 >> 2 = 0x0010 (positive value, same as SHR)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1047,7 +1049,7 @@ namespace NEONengine
     {
         // 0x8000 (-32768) >> 1 = 0xC000 (-16384) — sign bit preserved
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1073,7 +1075,7 @@ namespace NEONengine
     {
         // 0xFFFF (-1) >> 16 = 0xFFFF (-1) — all sign bits
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1099,7 +1101,7 @@ namespace NEONengine
     {
         // 0x7FFF >> 16 = 0x0000 (positive, shifts to zero)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1125,7 +1127,7 @@ namespace NEONengine
     {
         // 0x0003 >> 1: bit 0 = 1 → C=1, result = 0x0001
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1149,7 +1151,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_asr_by_zero)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1175,11 +1177,11 @@ namespace NEONengine
     {
         // -10 (0xFFF6) ASR 1 = -5 (0xFFFB)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(static_cast<uint16_t>(-10));  // 0xFFF6
+        bc.emit_u16(to<u16>(-10));  // 0xFFF6
 
         bc.emit(noir_op::ASR);
         bc.emit_mode(noir_mode::REG_D0, 0);
@@ -1191,7 +1193,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == static_cast<uint16_t>(-5), "-10 ASR 1 = -5");
+        TEST_ASSERT(vm.exit_code() == to<u16>(-5), "-10 ASR 1 = -5");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N set");
         TEST_SUCCESS;
     }
@@ -1201,7 +1203,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_logic_invalid_opcode)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // 0x3F is not a valid logic opcode
         bc.emit(0x3F);

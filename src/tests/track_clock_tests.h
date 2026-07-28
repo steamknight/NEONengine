@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "core/track_clock.h"
 
 #include "test_macros.h"
@@ -12,11 +14,11 @@ namespace NEONengine
     namespace
     {
         /// A track carrying only the fields the clock reads.
-        data::track clock_track(uint16_t duration, data::loop_mode mode, uint8_t loop_count)
+        data::track clock_track(u16 duration, data::loop_mode mode, u8 loop_count)
         {
             data::track track{};
             track.duration   = duration;
-            track.loop_mode  = mtl::to<uint8_t>(mode);
+            track.loop_mode  = to<u8>(mode);
             track.loop_count = loop_count;
             return track;
         }
@@ -29,9 +31,9 @@ namespace NEONengine
          * first tick takes it.
          */
         char const* expect_path(
-            track_clock& clock, data::track const& track, uint16_t const* expected, uint16_t count)
+            track_clock& clock, data::track const& track, u16 const* expected, u16 count)
         {
-            for (uint16_t frame = 0; frame < count; ++frame)
+            for (u16 frame = 0; frame < count; ++frame)
             {
                 if (clock.position() != expected[frame]) return "playhead occupied the wrong position";
                 clock.tick(track);
@@ -40,10 +42,10 @@ namespace NEONengine
         }
 
         /// Ticks @p frames times and reports the last result seen.
-        tick_result run(track_clock& clock, data::track const& track, uint16_t frames)
+        tick_result run(track_clock& clock, data::track const& track, u16 frames)
         {
             tick_result result = tick_result::IDLE;
-            for (uint16_t frame = 0; frame < frames; ++frame)
+            for (u16 frame = 0; frame < frames; ++frame)
             {
                 result = clock.tick(track);
             }
@@ -113,7 +115,7 @@ namespace NEONengine
         // Duration is the last position, not a frame count, so a keyframe
         // authored at the end of the track is reached like any other.
         auto const track          = clock_track(2, data::loop_mode::RESTART, 0);
-        uint16_t const expected[] = { 0, 1, 2, 0, 1, 2, 0 };
+        u16 const expected[] = { 0, 1, 2, 0, 1, 2, 0 };
         track_clock clock;
 
         clock.start();
@@ -195,7 +197,7 @@ namespace NEONengine
         // One cycle is 0 -> duration -> 0: the tick that returns to 0 both ends
         // the cycle and begins the next, so no position is played twice at the seam.
         auto const track          = clock_track(3, data::loop_mode::PING_PONG, 0);
-        uint16_t const expected[] = { 0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 2, 1, 0 };
+        u16 const expected[] = { 0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 2, 1, 0 };
         track_clock clock;
 
         clock.start();
@@ -235,7 +237,7 @@ namespace NEONengine
         // The turn lands straight back on 0, so the reversal and the cycle
         // boundary are the same tick.
         auto const track          = clock_track(1, data::loop_mode::PING_PONG, 0);
-        uint16_t const expected[] = { 0, 1, 0, 1, 0 };
+        u16 const expected[] = { 0, 1, 0, 1, 0 };
         track_clock clock;
 
         clock.start();
@@ -268,7 +270,7 @@ namespace NEONengine
         track_clock clock;
 
         clock.start();
-        for (uint16_t frame = 0; frame < 16; ++frame)
+        for (u16 frame = 0; frame < 16; ++frame)
         {
             clock.tick(track);
             TEST_ASSERT(clock.position() <= 1, "a track with no duration should be played as a single frame");
@@ -284,7 +286,7 @@ namespace NEONengine
         track_clock clock;
 
         clock.start();
-        for (uint16_t frame = 0; frame < 16; ++frame)
+        for (u16 frame = 0; frame < 16; ++frame)
         {
             clock.tick(track);
             TEST_ASSERT(clock.position() <= 1, "a track with no duration should be played as a single frame");
@@ -300,7 +302,7 @@ namespace NEONengine
         track_clock clock;
 
         clock.start();
-        for (uint32_t frame = 0; frame < 2 * 65540UL; ++frame)
+        for (u32 frame = 0; frame < 2 * 65540UL; ++frame)
         {
             clock.tick(track);
         }

@@ -22,6 +22,8 @@
 #ifndef __PALETTE_CYCLE_H__INCLUDED__
 #define __PALETTE_CYCLE_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 namespace NEONengine
@@ -44,7 +46,7 @@ namespace NEONengine
      * @param steps  How far to turn. Taken modulo the band width, so a caller
      *               may pass any value.
      */
-    void palette_cycle_rotate(uint8_t first, uint8_t last, uint16_t steps);
+    void palette_cycle_rotate(u8 first, u8 last, u16 steps);
 
     /**
      * @brief Puts this frame's rotations on the display.

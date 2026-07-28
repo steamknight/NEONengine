@@ -1,5 +1,7 @@
 #include "memory_file.h"
 
+#include "types.h"
+
 #include <ace/managers/log.h>
 #include <ace/managers/memory.h>
 
@@ -14,7 +16,7 @@ namespace ace
         /// The borrowed range and the read cursor over it.
         struct memory_file_data
         {
-            uint8_t const* base;
+            u8 const* base;
             ULONG size;
             ULONG pos;
         };
@@ -28,7 +30,7 @@ namespace ace
 
         ULONG memoryFileRead(void* pData, void* pDest, ULONG ulSize)
         {
-            auto* pFileData = static_cast<memory_file_data*>(pData);
+            auto* pFileData = to<memory_file_data*>(pData);
 
             ULONG const ulRemaining = pFileData->size - pFileData->pos;
             if (ulSize > ulRemaining) ulSize = ulRemaining;
@@ -47,10 +49,10 @@ namespace ace
 
         ULONG memoryFileSeek(void* pData, LONG lPos, WORD wMode)
         {
-            auto* pFileData = static_cast<memory_file_data*>(pData);
+            auto* pFileData = to<memory_file_data*>(pData);
 
             ULONG ulTarget = pFileData->pos;
-            if (wMode == FILE_SEEK_SET) ulTarget = mtl::to<ULONG>(lPos);
+            if (wMode == FILE_SEEK_SET) ulTarget = to<ULONG>(lPos);
             else if (wMode == FILE_SEEK_CURRENT) ulTarget = pFileData->pos + lPos;
             else if (wMode == FILE_SEEK_END) ulTarget = pFileData->size + lPos;
 
@@ -68,17 +70,17 @@ namespace ace
 
         ULONG memoryFileGetPos(void* pData)
         {
-            return static_cast<memory_file_data*>(pData)->pos;
+            return to<memory_file_data*>(pData)->pos;
         }
 
         ULONG memoryFileGetSize(void* pData)
         {
-            return static_cast<memory_file_data*>(pData)->size;
+            return to<memory_file_data*>(pData)->size;
         }
 
         UBYTE memoryFileIsEof(void* pData)
         {
-            auto* pFileData = static_cast<memory_file_data*>(pData);
+            auto* pFileData = to<memory_file_data*>(pData);
             return pFileData->pos >= pFileData->size;
         }
 
@@ -99,11 +101,11 @@ namespace ace
         };
     }  // namespace
 
-    tFile* memoryFileOpen(uint8_t const* pData, ULONG ulSize)
+    tFile* memoryFileOpen(u8 const* pData, ULONG ulSize)
     {
         if (!pData) return nullptr;
 
-        auto* pFileData = static_cast<memory_file_data*>(memAllocFast(sizeof(memory_file_data)));
+        auto* pFileData = to<memory_file_data*>(memAllocFast(sizeof(memory_file_data)));
         if (!pFileData) return nullptr;
 
         pFileData->base = pData;
@@ -112,7 +114,7 @@ namespace ace
 
         // Allocated the way ACE allocates its own, because ACE's fileClose()
         // frees this with memFree(pFile, sizeof(*pFile)).
-        auto* pFile = static_cast<tFile*>(memAllocFast(sizeof(tFile)));
+        auto* pFile = to<tFile*>(memAllocFast(sizeof(tFile)));
         if (!pFile)
         {
             memFree(pFileData, sizeof(memory_file_data));

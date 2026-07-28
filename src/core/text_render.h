@@ -7,6 +7,8 @@
 #ifndef __TEXT_RENDERER__INCLUDED_H__
 #define __TEXT_RENDERER__INCLUDED_H__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace++/font.h>
@@ -59,7 +61,7 @@ namespace NEONengine
          * @brief Renders @p text into a bitmap, wrapped to @p maxWidth.
          */
         ace::text_bitmap_ptr create_text(bstr_view const& text,
-                                         uint16_t maxWidth,
+                                         u16 maxWidth,
                                          text_justify justification);
 
         static result create(tFont* pFont);
@@ -69,8 +71,8 @@ namespace NEONengine
 
         struct line_data
         {
-            uint16_t start;
-            uint16_t end;
+            u16 start;
+            u16 end;
 
             size_t length() const { return end - start; }
         };
@@ -78,18 +80,18 @@ namespace NEONengine
         text_renderer(tFont* pFont);
 
         bool break_text_into_lines(bstr_view const& text,
-                                   uint32_t* pStartIndex,
-                                   uint32_t maxWidth,
+                                   u32* pStartIndex,
+                                   u32 maxWidth,
                                    line_data* pOutData);
 
-        void ensure_line_bitmap(uint16_t width);
+        void ensure_line_bitmap(u16 width);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         tFont* _pFont;
         mtl::vector<char> _scratchArea;
-        mtl::array<uint16_t, 256> _glyphCache;
+        mtl::array<u16, 256> _glyphCache;
         ace::text_bitmap_ptr _pLineBitmap;
-        uint16_t _lineBitmapWidth;
+        u16 _lineBitmapWidth;
     };
 
 }  // namespace NEONengine

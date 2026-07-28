@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -29,7 +31,7 @@ namespace NEONengine
     {
         // value[0] = 100, CMPV #0, 100 → Z=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 100;
 
@@ -53,7 +55,7 @@ namespace NEONengine
     {
         // value[5] = 30, CMPV #5, 50 → 30-50 = -20 → N=1, C=1 (borrow)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[5] = 30;
 
@@ -77,7 +79,7 @@ namespace NEONengine
     {
         // value[3] = 200, CMPV #3, 50 → 200-50 = 150 → positive, no borrow
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[3] = 200;
 
@@ -101,7 +103,7 @@ namespace NEONengine
     {
         // CMPV should not change the value
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[10] = 42;
 
@@ -128,7 +130,7 @@ namespace NEONengine
     {
         // value = 0x8000 (-32768), CMPV with 1 → 0x8000-1 = 0x7FFF → V=1 (signed overflow)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0x8000;
 
@@ -151,7 +153,7 @@ namespace NEONengine
     {
         // Common pattern: CMPV + BEQ
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 10;
 
@@ -187,7 +189,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_cmpv_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CMPV);
         bc.emit_u16(32);  // OOB (32 values, indices 0-31)
@@ -209,7 +211,7 @@ namespace NEONengine
     {
         // value[0] = 0, TSTV → Z=1, N=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0;
 
@@ -231,7 +233,7 @@ namespace NEONengine
     {
         // value[1] = 42, TSTV → Z=0, N=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[1] = 42;
 
@@ -253,7 +255,7 @@ namespace NEONengine
     {
         // value[2] = 0x8000 (negative), TSTV → Z=0, N=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[2] = 0x8000;
 
@@ -274,7 +276,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_tstv_does_not_modify_value)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[4] = 1234;
 
@@ -299,7 +301,7 @@ namespace NEONengine
     {
         // Common pattern: TSTV + BNE = "if value != 0"
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 5;
 
@@ -334,7 +336,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_tstv_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::TSTV);
         bc.emit_u16(32);
@@ -355,7 +357,7 @@ namespace NEONengine
     {
         // value[0] = 500, CLRV → value[0] = 0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 500;
 
@@ -379,7 +381,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_clrv_already_zero)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[5] = 0;
 
@@ -404,7 +406,7 @@ namespace NEONengine
     {
         // CLRV should NOT modify SR flags (spec says "—")
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 100;
 
@@ -435,7 +437,7 @@ namespace NEONengine
     {
         // Clear value[5] should not touch value[4] or value[6]
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[4] = 111;
         bc.values[5] = 222;
@@ -471,7 +473,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_clrv_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLRV);
         bc.emit_u16(32);
@@ -492,7 +494,7 @@ namespace NEONengine
     {
         // value[0] = 10, INCV → value[0] = 11
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 10;
 
@@ -517,7 +519,7 @@ namespace NEONengine
     {
         // value[3] = 0, INCV → value[3] = 1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[3] = 0;
 
@@ -544,7 +546,7 @@ namespace NEONengine
     {
         // value = 0xFFFF, INCV → wraps to 0x0000, C=1, Z=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0xFFFF;
 
@@ -571,7 +573,7 @@ namespace NEONengine
     {
         // value = 0x7FFF (32767), INCV → 0x8000 (-32768) → V=1, N=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0x7FFF;
 
@@ -598,7 +600,7 @@ namespace NEONengine
     {
         // INCV three times: 0 → 1 → 2 → 3
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0;
 
@@ -628,7 +630,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_incv_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::INCV);
         bc.emit_u16(32);
@@ -649,7 +651,7 @@ namespace NEONengine
     {
         // value[0] = 10, DECV → value[0] = 9
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 10;
 
@@ -674,7 +676,7 @@ namespace NEONengine
     {
         // value[0] = 1, DECV → 0, Z=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 1;
 
@@ -700,7 +702,7 @@ namespace NEONengine
     {
         // value = 0, DECV → 0xFFFF, C=1 (borrow), N=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0;
 
@@ -727,7 +729,7 @@ namespace NEONengine
     {
         // value = 0x8000 (-32768), DECV → 0x7FFF → V=1 (signed overflow: neg - pos = pos)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0x8000;
 
@@ -754,7 +756,7 @@ namespace NEONengine
     {
         // DECV three times: 5 → 4 → 3 → 2
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 5;
 
@@ -784,7 +786,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_decv_oob)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::DECV);
         bc.emit_u16(32);
@@ -805,11 +807,11 @@ namespace NEONengine
     {
         // Count value[0] from 0 to 3 using INCV + CMPV + BLT loop
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 0;
 
-        uint16_t loop = bc.mark();
+        u16 loop = bc.mark();
 
         bc.emit(noir_op::INCV);
         bc.emit_u16(0);  // 3 bytes
@@ -818,9 +820,9 @@ namespace NEONengine
         bc.emit_u16(0);
         bc.emit_u16(3);  // 5 bytes
 
-        uint16_t blt_pos = bc.mark();
+        u16 blt_pos = bc.mark();
         bc.emit(noir_op::BLT);
-        bc.emit_s16(static_cast<int16_t>(loop - (blt_pos + 3)));  // 3 bytes
+        bc.emit_s16(to<i16>(loop - (blt_pos + 3)));  // 3 bytes
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::VALUE_IMM);
@@ -840,7 +842,7 @@ namespace NEONengine
     {
         // Decrement value[0] from 5 until zero using DECV + TSTV + BNE loop
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 5;
 
@@ -848,7 +850,7 @@ namespace NEONengine
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, 0);  // 2 bytes
 
-        uint16_t loop = bc.mark();
+        u16 loop = bc.mark();
 
         bc.emit(noir_op::DECV);
         bc.emit_u16(0);  // 3 bytes
@@ -859,9 +861,9 @@ namespace NEONengine
         bc.emit(noir_op::TSTV);
         bc.emit_u16(0);  // 3 bytes
 
-        uint16_t bne_pos = bc.mark();
+        u16 bne_pos = bc.mark();
         bc.emit(noir_op::BNE);
-        bc.emit_s16(static_cast<int16_t>(loop - (bne_pos + 3)));  // 3 bytes
+        bc.emit_s16(to<i16>(loop - (bne_pos + 3)));  // 3 bytes
 
         bc.emit(noir_op::RET);
 
@@ -877,7 +879,7 @@ namespace NEONengine
     {
         // Set value to large, CLRV, then INCV → should be 1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[10] = 50000;
 
@@ -905,7 +907,7 @@ namespace NEONengine
     {
         // Modify different value indices and verify no cross-talk
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[0] = 10;
         bc.values[1] = 20;
@@ -946,7 +948,7 @@ namespace NEONengine
     {
         // Use index 31 (last valid)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.values[31] = 100;
 
@@ -972,7 +974,7 @@ namespace NEONengine
     TEST_IMPL(test_noir_value_ops_invalid_opcode)
     {
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // 0x6F is reserved
         bc.emit(0x6F);

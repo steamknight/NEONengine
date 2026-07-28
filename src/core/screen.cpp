@@ -1,5 +1,7 @@
 #include "screen.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
@@ -28,7 +30,7 @@ namespace NEONengine
 
     Screen* screenCreate()
     {
-        Screen* screen = reinterpret_cast<Screen*>(memAllocFastClear(sizeof(Screen)));
+        Screen* screen = force_to<Screen*>(memAllocFastClear(sizeof(Screen)));
         if (screen)
         {
             screen->uwOffset = systemIsPal() ? PAL_OFFSET : NTSC_OFFSET;
@@ -166,8 +168,8 @@ namespace NEONengine
         // Held out of the fade from here on, so the live entries have to be
         // given their colors now: nothing else writes them, and they would
         // otherwise keep whatever brightness the last fade happened to leave.
-        auto const* pRef = reinterpret_cast<ULONG const*>(screen->pFade->pPaletteRef);
-        auto* pLive      = reinterpret_cast<ULONG*>(screen->pView->pFirstVPort->pPalette);
+        auto const* pRef = force_to<ULONG const*>(screen->pFade->pPaletteRef);
+        auto* pLive      = force_to<ULONG*>(screen->pView->pFirstVPort->pPalette);
         for (UWORD i = 0; i < CURSOR_PALETTE_COUNT; ++i)
         {
             pLive[CURSOR_PALETTE_FIRST + i] = pRef[CURSOR_PALETTE_FIRST + i];
@@ -217,9 +219,9 @@ namespace NEONengine
         return screen->pFade->pPaletteRef;
     }
 
-    data::point<uint16_t> screenGetOffset(Screen* screen)
+    data::point<u16> screenGetOffset(Screen* screen)
     {
-        return data::point<uint16_t>{ screen->uwOffset, 0 };
+        return data::point<u16>{ screen->uwOffset, 0 };
     }
 
     void screenDuplicateBackToFront(Screen* screen)

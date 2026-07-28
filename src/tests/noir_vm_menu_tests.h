@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -35,7 +37,7 @@ namespace NEONengine
     {
         // FADE_OUT with D0=25 (frames)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -57,7 +59,7 @@ namespace NEONengine
     {
         // FADE_OUT is a blocking opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -79,7 +81,7 @@ namespace NEONengine
     {
         // VM stays blocked across multiple update() calls
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -107,7 +109,7 @@ namespace NEONengine
     {
         // After decrement_blocking(), VM resumes and completes
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -139,7 +141,7 @@ namespace NEONengine
     {
         // All data registers preserved across FADE_OUT
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -178,7 +180,7 @@ namespace NEONengine
     {
         // SR preserved across FADE_OUT
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -209,7 +211,7 @@ namespace NEONengine
     {
         // FADE_OUT with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -230,7 +232,7 @@ namespace NEONengine
     {
         // FADE_OUT with D0=0xFFFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -254,7 +256,7 @@ namespace NEONengine
     {
         // FADE_IN with D0=25
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -276,7 +278,7 @@ namespace NEONengine
     {
         // FADE_IN is a blocking opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -298,7 +300,7 @@ namespace NEONengine
     {
         // VM stays blocked until unblocked
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -322,7 +324,7 @@ namespace NEONengine
     {
         // After decrement_blocking(), VM resumes and completes
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -354,7 +356,7 @@ namespace NEONengine
     {
         // All data registers preserved across FADE_IN
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -393,7 +395,7 @@ namespace NEONengine
     {
         // SR preserved across FADE_IN
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -424,7 +426,7 @@ namespace NEONengine
     {
         // FADE_IN with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -447,7 +449,7 @@ namespace NEONengine
     {
         // SCREEN_CLR with D0=5
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -468,7 +470,7 @@ namespace NEONengine
     {
         // SCREEN_CLR is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -495,7 +497,7 @@ namespace NEONengine
     {
         // D0 preserved after SCREEN_CLR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -516,7 +518,7 @@ namespace NEONengine
     {
         // D1–D3 preserved after SCREEN_CLR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -551,7 +553,7 @@ namespace NEONengine
     {
         // SR unchanged after SCREEN_CLR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -579,7 +581,7 @@ namespace NEONengine
     {
         // SCREEN_CLR with D0=0 (black)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -601,7 +603,7 @@ namespace NEONengine
     {
         // SET_LANG with D0=2
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -622,7 +624,7 @@ namespace NEONengine
     {
         // SET_LANG is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -649,7 +651,7 @@ namespace NEONengine
     {
         // All data registers preserved after SET_LANG
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -685,7 +687,7 @@ namespace NEONengine
     {
         // SR unchanged after SET_LANG
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -713,7 +715,7 @@ namespace NEONengine
     {
         // SET_LANG with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -735,7 +737,7 @@ namespace NEONengine
     {
         // SAVE_GAME with D0=1
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -756,7 +758,7 @@ namespace NEONengine
     {
         // SAVE_GAME is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -783,7 +785,7 @@ namespace NEONengine
     {
         // All data registers preserved after SAVE_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -819,7 +821,7 @@ namespace NEONengine
     {
         // SR unchanged after SAVE_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -847,7 +849,7 @@ namespace NEONengine
     {
         // SAVE_GAME with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -869,7 +871,7 @@ namespace NEONengine
     {
         // LOAD_GAME with D0=2
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -890,7 +892,7 @@ namespace NEONengine
     {
         // LOAD_GAME is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -917,7 +919,7 @@ namespace NEONengine
     {
         // All data registers preserved after LOAD_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -953,7 +955,7 @@ namespace NEONengine
     {
         // SR unchanged after LOAD_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -981,7 +983,7 @@ namespace NEONengine
     {
         // LOAD_GAME with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -1003,7 +1005,7 @@ namespace NEONengine
     {
         // NEW_GAME calls bridge->new_game() with no arguments
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::NEW_GAME);
         bc.emit(noir_op::RET);
@@ -1020,7 +1022,7 @@ namespace NEONengine
     {
         // NEW_GAME is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::NEW_GAME);
 
@@ -1043,7 +1045,7 @@ namespace NEONengine
     {
         // All data registers preserved after NEW_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1079,7 +1081,7 @@ namespace NEONengine
     {
         // SR unchanged after NEW_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -1105,7 +1107,7 @@ namespace NEONengine
     {
         // QUIT_GAME calls bridge->quit_game() with no arguments
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::QUIT_GAME);
         bc.emit(noir_op::RET);
@@ -1122,7 +1124,7 @@ namespace NEONengine
     {
         // QUIT_GAME is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::QUIT_GAME);
 
@@ -1145,7 +1147,7 @@ namespace NEONengine
     {
         // All data registers preserved after QUIT_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1181,7 +1183,7 @@ namespace NEONengine
     {
         // SR unchanged after QUIT_GAME
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -1207,7 +1209,7 @@ namespace NEONengine
     {
         // Common pattern: fade out, then fade in (two sequential blocking ops)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1256,7 +1258,7 @@ namespace NEONengine
     {
         // Scene transition: fade_out → screen_clr → fade_in
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1303,7 +1305,7 @@ namespace NEONengine
     {
         // Save to slot then load from different slot
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1330,7 +1332,7 @@ namespace NEONengine
     {
         // Set language then start new game
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1353,7 +1355,7 @@ namespace NEONengine
     {
         // Full menu flow: fade_out → screen_clr → set_lang → save_game → fade_in
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Fade out
         bc.emit(noir_op::MOV16);
@@ -1419,13 +1421,13 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: main — calls fn1
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::CALL);
         bc.emit_u16(1);
         bc.emit(noir_op::RET);
 
         // fn1: FADE_OUT then sets D0
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         (void)fn1;
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1460,7 +1462,7 @@ namespace NEONengine
     {
         // 0xC8 is not a valid menu opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xC8);
         bc.emit(noir_op::RET);
@@ -1476,7 +1478,7 @@ namespace NEONengine
     {
         // 0xCF is not a valid menu opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xCF);
         bc.emit(noir_op::RET);
@@ -1492,7 +1494,7 @@ namespace NEONengine
     {
         // mid-range invalid opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xCB);
         bc.emit(noir_op::RET);

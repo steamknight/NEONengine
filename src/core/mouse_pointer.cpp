@@ -1,5 +1,7 @@
 #include "mouse_pointer.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
@@ -22,7 +24,7 @@ namespace NEONengine
 {
     namespace
     {
-        constexpr auto POINTER_COUNT = mtl::to<int>(mouse_pointer::COUNT);
+        constexpr auto POINTER_COUNT = to<int>(mouse_pointer::COUNT);
     }
 
     static tBitMap *s_pPointersLo[POINTER_COUNT];
@@ -31,7 +33,7 @@ namespace NEONengine
     static tSprite *s_pCurrentPointer1;  // attached sprite.
 
     /// Each role's click offset within its frame, from its CURS record.
-    static data::point<uint16_t> s_hotspots[POINTER_COUNT];
+    static data::point<u16> s_hotspots[POINTER_COUNT];
     static mouse_pointer s_current = mouse_pointer::DEFAULT;
     static bool s_ready            = false;
     static bool s_visible          = false;  ///< Tracks spriteSetEnabled to avoid needless regens.
@@ -77,7 +79,7 @@ namespace NEONengine
 
         // Frames are packed row-major from the sheet's top-left, so a frame id
         // resolves to its column and row. Both divisions happen once per role.
-        UWORD const columns = mtl::to<UWORD>(bitmapGetByteWidth(pSheet.get()) * 8 / POINTER_WIDTH);
+        UWORD const columns = to<UWORD>(bitmapGetByteWidth(pSheet.get()) * 8 / POINTER_WIDTH);
 
         for (auto idx = 0; idx < POINTER_COUNT; idx++)
         {
@@ -94,7 +96,7 @@ namespace NEONengine
             // A role the project did not configure keeps an empty frame and a
             // zero offset rather than reaching outside the sheet.
             UWORD frame = 0;
-            if (mtl::to<size_t>(idx) < cursors.size())
+            if (to<size_t>(idx) < cursors.size())
             {
                 auto const& record = cursors[idx];
                 frame           = record.frame;
@@ -102,8 +104,8 @@ namespace NEONengine
             }
 
             blitCopyAligned(pSheet.get(),
-                mtl::to<WORD>((frame % columns) * POINTER_WIDTH),
-                mtl::to<WORD>((frame / columns) * POINTER_HEIGHT),
+                to<WORD>((frame % columns) * POINTER_WIDTH),
+                to<WORD>((frame / columns) * POINTER_HEIGHT),
                 pPointer,
                 0,
                 1,
@@ -153,7 +155,7 @@ namespace NEONengine
 
         s_ready   = true;
         s_visible = true;
-        NE_LOG("%lu cursor role(s) ready", mtl::to<ULONG>(cursors.size()));
+        NE_LOG("%lu cursor role(s) ready", to<ULONG>(cursors.size()));
         return true;
     }
 
@@ -162,7 +164,7 @@ namespace NEONengine
         if (!s_ready || newPointer == s_current || newPointer >= mouse_pointer::COUNT) return;
 
         s_current       = newPointer;
-        auto const idx  = mtl::to<int>(newPointer);
+        auto const idx  = to<int>(newPointer);
         spriteSetBitmap(s_pCurrentPointer0, s_pPointersLo[idx]);
         spriteSetBitmap(s_pCurrentPointer1, s_pPointersHi[idx]);
     }
@@ -185,10 +187,10 @@ namespace NEONengine
 
         // The sheet marks where inside the frame the cursor actually points, so
         // the sprite trails the mouse by that much for the tip to land on it.
-        auto const& hotspot = s_hotspots[mtl::to<int>(s_current)];
+        auto const& hotspot = s_hotspots[to<int>(s_current)];
 
-        s_pCurrentPointer0->wX = mtl::to<WORD>(mouseGetX(MOUSE_PORT_1) - hotspot.x);
-        s_pCurrentPointer0->wY = mtl::to<WORD>(mouseGetY(MOUSE_PORT_1) - hotspot.y);
+        s_pCurrentPointer0->wX = to<WORD>(mouseGetX(MOUSE_PORT_1) - hotspot.x);
+        s_pCurrentPointer0->wY = to<WORD>(mouseGetY(MOUSE_PORT_1) - hotspot.y);
         s_pCurrentPointer1->wX = s_pCurrentPointer0->wX;
         s_pCurrentPointer1->wY = s_pCurrentPointer0->wY;
         spriteRequestMetadataUpdate(s_pCurrentPointer0);

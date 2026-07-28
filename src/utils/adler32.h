@@ -9,6 +9,8 @@
 #ifndef __ADLER32__INCLUDED__
 #define __ADLER32__INCLUDED__
 
+#include "types.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -23,12 +25,12 @@ namespace NEONengine
      * @param size Number of bytes to read.
      * @return The checksum, high half `b` and low half `a`.
      */
-    constexpr uint32_t adler32(uint8_t const* pData, size_t size) noexcept
+    constexpr u32 adler32(u8 const* pData, size_t size) noexcept
     {
-        constexpr uint32_t MODULO = 65521;
+        constexpr u32 MODULO = 65521;
 
-        uint32_t a = 1;
-        uint32_t b = 0;
+        u32 a = 1;
+        u32 b = 0;
         for (size_t i = 0; i < size; ++i)
         {
             a = (a + pData[i]) % MODULO;

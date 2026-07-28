@@ -1,5 +1,7 @@
 #include "scene_hotspots.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/mouse.h>
@@ -21,25 +23,25 @@ namespace NEONengine
 {
     namespace
     {
-        constexpr uint16_t NO_HOTSPOT      = 0xFFFF;
-        constexpr uint8_t FLAG_ENABLED     = 1 << 0;  ///< hotspot.flags bit 0.
+        constexpr u16 NO_HOTSPOT      = 0xFFFF;
+        constexpr u8 FLAG_ENABLED     = 1 << 0;  ///< hotspot.flags bit 0.
 
-        uint16_t s_first = 0;  ///< First HOTS id this scene owns.
-        uint16_t s_count = 0;  ///< How many it owns; 0 disables the whole module.
+        u16 s_first = 0;  ///< First HOTS id this scene owns.
+        u16 s_count = 0;  ///< How many it owns; 0 disables the whole module.
 
         /// One byte per hotspot, seeded from its record and flipped by scripts.
-        mtl::vector<uint8_t> s_enabled;
+        mtl::vector<u8> s_enabled;
 
-        uint16_t s_hovered = NO_HOTSPOT;  ///< Scene-local index under the pointer.
-        uint16_t s_pressed = NO_HOTSPOT;  ///< Scene-local index the press latched onto.
+        u16 s_hovered = NO_HOTSPOT;  ///< Scene-local index under the pointer.
+        u16 s_pressed = NO_HOTSPOT;  ///< Scene-local index the press latched onto.
         bool s_was_down    = false;       ///< Last frame's button state, for edges.
         bool s_resyncButton = false;      ///< Adopt the button state, skip edges.
 
         /// Scene-space box enclosing every hotspot; maxima are exclusive.
-        uint16_t s_min_x = 0;
-        uint16_t s_min_y = 0;
-        uint16_t s_max_x = 0;
-        uint16_t s_max_y = 0;
+        u16 s_min_x = 0;
+        u16 s_min_y = 0;
+        u16 s_max_x = 0;
+        u16 s_max_y = 0;
 
         /**
          * @brief The hotspot records this scene owns.
@@ -53,7 +55,7 @@ namespace NEONengine
         /**
          * @brief True when scene-space @p x, @p y falls inside @p bounds.
          */
-        constexpr bool contains(data::rect const& bounds, uint16_t x, uint16_t y) noexcept
+        constexpr bool contains(data::rect const& bounds, u16 x, u16 y) noexcept
         {
             return x >= bounds.pos.x && x < bounds.pos.x + bounds.width  //
                 && y >= bounds.pos.y && y < bounds.pos.y + bounds.height;
@@ -62,7 +64,7 @@ namespace NEONengine
         /**
          * @brief The frame the hotspot @p index's state graphic should show.
          */
-        hotspot_frame state_frame(uint16_t index)
+        hotspot_frame state_frame(u16 index)
         {
             if (s_enabled[index] == 0) return hotspot_frame::DISABLED;
             // A press only reads as pressed while the pointer is still over the
@@ -78,7 +80,7 @@ namespace NEONengine
          * Ignores NO_HOTSPOT so callers can pass a "previously hovered" slot
          * without checking it first.
          */
-        void refresh_state_frame(uint16_t index)
+        void refresh_state_frame(u16 index)
         {
             if (index == NO_HOTSPOT) return;
             scene_bobs_set_hotspot_frame(index, state_frame(index));
@@ -93,11 +95,11 @@ namespace NEONengine
          * and finally the record's own transition is requested; a concrete
          * goto_scene wins over whatever the script may have asked for.
          */
-        void activate(uint16_t index)
+        void activate(u16 index)
         {
             auto const& hotspot = scene_records()[index];
 
-            NE_LOG("hotspot %hu clicked", mtl::to<UWORD>(s_first + index));
+            NE_LOG("hotspot %hu clicked", to<UWORD>(s_first + index));
 
             if (hotspot.click_sfx_hash != data::NO_ASSET)
             {
@@ -136,13 +138,13 @@ namespace NEONengine
         if (hotspots.is_empty()) return;
 
         s_first = scene.hotspot_range.start;
-        s_count = mtl::to<uint16_t>(hotspots.size());
+        s_count = to<u16>(hotspots.size());
         s_enabled.reserve(hotspots.size());
 
-        uint16_t min_x = 0xFFFF;
-        uint16_t min_y = 0xFFFF;
-        uint16_t max_x = 0;
-        uint16_t max_y = 0;
+        u16 min_x = 0xFFFF;
+        u16 min_y = 0xFFFF;
+        u16 max_x = 0;
+        u16 max_y = 0;
 
         for (auto const& hotspot : scene_records())
         {
@@ -151,8 +153,8 @@ namespace NEONengine
             auto const& bounds = hotspot.bounds;
             min_x = MIN(min_x, bounds.pos.x);
             min_y = MIN(min_y, bounds.pos.y);
-            max_x = MAX(max_x, mtl::to<uint16_t>(bounds.pos.x + bounds.width));
-            max_y = MAX(max_y, mtl::to<uint16_t>(bounds.pos.y + bounds.height));
+            max_x = MAX(max_x, to<u16>(bounds.pos.x + bounds.width));
+            max_y = MAX(max_y, to<u16>(bounds.pos.y + bounds.height));
         }
 
         s_min_x = min_x;
@@ -162,7 +164,7 @@ namespace NEONengine
 
         // Bobs register on the normal frame, so a hotspot that starts disabled
         // needs its state applied before the first draw.
-        for (uint16_t index = 0; index < s_count; ++index)
+        for (u16 index = 0; index < s_count; ++index)
         {
             refresh_state_frame(index);
         }
@@ -170,13 +172,13 @@ namespace NEONengine
         NE_LOG("%hu hotspot(s) loaded", s_count);
     }
 
-    void scene_hotspots_set_enabled(uint16_t id, bool enabled)
+    void scene_hotspots_set_enabled(u16 id, bool enabled)
     {
         // Scripts address hotspots by global id, and may name one belonging to
         // another scene; that is simply not ours to change.
         if (s_count == 0 || id < s_first || id >= s_first + s_count) return;
 
-        auto const index = mtl::to<uint16_t>(id - s_first);
+        auto const index = to<u16>(id - s_first);
         s_enabled[index] = enabled ? 1 : 0;
 
         // A hotspot switched off mid-interaction must not stay hovered, nor
@@ -226,19 +228,19 @@ namespace NEONengine
         auto const pointer_x = mouseGetX(MOUSE_PORT_1);
         auto const pointer_y = mouseGetY(MOUSE_PORT_1);
 
-        uint16_t hit = NO_HOTSPOT;
+        u16 hit = NO_HOTSPOT;
         if (pointer_y >= offset_y)
         {
             auto const x = pointer_x;
-            auto const y = mtl::to<uint16_t>(pointer_y - offset_y);
+            auto const y = to<u16>(pointer_y - offset_y);
 
             // One test rejects every frame the pointer spends away from the
             // scene's interactive area, which is most of them.
             if (x >= s_min_x && x < s_max_x && y >= s_min_y && y < s_max_y)
             {
                 auto const records = scene_records();
-                uint16_t best_z    = 0;
-                for (uint16_t index = 0; index < s_count; ++index)
+                u16 best_z    = 0;
+                for (u16 index = 0; index < s_count; ++index)
                 {
                     if (s_enabled[index] == 0) continue;
 
@@ -272,7 +274,7 @@ namespace NEONengine
         // The pointer shows what the hotspot under it would do, and falls back
         // to the plain arrow over open scenery.
         auto const role = (hit != NO_HOTSPOT)
-            ? mtl::to<mouse_pointer>(scene_records()[hit].cursor)
+            ? to<mouse_pointer>(scene_records()[hit].cursor)
             : mouse_pointer::DEFAULT;
         mousePointerSwitch(role);
 
@@ -281,7 +283,7 @@ namespace NEONengine
         s_was_down               = is_down;
 
         auto const prev_pressed = s_pressed;
-        uint16_t activated      = NO_HOTSPOT;
+        u16 activated      = NO_HOTSPOT;
 
         if (pressed_edge)
         {

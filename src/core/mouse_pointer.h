@@ -1,6 +1,8 @@
 #ifndef __MOUSE_POINTER_H__INCLUDED__
 #define __MOUSE_POINTER_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 namespace NEONengine
@@ -12,7 +14,7 @@ namespace NEONengine
      * converts straight to one of these. Only the engine selects WAIT; a
      * hotspot may name any of the roles before it.
      */
-    enum class mouse_pointer : uint16_t
+    enum class mouse_pointer : u16
     {
         DEFAULT,
         LOOK,

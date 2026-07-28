@@ -1,5 +1,7 @@
 #include "scene_audio.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/ptplayer.h>
@@ -19,20 +21,20 @@ namespace NEONengine
         /// Neither volume nor priority is authored, so every effect shares one.
         /// ptplayer requires a nonzero priority; equal priorities mean the
         /// older sound gives way, which is what one-shots want.
-        constexpr uint8_t SFX_VOLUME   = PTPLAYER_VOLUME_MAX;
-        constexpr uint8_t SFX_PRIORITY = 1;
+        constexpr u8 SFX_VOLUME   = PTPLAYER_VOLUME_MAX;
+        constexpr u8 SFX_PRIORITY = 1;
 
         /// One loaded effect, keyed by the hash its keyframes name it with.
         struct sfx_entry
         {
-            uint32_t hash      = 0;
+            u32 hash      = 0;
             tPtplayerSfx* data = nullptr;
         };
 
         mtl::vector<sfx_entry> s_sfx;
 
         /// @brief The loaded effect @p hash names, or nullptr.
-        tPtplayerSfx* find_sfx(uint32_t hash)
+        tPtplayerSfx* find_sfx(u32 hash)
         {
             for (auto const& entry : s_sfx)
             {
@@ -48,14 +50,14 @@ namespace NEONengine
          * that loops names it again every cycle, so the table is keyed by hash
          * and each sound is read exactly once.
          */
-        void require_sfx(uint32_t hash)
+        void require_sfx(u32 hash)
         {
             if (find_sfx(hash)) return;
 
             auto file = g_pEngine->data().open_asset(hash);
             if (!file)
             {
-                NE_LOG("no sfx asset for hash %08lx", mtl::to<ULONG>(hash));
+                NE_LOG("no sfx asset for hash %08lx", to<ULONG>(hash));
                 return;
             }
 
@@ -64,7 +66,7 @@ namespace NEONengine
             tPtplayerSfx* sfx = ptplayerSfxCreateFromFd(file.release(), 0);
             if (!sfx)
             {
-                NE_LOG("sfx %08lx would not load", mtl::to<ULONG>(hash));
+                NE_LOG("sfx %08lx would not load", to<ULONG>(hash));
                 return;
             }
 
@@ -77,7 +79,7 @@ namespace NEONengine
         void load_track_sfx(data::track const& track)
         {
             auto const all = g_pEngine->data().keyframes();
-            if (mtl::to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
+            if (to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
                 > all.size())
             {
                 // scene_timeline reports this and refuses to play the track, so
@@ -85,15 +87,15 @@ namespace NEONengine
                 return;
             }
 
-            for (uint16_t offset = 0; offset < track.keyframe_range.count; ++offset)
+            for (u16 offset = 0; offset < track.keyframe_range.count; ++offset)
             {
-                auto const& key = all[mtl::to<size_t>(track.keyframe_range.start) + offset];
-                if (mtl::to<data::keyframe_type>(key.type) != data::keyframe_type::SFX_PLAY)
+                auto const& key = all[to<size_t>(track.keyframe_range.start) + offset];
+                if (to<data::keyframe_type>(key.type) != data::keyframe_type::SFX_PLAY)
                 {
                     continue;
                 }
 
-                require_sfx(mtl::force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
+                require_sfx(force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
             }
         }
 
@@ -150,11 +152,11 @@ namespace NEONengine
 
         if (!s_sfx.empty())
         {
-            NE_LOG("%lu sound effect(s)", mtl::to<ULONG>(s_sfx.size()));
+            NE_LOG("%lu sound effect(s)", to<ULONG>(s_sfx.size()));
         }
     }
 
-    void scene_audio_play(uint32_t hash)
+    void scene_audio_play(u32 hash)
     {
         tPtplayerSfx* sfx = find_sfx(hash);
 

@@ -1,5 +1,7 @@
 #include "scene_text.h"
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/utils/font.h>
@@ -24,22 +26,22 @@ namespace NEONengine
     {
         // text_region::control_bits. Horizontal and vertical alignment are two
         // bits each; in both fields 3 is not a valid alignment.
-        constexpr uint8_t CTL_H_SHIFT     = 0;
-        constexpr uint8_t CTL_V_SHIFT     = 2;
-        constexpr uint8_t CTL_ALIGN_MASK  = 0x3;
-        constexpr uint8_t CTL_FULL_WIDTH  = 1 << 4;
-        constexpr uint8_t CTL_FULL_HEIGHT = 1 << 5;
+        constexpr u8 CTL_H_SHIFT     = 0;
+        constexpr u8 CTL_V_SHIFT     = 2;
+        constexpr u8 CTL_ALIGN_MASK  = 0x3;
+        constexpr u8 CTL_FULL_WIDTH  = 1 << 4;
+        constexpr u8 CTL_FULL_HEIGHT = 1 << 5;
 
-        constexpr uint8_t ALIGN_CENTER = 1;
-        constexpr uint8_t ALIGN_FAR    = 2;  ///< Right horizontally, bottom vertically.
+        constexpr u8 ALIGN_CENTER = 1;
+        constexpr u8 ALIGN_FAR    = 2;  ///< Right horizontally, bottom vertically.
 
         /// The box a region lays its text out in, after the full-scene bits.
         struct layout_box
         {
-            uint16_t x;
-            uint16_t y;
-            uint16_t width;
-            uint16_t height;
+            u16 x;
+            u16 y;
+            u16 width;
+            u16 height;
         };
 
         /**
@@ -49,7 +51,7 @@ namespace NEONengine
          * does not, so this maps rather than casts. An invalid value falls back
          * to left, which is also what an all-zero control byte means.
          */
-        text_justify horizontal_of(uint8_t controlBits)
+        text_justify horizontal_of(u8 controlBits)
         {
             switch ((controlBits >> CTL_H_SHIFT) & CTL_ALIGN_MASK)
             {
@@ -65,13 +67,13 @@ namespace NEONengine
          * @p textHeight must already fit in the box, so the centered and bottom
          * cases cannot run above it.
          */
-        uint16_t top_of(uint8_t controlBits, layout_box const& box, uint16_t textHeight)
+        u16 top_of(u8 controlBits, layout_box const& box, u16 textHeight)
         {
             switch ((controlBits >> CTL_V_SHIFT) & CTL_ALIGN_MASK)
             {
                 case ALIGN_CENTER:
-                    return mtl::to<uint16_t>(box.y + ((box.height - textHeight) >> 1));
-                case ALIGN_FAR: return mtl::to<uint16_t>(box.y + box.height - textHeight);
+                    return to<u16>(box.y + ((box.height - textHeight) >> 1));
+                case ALIGN_FAR: return to<u16>(box.y + box.height - textHeight);
                 default: return box.y;
             }
         }
@@ -105,8 +107,8 @@ namespace NEONengine
                 return box;
             }
 
-            uint16_t const roomX = mtl::to<uint16_t>(SCREEN_WIDTH - box.x);
-            uint16_t const roomY = mtl::to<uint16_t>(SCREEN_HEIGHT - box.y);
+            u16 const roomX = to<u16>(SCREEN_WIDTH - box.x);
+            u16 const roomY = to<u16>(SCREEN_HEIGHT - box.y);
             if (box.width > roomX) box.width = roomX;
             if (box.height > roomY) box.height = roomY;
             return box;
@@ -118,13 +120,13 @@ namespace NEONengine
          * Insertion sort: a scene owns few regions, and it is stable, so regions
          * sharing a z_order stay in the order they were authored.
          */
-        void build_draw_order(mtl::span<data::text_region> regions, mtl::vector<uint16_t>& order)
+        void build_draw_order(mtl::span<data::text_region> regions, mtl::vector<u16>& order)
         {
-            uint16_t const count = mtl::to<uint16_t>(regions.size());
+            u16 const count = to<u16>(regions.size());
             order.clear();
             order.reserve(count);
 
-            for (uint16_t i = 0; i < count; ++i)
+            for (u16 i = 0; i < count; ++i)
             {
                 size_t pos = order.size();
                 order.push_back(i);
@@ -149,20 +151,20 @@ namespace NEONengine
             NE_LOG("TXTR range %hu+%hu is outside the %lu region(s) loaded",
                 scene.text_region_range.start,
                 scene.text_region_range.count,
-                mtl::to<ULONG>(all.size()));
+                to<ULONG>(all.size()));
             return;
         }
 
-        auto order = mtl::vector<uint16_t>(regions.size());
+        auto order = mtl::vector<u16>(regions.size());
         build_draw_order(regions, order);
 
         text_renderer* pRenderer = g_pEngine->default_text_renderer();
         if (!pRenderer) return;
 
-        uint16_t drawn = 0;
-        for (uint16_t slot = 0; slot < regions.size(); ++slot)
+        u16 drawn = 0;
+        for (u16 slot = 0; slot < regions.size(); ++slot)
         {
-            uint16_t const index            = order[slot];
+            u16 const index            = order[slot];
             data::text_region const& region = regions[index];
 
             auto const text = g_pEngine->strings().get_string(region.string_id);
@@ -210,6 +212,6 @@ namespace NEONengine
             ++drawn;
         }
 
-        NE_LOG("%hu of %lu text region(s) drawn", drawn, mtl::to<ULONG>(regions.size()));
+        NE_LOG("%hu of %lu text region(s) drawn", drawn, to<ULONG>(regions.size()));
     }
 }  // namespace NEONengine

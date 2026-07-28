@@ -21,6 +21,8 @@
 #ifndef __SCENE_AUDIO_H__INCLUDED__
 #define __SCENE_AUDIO_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include "game_data_format.h"
@@ -56,7 +58,7 @@ namespace NEONengine
      *
      * @param hash SFX pak-path hash, as the keyframe stores it.
      */
-    void scene_audio_play(uint32_t hash);
+    void scene_audio_play(u32 hash);
 }  // namespace NEONengine
 
 #endif  // __SCENE_AUDIO_H__INCLUDED__

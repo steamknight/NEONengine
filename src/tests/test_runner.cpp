@@ -1,5 +1,7 @@
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "neonengine.h"
 
 #include <ace/managers/system.h>
@@ -35,7 +37,7 @@ NE_LOG_DOMAIN(Test);
 
 namespace NEONengine::tests
 {
-    void runTestSuite(char const* szSuiteName, Test tests[], uint32_t testCount);
+    void runTestSuite(char const* szSuiteName, Test tests[], u32 testCount);
 
 #define RUN_SUITE(suite) \
     runTestSuite(suite##_name, suite##_tests, sizeof(suite##_tests) / sizeof(Test));
@@ -71,9 +73,9 @@ namespace NEONengine::tests
         screenDuplicateBackToFront(g_mainScreen);
     }
 
-    void runTestSuite(char const* szSuiteName, Test tests[], uint32_t testCount)
+    void runTestSuite(char const* szSuiteName, Test tests[], u32 testCount)
     {
-        static uint32_t y  = 0;
+        static u32 y  = 0;
         auto pTextRenderer = g_pEngine->default_text_renderer();
 
         char buffer[256];
@@ -82,8 +84,8 @@ namespace NEONengine::tests
 
         screenTextCopy(g_mainScreen, text.get(), 0, y, 24, FONT_COOKIE);
 
-        uint32_t passedTests = 0;
-        for (uint32_t i = 0; i < testCount; i++)
+        u32 passedTests = 0;
+        for (u32 i = 0; i < testCount; i++)
         {
             char const* szError = tests[i].test_fn();
             if (szError)

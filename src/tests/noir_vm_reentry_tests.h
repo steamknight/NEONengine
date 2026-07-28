@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -29,11 +31,11 @@ namespace NEONengine
     // re-entry. Tests set these before building and running the VM.
 
     static noir_vm* g_reentry_vm    = nullptr;
-    static uint16_t g_reentry_fn_id = 0;
-    static uint8_t g_reentry_count  = 0;
+    static u16 g_reentry_fn_id = 0;
+    static u8 g_reentry_count  = 0;
 
     // Bridge callback that re-enters the VM by calling execute()
-    static void mock_reentry_inv_add(uint16_t)
+    static void mock_reentry_inv_add(u16)
     {
         if (g_reentry_vm)
         {
@@ -43,7 +45,7 @@ namespace NEONengine
     }
 
     // Bridge callback that re-enters conditionally (only on first call)
-    static void mock_reentry_once_inv_add(uint16_t)
+    static void mock_reentry_once_inv_add(u16)
     {
         if (g_reentry_vm && g_reentry_count == 0)
         {
@@ -70,7 +72,7 @@ namespace NEONengine
     // Helper: build VM from builder with a custom bridge
     static noir_vm build_vm_with_bridge(bytecode_builder& bc,
         noir_bridge const* bridge,
-        uint16_t stack_size = 512)
+        u16 stack_size = 512)
     {
         g_mock_log.reset();
         return noir_vm(bc.flags,
@@ -95,7 +97,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: main
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(100);
@@ -106,7 +108,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: re-entrant function
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(42);
@@ -135,7 +137,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: set D0-D3, trigger re-entry, check D0-D3 preserved
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -160,7 +162,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: clobbers all regs
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0xAAAA);
@@ -200,7 +202,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: set SR via CMP, trigger re-entry, check SR preserved
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -228,7 +230,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: clobbers SR via CMP (N=1)
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0);
@@ -260,7 +262,7 @@ namespace NEONengine
         // the outer function's D0 should be restored — the inner D0 shouldn't leak
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(555);
@@ -270,7 +272,7 @@ namespace NEONengine
         // D0 should be 555, not 999
         bc.emit(noir_op::RET);
 
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(999);
@@ -301,7 +303,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: outer
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(100);
@@ -309,7 +311,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: re-entrant, calls fn2 via CALL
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(200);
@@ -318,7 +320,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn2: subroutine called from fn1
-        /*uint16_t fn2 =*/bc.begin_func();
+        /*u16 fn2 =*/bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(300);
@@ -349,7 +351,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: read value[0], trigger re-entry, read value[0] again
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         // Save initial value in D1
         bc.emit(noir_op::MOV16);
@@ -369,7 +371,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: modifies values[0] to 99
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(99);
@@ -405,7 +407,7 @@ namespace NEONengine
         // After re-entry returns, the outer function should continue normally
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -422,7 +424,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: trivial
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::RET);
 
         auto bridge = make_reentry_bridge();
@@ -447,7 +449,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: trigger re-entry, then CALL fn2
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(10);
@@ -461,14 +463,14 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: re-entrant, trivial
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0xFFFF);
         bc.emit(noir_op::RET);
 
         // fn2: sets D0 to 77
-        /*uint16_t fn2 =*/bc.begin_func();
+        /*u16 fn2 =*/bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(77);
@@ -499,7 +501,7 @@ namespace NEONengine
         // Each time inner function clobbers all regs, each time they're restored
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -522,7 +524,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: clobbers D0 and D1
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0xDEAD);
@@ -552,14 +554,14 @@ namespace NEONengine
     // ── Nested re-entry (level 3) ───────────────────────────────────────────────
 
     // Nested re-entry with counter-based target switching
-    static uint16_t g_nested_targets[4] = { 0, 0, 0, 0 };
-    static uint8_t g_nested_call_idx    = 0;
+    static u16 g_nested_targets[4] = { 0, 0, 0, 0 };
+    static u8 g_nested_call_idx    = 0;
 
-    static void mock_nested_reentry_inv_add(uint16_t)
+    static void mock_nested_reentry_inv_add(u16)
     {
         if (g_reentry_vm && g_nested_call_idx < 4)
         {
-            uint16_t target = g_nested_targets[g_nested_call_idx++];
+            u16 target = g_nested_targets[g_nested_call_idx++];
             g_reentry_vm->execute(target);
         }
     }
@@ -571,7 +573,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: sets D0=100, triggers re-entry
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(100);
@@ -582,7 +584,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: sets D0=200, triggers re-entry to fn2
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(200);
@@ -594,7 +596,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn2: sets D0=300, returns
-        uint16_t fn2 = bc.begin_func();
+        u16 fn2 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(300);
@@ -635,7 +637,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: allocate locals, write to local, trigger re-entry, read local
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         bc.emit(noir_op::LOCALS);
         bc.emit(4);  // 4 bytes = 2 x 16-bit locals
@@ -677,7 +679,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: re-entrant, also uses locals to clobber stack
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::LOCALS);
         bc.emit(4);
 
@@ -717,7 +719,7 @@ namespace NEONengine
         // Push values before re-entry, pop them after — stack should be balanced
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
 
         // Push two values
         bc.emit(noir_op::MOV16);
@@ -750,7 +752,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: pushes and pops its own values (should not corrupt outer stack)
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0xAAAA);
@@ -784,7 +786,7 @@ namespace NEONengine
         // Inner re-entrant function uses RETZ — conditional return should work
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(42);
@@ -792,7 +794,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: sets Z=1 then RETZ → should return
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0);
@@ -828,7 +830,7 @@ namespace NEONengine
         // After re-entry, SR should reflect the INV_HAS result (not re-entrant SR)
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(5);
@@ -842,7 +844,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: clobbers D1
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
         bc.emit_u16(0);
@@ -872,7 +874,7 @@ namespace NEONengine
         // Baseline: bridge callback does NOT re-enter → normal execution
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(42);
@@ -895,7 +897,7 @@ namespace NEONengine
         // not from any re-entrant inner function
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::INV_ADD);  // triggers re-entry, inner sets D0=999
 
         // After re-entry, D0 is restored to whatever it was.
@@ -905,7 +907,7 @@ namespace NEONengine
         bc.emit_u16(42);
         bc.emit(noir_op::RET);
 
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(999);
@@ -934,7 +936,7 @@ namespace NEONengine
         // After re-entry, continue with arithmetic using restored registers
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(100);
@@ -952,7 +954,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: clobbers both
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0);
@@ -986,7 +988,7 @@ namespace NEONengine
         // (execute() returns error without modifying state)
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(42);
@@ -1018,14 +1020,14 @@ namespace NEONengine
         // After everything completes, VM should be in idle state
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(10);
         bc.emit(noir_op::INV_ADD);
         bc.emit(noir_op::RET);
 
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::RET);
 
         auto bridge = make_reentry_bridge();
@@ -1053,7 +1055,7 @@ namespace NEONengine
         // VALUES survive and the VM can run a fresh function afterwards.
         bytecode_builder bc;
 
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(42);
@@ -1063,7 +1065,7 @@ namespace NEONengine
         bc.emit_u16(5);
         bc.emit(noir_op::RET);
 
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(5);

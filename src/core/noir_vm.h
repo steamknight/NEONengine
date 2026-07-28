@@ -1,6 +1,8 @@
 #ifndef __NOIR_VM_H__INCLUDED__
 #define __NOIR_VM_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace/types.h>
@@ -19,7 +21,7 @@ namespace NEONengine
      * Non-error statuses (Ok, Yielded, Completed) indicate normal operation.
      * Error statuses cause the VM to halt and stop executing.
      */
-    enum class noir_status : uint8_t
+    enum class noir_status : u8
     {
         ok,         ///< Execution proceeded normally
         yielded,    ///< Yielded — call update() again next frame
@@ -44,10 +46,10 @@ namespace NEONengine
      */
     struct noir_debug_stats
     {
-        uint32_t max_stack_used;         ///< High-water mark of stack usage (bytes)
-        uint16_t max_call_depth;         ///< Deepest CALL nesting reached
-        uint8_t max_reentry_level;       ///< Highest re-entrancy level reached
-        uint32_t opcode_histogram[256];  ///< Execution count per opcode
+        u32 max_stack_used;         ///< High-water mark of stack usage (bytes)
+        u16 max_call_depth;         ///< Deepest CALL nesting reached
+        u8 max_reentry_level;       ///< Highest re-entrancy level reached
+        u32 opcode_histogram[256];  ///< Execution count per opcode
 
         void reset() noexcept;
     };
@@ -71,56 +73,56 @@ namespace NEONengine
     struct noir_bridge
     {
         // Inventory
-        void (*inv_add)(uint16_t item_id);
-        void (*inv_remove)(uint16_t item_id);
-        bool (*inv_has)(uint16_t item_id);  ///< true = has item
-        uint16_t (*inv_count)();
+        void (*inv_add)(u16 item_id);
+        void (*inv_remove)(u16 item_id);
+        bool (*inv_has)(u16 item_id);  ///< true = has item
+        u16 (*inv_count)();
         void (*inv_clear)();
 
         // Scenes
-        void (*goto_scene)(uint16_t scene_id);  ///< blocking
-        uint16_t (*get_scene)();
-        void (*hotspot_on)(uint16_t id);
-        void (*hotspot_off)(uint16_t id);
-        void (*set_pointer)(uint16_t type);
+        void (*goto_scene)(u16 scene_id);  ///< blocking
+        u16 (*get_scene)();
+        void (*hotspot_on)(u16 id);
+        void (*hotspot_off)(u16 id);
+        void (*set_pointer)(u16 type);
 
         // Dialogue / Text
-        void (*say)(uint16_t string_id, uint16_t speaker_id);  ///< blocking
-        void (*show_dialog)(uint16_t dialogue_id);             ///< blocking
-        void (*show_text)(uint16_t string_id, uint16_t x, uint16_t y);
+        void (*say)(u16 string_id, u16 speaker_id);  ///< blocking
+        void (*show_dialog)(u16 dialogue_id);             ///< blocking
+        void (*show_text)(u16 string_id, u16 x, u16 y);
         void (*clear_text)();
 
         // Audio
-        void (*play_music)(uint16_t music_id);
+        void (*play_music)(u16 music_id);
         void (*stop_music)();
-        void (*play_sfx)(uint16_t sfx_id);
+        void (*play_sfx)(u16 sfx_id);
 
         // Screen
-        void (*fade_out)(uint16_t duration_frames);  ///< blocking
-        void (*fade_in)(uint16_t duration_frames);   ///< blocking
-        void (*screen_clear)(uint16_t color_index);
+        void (*fade_out)(u16 duration_frames);  ///< blocking
+        void (*fade_in)(u16 duration_frames);   ///< blocking
+        void (*screen_clear)(u16 color_index);
 
         // Animation
-        void (*anim_play)(uint16_t anim_id);
-        void (*anim_stop)(uint16_t anim_id);
-        void (*anim_wait)(uint16_t anim_id);  ///< blocking
+        void (*anim_play)(u16 anim_id);
+        void (*anim_stop)(u16 anim_id);
+        void (*anim_wait)(u16 anim_id);  ///< blocking
 
         // System
-        void (*set_lang)(uint16_t lang_id);
-        void (*save_game)(uint16_t slot);
-        void (*load_game)(uint16_t slot);
+        void (*set_lang)(u16 lang_id);
+        void (*save_game)(u16 slot);
+        void (*load_game)(u16 slot);
         void (*new_game)();
         void (*quit_game)();
 
 #ifdef GAME_DEBUG
-        void (*debug_log)(uint16_t string_id);              ///< Log string table entry
-        void (*debug_print)(char const* str, uint8_t len);  ///< Log raw string
+        void (*debug_log)(u16 string_id);              ///< Log string table entry
+        void (*debug_print)(char const* str, u8 len);  ///< Log raw string
 #endif
     };
 
     // ─── VM states ──────────────────────────────────────────────────────────────
 
-    enum class noir_state : uint8_t
+    enum class noir_state : u8
     {
         idle,     ///< No function running
         running,  ///< Actively executing opcodes
@@ -173,21 +175,21 @@ namespace NEONengine
          * @param values_count    Number of entries in the values array
          * @param bytecode        Borrowed read-only bytecode blob (all scripts)
          * @param bytecode_size   Size of bytecode blob in bytes
-         * @param func_toc        Borrowed array of uint32_t offsets into bytecode
+         * @param func_toc        Borrowed array of u32 offsets into bytecode
          * @param func_count      Number of entries in the function TOC
          * @param bridge          Borrowed engine bridge (must outlive VM)
          * @param stack_size      Initial stack capacity in bytes (e.g. 256)
          */
-        noir_vm(uint8_t* flags,
-            uint16_t flags_size,
-            uint16_t* values,
-            uint16_t values_count,
-            uint8_t const* bytecode,
-            uint32_t bytecode_size,
-            uint32_t const* func_toc,
-            uint16_t func_count,
+        noir_vm(u8* flags,
+            u16 flags_size,
+            u16* values,
+            u16 values_count,
+            u8 const* bytecode,
+            u32 bytecode_size,
+            u32 const* func_toc,
+            u16 func_count,
             noir_bridge const* bridge,
-            uint16_t stack_size) noexcept;
+            u16 stack_size) noexcept;
 
         ~noir_vm() noexcept = default;
 
@@ -206,7 +208,7 @@ namespace NEONengine
          * @param func_id Function index in the TOC (0-based)
          * @return noir_status::ok on success, or an error status
          */
-        noir_status execute(uint16_t func_id) noexcept;
+        noir_status execute(u16 func_id) noexcept;
 
         /**
          * @brief Run one update tick.
@@ -256,15 +258,15 @@ namespace NEONengine
 
         noir_state state() const noexcept { return _state; }
         noir_status last_error() const noexcept { return _last_error; }
-        uint16_t exit_code() const noexcept { return _exit_code; }
-        uint16_t reg_d(uint8_t i) const noexcept { return _d[i & 3]; }
-        uint8_t sr() const noexcept { return _sr; }
+        u16 exit_code() const noexcept { return _exit_code; }
+        u16 reg_d(u8 i) const noexcept { return _d[i & 3]; }
+        u8 sr() const noexcept { return _sr; }
 
         /**
          * @brief Set the number of opcodes executed per update() call.
          * @param count Opcodes per update (default: 10)
          */
-        void set_opcodes_per_update(uint16_t count) noexcept { _opcodes_per_update = count; }
+        void set_opcodes_per_update(u16 count) noexcept { _opcodes_per_update = count; }
 
 #ifdef GAME_DEBUG
         noir_debug_stats const& debug_stats() const noexcept { return _debug_stats; }
@@ -278,47 +280,47 @@ namespace NEONengine
 
         // ── Opcode category handlers ─────────────────────────────────────────
 
-        noir_status op_script_exec(uint8_t op) noexcept;
-        noir_status op_data_move(uint8_t op) noexcept;
-        noir_status op_arithmetic(uint8_t op) noexcept;
-        noir_status op_logic(uint8_t op) noexcept;
-        noir_status op_control_flow(uint8_t op) noexcept;
-        noir_status op_flag_ops(uint8_t op) noexcept;
-        noir_status op_value_ops(uint8_t op) noexcept;
-        noir_status op_game_inventory(uint8_t op) noexcept;
-        noir_status op_game_timeline(uint8_t op) noexcept;
-        noir_status op_game_scenes(uint8_t op) noexcept;
-        noir_status op_game_dialogue(uint8_t op) noexcept;
-        noir_status op_game_menu(uint8_t op) noexcept;
-        noir_status op_debug(uint8_t op) noexcept;
+        noir_status op_script_exec(u8 op) noexcept;
+        noir_status op_data_move(u8 op) noexcept;
+        noir_status op_arithmetic(u8 op) noexcept;
+        noir_status op_logic(u8 op) noexcept;
+        noir_status op_control_flow(u8 op) noexcept;
+        noir_status op_flag_ops(u8 op) noexcept;
+        noir_status op_value_ops(u8 op) noexcept;
+        noir_status op_game_inventory(u8 op) noexcept;
+        noir_status op_game_timeline(u8 op) noexcept;
+        noir_status op_game_scenes(u8 op) noexcept;
+        noir_status op_game_dialogue(u8 op) noexcept;
+        noir_status op_game_menu(u8 op) noexcept;
+        noir_status op_debug(u8 op) noexcept;
 
         // ── Stack operations ─────────────────────────────────────────────────
 
-        void push16(uint16_t value) noexcept;
-        void push32(uint32_t value) noexcept;
-        uint16_t pop16() noexcept;
-        uint32_t pop32() noexcept;
-        uint16_t peek16() const noexcept;
-        void ensure_stack(uint16_t bytes_needed) noexcept;
+        void push16(u16 value) noexcept;
+        void push32(u32 value) noexcept;
+        u16 pop16() noexcept;
+        u32 pop32() noexcept;
+        u16 peek16() const noexcept;
+        void ensure_stack(u16 bytes_needed) noexcept;
 
         // ── Bytecode reading ─────────────────────────────────────────────────
 
-        uint8_t read_u8() noexcept;
-        uint16_t read_u16() noexcept;
-        int16_t read_s16() noexcept;
+        u8 read_u8() noexcept;
+        u16 read_u16() noexcept;
+        i16 read_s16() noexcept;
 
         // ── Mode byte helpers ────────────────────────────────────────────────
 
-        uint16_t read_operand(uint8_t mode) noexcept;
-        void write_operand(uint8_t mode, uint16_t value) noexcept;
-        uint16_t read_operand_cached(uint8_t mode) noexcept;
-        void write_operand_cached(uint16_t value) noexcept;
+        u16 read_operand(u8 mode) noexcept;
+        void write_operand(u8 mode, u16 value) noexcept;
+        u16 read_operand_cached(u8 mode) noexcept;
+        void write_operand_cached(u16 value) noexcept;
 
         // ── SR flag helpers ──────────────────────────────────────────────────
 
-        void set_flags_nz(uint16_t result) noexcept;
-        void set_flags_nzcv_add(uint16_t a, uint16_t b, uint32_t result) noexcept;
-        void set_flags_nzcv_sub(uint16_t a, uint16_t b, uint32_t result) noexcept;
+        void set_flags_nz(u16 result) noexcept;
+        void set_flags_nzcv_add(u16 a, u16 b, u32 result) noexcept;
+        void set_flags_nzcv_sub(u16 a, u16 b, u32 result) noexcept;
 
         // ── RET implementation (shared by RET, RETZ, RETC) ───────────────────
 
@@ -326,10 +328,10 @@ namespace NEONengine
 
         // ── Flag/Value helpers ───────────────────────────────────────────────
 
-        bool get_flag(uint16_t index) const noexcept;
-        void set_flag(uint16_t index, bool value) noexcept;
-        bool validate_flag_index(uint16_t index) const noexcept;
-        bool validate_value_index(uint16_t index) const noexcept;
+        bool get_flag(u16 index) const noexcept;
+        void set_flag(u16 index, bool value) noexcept;
+        bool validate_flag_index(u16 index) const noexcept;
+        bool validate_value_index(u16 index) const noexcept;
 
         // ── Stack high-water ─────────────────────────────────────────────────
 
@@ -340,47 +342,47 @@ namespace NEONengine
         private:  //////////////////////////////////////////////////////////////////////////////////
         // ── Borrowed memory (caller manages lifetime) ────────────────────────
 
-        uint8_t* _flags;
-        uint16_t _flags_size;
-        uint16_t* _values;
-        uint16_t _values_count;
-        uint8_t const* _bytecode;
-        uint32_t _bytecode_size;
-        uint32_t const* _func_toc;
-        uint16_t _func_count;
+        u8* _flags;
+        u16 _flags_size;
+        u16* _values;
+        u16 _values_count;
+        u8 const* _bytecode;
+        u32 _bytecode_size;
+        u32 const* _func_toc;
+        u16 _func_count;
         noir_bridge const* _bridge;
 
         // ── Owned memory ─────────────────────────────────────────────────────
 
-        mtl::vector<uint8_t, mtl::MemF::Fast> _stack;
+        mtl::vector<u8, mtl::MemF::Fast> _stack;
 
         // ── Registers ────────────────────────────────────────────────────────
 
-        uint16_t _d[4];      ///< D0–D3
-        uint8_t* _sp;        ///< Stack pointer (raw, grows downward)
-        uint8_t* _fp;        ///< Frame pointer (raw)
-        uint8_t const* _pc;  ///< Program counter (raw, next byte to read)
-        uint8_t _sr;         ///< Status register (NZCV----)
+        u16 _d[4];      ///< D0–D3
+        u8* _sp;        ///< Stack pointer (raw, grows downward)
+        u8* _fp;        ///< Frame pointer (raw)
+        u8 const* _pc;  ///< Program counter (raw, next byte to read)
+        u8 _sr;         ///< Status register (NZCV----)
 
         // ── Execution state ──────────────────────────────────────────────────
 
-        uint8_t _reentry_level;        ///< 0 = not running, 1+ = nested calls
-        uint16_t _call_depth;          ///< Current internal CALL nesting
-        uint16_t _opcodes_per_update;  ///< Default: 10
-        uint16_t _opcodes_remaining;   ///< Decremented each opcode
-        uint8_t _blocking_counter;     ///< >0 = waiting for engine ops
-        uint16_t _wait_counter;        ///< >0 = waiting N frames
+        u8 _reentry_level;        ///< 0 = not running, 1+ = nested calls
+        u16 _call_depth;          ///< Current internal CALL nesting
+        u16 _opcodes_per_update;  ///< Default: 10
+        u16 _opcodes_remaining;   ///< Decremented each opcode
+        u8 _blocking_counter;     ///< >0 = waiting for engine ops
+        u16 _wait_counter;        ///< >0 = waiting N frames
 
         // ── Result ───────────────────────────────────────────────────────────
 
-        uint16_t _exit_code;
+        u16 _exit_code;
         noir_status _last_error;
         noir_state _state;
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 
-        uint8_t _cached_dst_mode;    ///< Mode of last read_operand_cached() call
-        uint16_t _cached_dst_param;  ///< Inline param (offset or index) from that call
+        u8 _cached_dst_mode;    ///< Mode of last read_operand_cached() call
+        u16 _cached_dst_param;  ///< Inline param (offset or index) from that call
 
         // ── Debug stats ──────────────────────────────────────────────────────
 

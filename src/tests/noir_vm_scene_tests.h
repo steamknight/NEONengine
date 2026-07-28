@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -31,7 +33,7 @@ namespace NEONengine
     {
         // GOTO_SCENE with D0=5 → bridge->goto_scene(5)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -53,7 +55,7 @@ namespace NEONengine
     {
         // GOTO_SCENE is a blocking opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -75,7 +77,7 @@ namespace NEONengine
     {
         // VM stays blocked across multiple update() calls until unblocked
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -103,7 +105,7 @@ namespace NEONengine
     {
         // After decrement_blocking(), VM resumes and completes
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -136,7 +138,7 @@ namespace NEONengine
     {
         // D0 should be preserved across the blocking period
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -160,7 +162,7 @@ namespace NEONengine
     {
         // All data registers preserved across GOTO_SCENE
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -199,7 +201,7 @@ namespace NEONengine
     {
         // SR preserved across GOTO_SCENE
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -230,7 +232,7 @@ namespace NEONengine
     {
         // GOTO_SCENE with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -251,7 +253,7 @@ namespace NEONengine
     {
         // GOTO_SCENE with D0=0xFFFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -275,7 +277,7 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: main — calls fn1
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(50);
@@ -286,7 +288,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         // fn1: does GOTO_SCENE
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         (void)fn1;
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -321,7 +323,7 @@ namespace NEONengine
     {
         // GET_SCENE → D0 = bridge->get_scene()
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::GET_SCENE);
         bc.emit(noir_op::RET);
@@ -339,7 +341,7 @@ namespace NEONengine
     {
         // GET_SCENE should overwrite whatever was in D0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -361,7 +363,7 @@ namespace NEONengine
     {
         // GET_SCENE should not modify D1, D2, D3
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
@@ -393,7 +395,7 @@ namespace NEONengine
     {
         // GET_SCENE should not modify SR
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -418,7 +420,7 @@ namespace NEONengine
     {
         // GET_SCENE is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::GET_SCENE);
 
@@ -442,7 +444,7 @@ namespace NEONengine
     {
         // GET_SCENE returns 0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::GET_SCENE);
         bc.emit(noir_op::RET);
@@ -460,7 +462,7 @@ namespace NEONengine
     {
         // GET_SCENE returns 0xFFFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::GET_SCENE);
         bc.emit(noir_op::RET);
@@ -478,7 +480,7 @@ namespace NEONengine
     {
         // Common pattern: get current scene, compare, branch
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::GET_SCENE);
 
@@ -518,7 +520,7 @@ namespace NEONengine
     {
         // HOTSPOT_ON with D0=7 → bridge->hotspot_on(7)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -539,7 +541,7 @@ namespace NEONengine
     {
         // D0 unchanged after HOTSPOT_ON
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -560,7 +562,7 @@ namespace NEONengine
     {
         // D1–D3 unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -595,7 +597,7 @@ namespace NEONengine
     {
         // SR unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -623,7 +625,7 @@ namespace NEONengine
     {
         // HOTSPOT_ON is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -651,7 +653,7 @@ namespace NEONengine
     {
         // HOTSPOT_OFF with D0=4 → bridge->hotspot_off(4)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -672,7 +674,7 @@ namespace NEONengine
     {
         // D0 unchanged after HOTSPOT_OFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -693,7 +695,7 @@ namespace NEONengine
     {
         // D1–D3 unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -728,7 +730,7 @@ namespace NEONengine
     {
         // SR unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -756,7 +758,7 @@ namespace NEONengine
     {
         // HOTSPOT_OFF is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -784,7 +786,7 @@ namespace NEONengine
     {
         // SET_POINTER with D0=2 → bridge->set_pointer(2)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -805,7 +807,7 @@ namespace NEONengine
     {
         // D0 unchanged after SET_POINTER
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -826,7 +828,7 @@ namespace NEONengine
     {
         // D1–D3 unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -861,7 +863,7 @@ namespace NEONengine
     {
         // SR unchanged
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -889,7 +891,7 @@ namespace NEONengine
     {
         // SET_POINTER is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -917,7 +919,7 @@ namespace NEONengine
     {
         // Enable then disable a hotspot
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -940,7 +942,7 @@ namespace NEONengine
     {
         // After GOTO_SCENE completes, GET_SCENE should work
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -971,7 +973,7 @@ namespace NEONengine
     {
         // Full scene setup pattern: GOTO_SCENE → SET_POINTER → HOTSPOT_ON
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // GOTO_SCENE 3
         bc.emit(noir_op::MOV16);
@@ -1013,7 +1015,7 @@ namespace NEONengine
     {
         // Check current scene, conditionally go to a different one
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::GET_SCENE);
 
@@ -1058,7 +1060,7 @@ namespace NEONengine
     {
         // 0xA5 is not a valid scene opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xA5);
         bc.emit(noir_op::RET);
@@ -1074,7 +1076,7 @@ namespace NEONengine
     {
         // 0xAF is not a valid scene opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xAF);
         bc.emit(noir_op::RET);
@@ -1090,7 +1092,7 @@ namespace NEONengine
     {
         // mid-range invalid opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xA8);
         bc.emit(noir_op::RET);

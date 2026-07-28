@@ -9,6 +9,8 @@
 #ifndef __STRING_TABLE__INCLUDED__
 #define __STRING_TABLE__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace++/file.h>
@@ -28,7 +30,7 @@ namespace NEONengine
      * The ids are part of the file contract, so an enumerator is both the
      * `.noir` language id and the language's index.
      */
-    enum class language : uint16_t
+    enum class language : u16
     {
         EN,
         IT,
@@ -84,12 +86,12 @@ namespace NEONengine
         /**
          * @brief The id holding the language's own name.
          */
-        static constexpr uint32_t LANGUAGE_NAME_ID = 0;
+        static constexpr u32 LANGUAGE_NAME_ID = 0;
 
         /**
          * @brief Longest language name @ref peek_language_name will report.
          */
-        static constexpr uint32_t MAX_LANGUAGE_NAME = 32;
+        static constexpr u32 MAX_LANGUAGE_NAME = 32;
 
         public:  ///////////////////////////////////////////////////////////////////////////////////
         string_table() = default;
@@ -103,12 +105,12 @@ namespace NEONengine
          * @param id String identifier.
          * @return A view of the string, or an empty view when @p id is unknown.
          */
-        bstr_view const get_string(uint32_t id) const;
+        bstr_view const get_string(u32 id) const;
 
         /**
          * @brief The number of strings in the table.
          */
-        uint16_t size() const noexcept { return _string_count; }
+        u16 size() const noexcept { return _string_count; }
 
         /**
          * @brief The language this table holds.
@@ -121,14 +123,14 @@ namespace NEONengine
          * Every file of one build shares this with the `.neon`, so the engine
          * uses it to reject a stale table whose string ids no longer line up.
          */
-        uint16_t build_period() const noexcept { return _build_period; }
+        u16 build_period() const noexcept { return _build_period; }
 
         /**
          * @brief The monotonic project build number that produced this file.
          *
          * @see build_period()
          */
-        uint32_t build_number() const noexcept { return _build_number; }
+        u32 build_number() const noexcept { return _build_number; }
 
         /**
          * @brief The language's own name, written in that language.
@@ -173,7 +175,7 @@ namespace NEONengine
          * @param capacity Size of @p pBuffer including the null terminator.
          * @return Name length in bytes, or 0 when @p lang is unavailable.
          */
-        static uint32_t peek_language_name(language lang, char* pBuffer, uint32_t capacity);
+        static u32 peek_language_name(language lang, char* pBuffer, u32 capacity);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         /**
@@ -183,10 +185,10 @@ namespace NEONengine
         /**
          * @brief Every string record of the file, back to back.
          */
-        mtl::vector<uint8_t> _payload;
-        uint16_t _string_count{ 0 };
-        uint16_t _build_period{ 0 };
-        uint32_t _build_number{ 0 };
+        mtl::vector<u8> _payload;
+        u16 _string_count{ 0 };
+        u16 _build_period{ 0 };
+        u32 _build_number{ 0 };
         language _language{ language::EN };
     };
 }  // namespace NEONengine

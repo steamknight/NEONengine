@@ -1,6 +1,8 @@
 #ifndef __NINE_PATCH_H__INCLUDED__
 #define __NINE_PATCH_H__INCLUDED__
 
+#include "types.h"
+
 #include <stdint.h>
 
 #include <ace/types.h>
@@ -17,25 +19,25 @@ namespace NEONengine
          * @brief Takes ownership of @p source and destroys it with the patch.
          */
         nine_patch(ace::bitmap_ptr &source,
-                   uint16_t left,
-                   uint16_t top,
-                   uint16_t right,
-                   uint16_t bottom);
+                   u16 left,
+                   u16 top,
+                   u16 right,
+                   u16 bottom);
         ~nine_patch() noexcept = default;
 
         NO_COPY(nine_patch)
         USE_DEFAULT_MOVE(nine_patch)
 
-        ace::bitmap_ptr render(uint16_t width, uint16_t height, uint32_t flags);
+        ace::bitmap_ptr render(u16 width, u16 height, u32 flags);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         ace::bitmap_ptr _source;
-        uint16_t _left;
-        uint16_t _top;
-        uint16_t _right;
-        uint16_t _bottom;
-        uint16_t _patch_width;
-        uint16_t _patch_height;
+        u16 _left;
+        u16 _top;
+        u16 _right;
+        u16 _bottom;
+        u16 _patch_width;
+        u16 _patch_height;
     };
 }  // namespace NEONengine
 

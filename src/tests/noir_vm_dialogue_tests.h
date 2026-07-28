@@ -3,6 +3,8 @@
 
 #ifdef ACE_TEST_RUNNER
 
+#include "types.h"
+
 #include "tests/noir_vm_test_utils.h"
 
 namespace NEONengine
@@ -33,7 +35,7 @@ namespace NEONengine
     {
         // SAY with D0=10 (string), D1=3 (speaker)
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -60,7 +62,7 @@ namespace NEONengine
     {
         // SAY is a blocking opcode — VM should be blocked after SAY
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -86,7 +88,7 @@ namespace NEONengine
     {
         // VM stays blocked across multiple update() calls until unblocked
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -118,7 +120,7 @@ namespace NEONengine
     {
         // After decrement_blocking(), VM resumes and completes
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -155,7 +157,7 @@ namespace NEONengine
     {
         // D0 and D1 should be preserved across the blocking period
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -184,7 +186,7 @@ namespace NEONengine
     {
         // All data registers preserved across SAY
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -223,7 +225,7 @@ namespace NEONengine
     {
         // SR preserved across SAY
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -258,7 +260,7 @@ namespace NEONengine
     {
         // SAY with D0=0, D1=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -283,7 +285,7 @@ namespace NEONengine
     {
         // SAY with D0=0xFFFF, D1=0xFFFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -312,14 +314,14 @@ namespace NEONengine
         bytecode_builder bc;
 
         // fn0: main — calls fn1
-        uint16_t fn0 = bc.begin_func();
+        u16 fn0 = bc.begin_func();
         bc.emit(noir_op::CALL);
         bc.emit_u16(1);
 
         bc.emit(noir_op::RET);
 
         // fn1: does SAY then sets D0=77
-        uint16_t fn1 = bc.begin_func();
+        u16 fn1 = bc.begin_func();
         (void)fn1;
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -359,7 +361,7 @@ namespace NEONengine
     {
         // SHOW_DIALOG with D0=5
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -381,7 +383,7 @@ namespace NEONengine
     {
         // SHOW_DIALOG is a blocking opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -403,7 +405,7 @@ namespace NEONengine
     {
         // VM stays blocked until unblocked
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -427,7 +429,7 @@ namespace NEONengine
     {
         // After decrement_blocking(), VM resumes and completes
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -459,7 +461,7 @@ namespace NEONengine
     {
         // All data registers preserved across SHOW_DIALOG
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -498,7 +500,7 @@ namespace NEONengine
     {
         // SR preserved across SHOW_DIALOG
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -529,7 +531,7 @@ namespace NEONengine
     {
         // SHOW_DIALOG with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -550,7 +552,7 @@ namespace NEONengine
     {
         // SHOW_DIALOG with D0=0xFFFF
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -574,7 +576,7 @@ namespace NEONengine
     {
         // SHOW_TEXT with D0=string, D1=x, D2=y
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -605,7 +607,7 @@ namespace NEONengine
     {
         // SHOW_TEXT is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -640,7 +642,7 @@ namespace NEONengine
     {
         // All data registers preserved after SHOW_TEXT
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -676,7 +678,7 @@ namespace NEONengine
     {
         // SR unchanged after SHOW_TEXT
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -712,7 +714,7 @@ namespace NEONengine
     {
         // SHOW_TEXT at 0,0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -743,7 +745,7 @@ namespace NEONengine
     {
         // CLEAR_TEXT calls bridge->clear_text()
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLEAR_TEXT);
         bc.emit(noir_op::RET);
@@ -760,7 +762,7 @@ namespace NEONengine
     {
         // CLEAR_TEXT is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLEAR_TEXT);
 
@@ -783,7 +785,7 @@ namespace NEONengine
     {
         // All data registers preserved after CLEAR_TEXT
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -819,7 +821,7 @@ namespace NEONengine
     {
         // SR unchanged after CLEAR_TEXT
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -845,7 +847,7 @@ namespace NEONengine
     {
         // PLAY_MUSIC with D0=3
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -866,7 +868,7 @@ namespace NEONengine
     {
         // PLAY_MUSIC is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -893,7 +895,7 @@ namespace NEONengine
     {
         // D0 preserved after PLAY_MUSIC
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -914,7 +916,7 @@ namespace NEONengine
     {
         // D1–D3 preserved after PLAY_MUSIC
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -949,7 +951,7 @@ namespace NEONengine
     {
         // SR unchanged after PLAY_MUSIC
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -977,7 +979,7 @@ namespace NEONengine
     {
         // PLAY_MUSIC with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -999,7 +1001,7 @@ namespace NEONengine
     {
         // STOP_MUSIC calls bridge->stop_music()
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::STOP_MUSIC);
         bc.emit(noir_op::RET);
@@ -1016,7 +1018,7 @@ namespace NEONengine
     {
         // STOP_MUSIC is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::STOP_MUSIC);
 
@@ -1039,7 +1041,7 @@ namespace NEONengine
     {
         // All data registers preserved after STOP_MUSIC
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1075,7 +1077,7 @@ namespace NEONengine
     {
         // SR unchanged after STOP_MUSIC
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -1101,7 +1103,7 @@ namespace NEONengine
     {
         // PLAY_SFX with D0=8
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1122,7 +1124,7 @@ namespace NEONengine
     {
         // PLAY_SFX is non-blocking
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1149,7 +1151,7 @@ namespace NEONengine
     {
         // D0 preserved after PLAY_SFX
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1170,7 +1172,7 @@ namespace NEONengine
     {
         // D1–D3 preserved after PLAY_SFX
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1205,7 +1207,7 @@ namespace NEONengine
     {
         // SR unchanged after PLAY_SFX
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -1233,7 +1235,7 @@ namespace NEONengine
     {
         // PLAY_SFX with D0=0
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::CLR);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
@@ -1255,7 +1257,7 @@ namespace NEONengine
     {
         // Common pattern: show text then clear it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1286,7 +1288,7 @@ namespace NEONengine
     {
         // Start music then play a sound effect
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1314,7 +1316,7 @@ namespace NEONengine
     {
         // Start music then stop it
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1337,7 +1339,7 @@ namespace NEONengine
     {
         // SAY blocks, after unblock SHOW_TEXT executes
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1386,7 +1388,7 @@ namespace NEONengine
     {
         // Two blocking opcodes in sequence: SAY then SHOW_DIALOG
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -1439,7 +1441,7 @@ namespace NEONengine
     {
         // Full cutscene pattern: play_music → say → show_text → clear_text → stop_music
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         // Start music
         bc.emit(noir_op::MOV16);
@@ -1506,7 +1508,7 @@ namespace NEONengine
     {
         // 0xB7 is not a valid dialogue/audio opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xB7);
         bc.emit(noir_op::RET);
@@ -1522,7 +1524,7 @@ namespace NEONengine
     {
         // 0xBF is not a valid dialogue/audio opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xBF);
         bc.emit(noir_op::RET);
@@ -1538,7 +1540,7 @@ namespace NEONengine
     {
         // mid-range invalid opcode
         bytecode_builder bc;
-        uint16_t fn = bc.begin_func();
+        u16 fn = bc.begin_func();
 
         bc.emit(0xBA);
         bc.emit(noir_op::RET);
