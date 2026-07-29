@@ -122,13 +122,10 @@ void genericProcess(void)
 
 void genericDestroy(void)
 {
-    // Before systemDestroy(), which takes ACE's memory manager with it and
-    // would report every held asset as leaked.
+    stateManagerDestroy(g_gameStateManager);
     asset_cache_clear();
-
     screenDestroy(NEONengine::g_mainScreen);
     musicFree();
-    stateManagerDestroy(g_gameStateManager);
     ptplayerDestroy();
     mouseDestroy();
     keyDestroy();

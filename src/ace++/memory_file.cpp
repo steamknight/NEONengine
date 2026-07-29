@@ -51,20 +51,24 @@ namespace ace
         {
             auto* pFileData = to<memory_file_data*>(pData);
 
-            ULONG ulTarget = pFileData->pos;
-            if (wMode == FILE_SEEK_SET) ulTarget = to<ULONG>(lPos);
-            else if (wMode == FILE_SEEK_CURRENT) ulTarget = pFileData->pos + lPos;
-            else if (wMode == FILE_SEEK_END) ulTarget = pFileData->size + lPos;
+            // Signed, so a seek back past the start is caught as the negative
+            // it is rather than the huge unsigned it would wrap to.
+            LONG lTarget = to<LONG>(pFileData->pos);
+            if (wMode == FILE_SEEK_SET) lTarget = lPos;
+            else if (wMode == FILE_SEEK_CURRENT) lTarget += lPos;
+            else if (wMode == FILE_SEEK_END) lTarget = to<LONG>(pFileData->size) + lPos;
 
-            if (ulTarget > pFileData->size)
+            if (lTarget < 0 || to<ULONG>(lTarget) > pFileData->size)
             {
-                logWrite("ERR: Seek position %lu out of range %lu for memory file %p\n",
-                    ulTarget, pFileData->size, pData);
+                logWrite("ERR: Seek position %ld out of range %lu for memory file %p\n",
+                    lTarget, pFileData->size, pData);
+                // EOF, so a caller that ignores the failure reads nothing
+                // rather than the wrong bytes.
                 pFileData->pos = pFileData->size;
                 return 0;
             }
 
-            pFileData->pos = ulTarget;
+            pFileData->pos = to<ULONG>(lTarget);
             return 1;
         }
 
