@@ -96,7 +96,7 @@ through one, so nothing can read that scratch except the opcode that wrote it.
     │          │◀────────────│   (n)    │
     └──────────┘  n reaches 0└──────────┘
         │
-        │ RET from the top frame, END, or an error
+        │ RET from the top frame, or an error
         ▼
     ┌──────────┐
     │   DEAD   │  removed at the end of the frame
@@ -349,6 +349,9 @@ working for no visible reason.
 
 Errors include a bad opcode, a stack overflow from deep `CALL` nesting, a bad
 jump target, and an `execute_now` script that runs past its instruction cap.
+
+A script can raise one itself with `HALT`. It says the author reached a case
+that should never happen, and it kills only the session that ran it.
 
 ---
 
