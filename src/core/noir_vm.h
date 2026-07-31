@@ -147,8 +147,8 @@ namespace NEONengine
      *
      * @par Registers
      * - D0–D3: 16-bit general-purpose data registers
-     * - SP/FP: 32-bit stack and frame pointers (raw addresses, stack grows down)
-     * - PC: 32-bit program counter (points to next byte to read)
+     * - SP/FP: 16-bit offsets from the stack base; the stack grows downward
+     * - PC: 16-bit offset into the bytecode, at the next byte to read
      * - SR: 8-bit status register (NZCV----)
      *
      * @par Lifecycle
@@ -303,6 +303,9 @@ namespace NEONengine
         u16 peek16() const noexcept;
         void ensure_stack(u16 bytes_needed) noexcept;
 
+        u8* stack_at(u16 offset) noexcept { return _stack.data() + offset; }
+        u8 const* stack_at(u16 offset) const noexcept { return _stack.data() + offset; }
+
         // ── Bytecode reading ─────────────────────────────────────────────────
 
         u8 read_u8() noexcept;
@@ -358,11 +361,11 @@ namespace NEONengine
 
         // ── Registers ────────────────────────────────────────────────────────
 
-        u16 _d[4];      ///< D0–D3
-        u8* _sp;        ///< Stack pointer (raw, grows downward)
-        u8* _fp;        ///< Frame pointer (raw)
-        u8 const* _pc;  ///< Program counter (raw, next byte to read)
-        u8 _sr;         ///< Status register (NZCV----)
+        u16 _d[4];  ///< D0–D3
+        u16 _sp;    ///< Stack offset from the base; the stack grows downward
+        u16 _fp;    ///< Frame offset from the base
+        u16 _pc;    ///< Bytecode offset of the next byte to read
+        u8 _sr;     ///< Status register (NZCV----)
 
         // ── Execution state ──────────────────────────────────────────────────
 

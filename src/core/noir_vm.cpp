@@ -14,6 +14,15 @@ namespace NEONengine
     using namespace noir_mode;
     using namespace noir_sr;
 
+    /// Pushed under a script's first frame. No bytecode offset can equal it.
+    constexpr u32 SENTINEL_PC = 0xFFFFFFFFu;
+
+    /// The PC is 16-bit, so bytecode past this cannot be addressed.
+    constexpr u32 MAX_BYTECODE_SIZE = 0x10000u;
+
+    /// SP and FP are 16-bit, so a stack past this cannot be addressed.
+    constexpr size_t MAX_STACK_SIZE = 0xFFFFu;
+
     // ─── Debug stats ────────────────────────────────────────────────────────────
 
 #ifdef GAME_DEBUG
@@ -49,9 +58,9 @@ namespace NEONengine
         , _bridge(bridge)
         , _stack(to<size_t>(stack_size))
         , _d{ 0, 0, 0, 0 }
-        , _sp(nullptr)
-        , _fp(nullptr)
-        , _pc(nullptr)
+        , _sp(0)
+        , _fp(0)
+        , _pc(0)
         , _sr(0)
         , _reentry_level(0)
         , _call_depth(0)
@@ -69,8 +78,15 @@ namespace NEONengine
         _stack.assign(to<size_t>(stack_size), u8(0));
 
         // SP starts at the top of the stack (grows downward)
-        _sp = _stack.data() + _stack.size();
+        _sp = to<u16>(_stack.size());
         _fp = _sp;
+
+        if (bytecode_size >= MAX_BYTECODE_SIZE)
+        {
+            NE_LOG("bytecode is %lu bytes; the PC addresses only %lu",
+                to<ULONG>(bytecode_size),
+                to<ULONG>(MAX_BYTECODE_SIZE));
+        }
 
 #ifdef GAME_DEBUG
         _debug_stats.reset();
@@ -102,16 +118,16 @@ namespace NEONengine
             push16(_d[2]);
             push16(_d[3]);
             push16(to<u16>(_sr));  // padded to 16-bit
-            push32(force_to<u32>(_sp));
-            push32(force_to<u32>(_fp));
-            push32(force_to<u32>(_pc));
+            push32(to<u32>(_sp));
+            push32(to<u32>(_fp));
+            push32(to<u32>(_pc));
         }
 
-        _pc = _bytecode + _func_toc[func_id];
+        _pc = to<u16>(_func_toc[func_id]);
 
         // Set up initial stack frame (sentinel return address)
-        push32(0x00000000);  // sentinel return PC
-        push32(force_to<u32>(_fp));
+        push32(SENTINEL_PC);
+        push32(to<u32>(_fp));
         _fp = _sp;
 
         _state = noir_state::running;
@@ -128,9 +144,9 @@ namespace NEONengine
         _d[3] = 0;
         _sr   = 0;
 
-        _sp = _stack.data() + _stack.size();
+        _sp = to<u16>(_stack.size());
         _fp = _sp;
-        _pc = nullptr;
+        _pc = 0;
 
         _reentry_level     = 0;
         _call_depth        = 0;
@@ -174,7 +190,7 @@ namespace NEONengine
         while (_opcodes_remaining > 0 && _state == noir_state::running)
         {
 #ifdef GAME_DEBUG
-            ++_debug_stats.opcode_histogram[*_pc];
+            ++_debug_stats.opcode_histogram[_bytecode[_pc]];
             update_stack_high_water();
 #endif
             auto status = execute_one_opcode();
@@ -262,9 +278,9 @@ namespace NEONengine
                     NE_LOG("CALL invalid func_id %u", func_id);
                     return noir_status::err_invalid_func;
                 }
-                auto target = _bytecode + _func_toc[func_id];
-                push32(force_to<u32>(_pc));
-                push32(force_to<u32>(_fp));
+                auto target = to<u16>(_func_toc[func_id]);
+                push32(to<u32>(_pc));
+                push32(to<u32>(_fp));
                 _fp = _sp;
                 _pc = target;
 #ifdef GAME_DEBUG
@@ -643,7 +659,7 @@ namespace NEONengine
 
         if (take)
         {
-            _pc += offset;
+            _pc = to<u16>(_pc + offset);
         }
 
         return noir_status::ok;
@@ -938,10 +954,10 @@ namespace NEONengine
 
             case DBG_LOGS:
             {
-                u8 len = read_u8();
-                auto str    = force_to<char const*>(_pc);
+                u8 len   = read_u8();
+                auto str = force_to<char const*>(_bytecode + _pc);
                 _bridge->debug_print(str, len);
-                _pc += len;
+                _pc = to<u16>(_pc + len);
                 break;
             }
 
@@ -952,12 +968,12 @@ namespace NEONengine
                     _d[2],
                     _d[3],
                     _sr);
-                NE_LOG("REG: SP=%p FP=%p PC=%p", _sp, _fp, _pc);
+                NE_LOG("REG: SP=%04X FP=%04X PC=%04X", _sp, _fp, _pc);
                 break;
 
             case DBG_STK:
             {
-                u8 const* p   = _sp;
+                u8 const* p   = stack_at(_sp);
                 u8 const* end = _stack.data() + _stack.size();
                 NE_LOG("STK: (top → bottom, up to 16 bytes)");
                 for (int i = 0; i < 16 && p < end; ++i, ++p) NE_LOG("  [SP+%d] = %02X", i, *p);
@@ -1015,7 +1031,7 @@ namespace NEONengine
         if (op == DBG_LOGS)
         {
             u8 len = read_u8();
-            _pc += len;
+            _pc    = to<u16>(_pc + len);
         }
 #endif
         return noir_status::ok;
@@ -1026,40 +1042,35 @@ namespace NEONengine
     void noir_vm::do_ret() noexcept
     {
         _sp = _fp;
-        _fp = force_to<u8*>(pop32());
-        _pc = force_to<u8 const*>(pop32());
+        _fp = to<u16>(pop32());
+
+        u32 return_pc = pop32();
+        _pc           = to<u16>(return_pc);
 
 #ifdef GAME_DEBUG
         if (_call_depth > 0) --_call_depth;
 #endif
 
+        if (return_pc != SENTINEL_PC) return;
+
         if (_reentry_level > 1)
         {
-            // Detect entry-point return by sentinel PC (null)
-            if (_pc == nullptr)
-            {
-                // Restore registers saved during execute()
-                _pc   = force_to<u8 const*>(pop32());
-                _fp   = force_to<u8*>(pop32());
-                _sp   = force_to<u8*>(pop32());
-                _sr   = to<u8>(pop16());
-                _d[3] = pop16();
-                _d[2] = pop16();
-                _d[1] = pop16();
-                _d[0] = pop16();
-                --_reentry_level;
-                // Continue running at restored PC
-            }
+            // Restore registers saved during execute()
+            _pc   = to<u16>(pop32());
+            _fp   = to<u16>(pop32());
+            _sp   = to<u16>(pop32());
+            _sr   = to<u8>(pop16());
+            _d[3] = pop16();
+            _d[2] = pop16();
+            _d[1] = pop16();
+            _d[0] = pop16();
+            --_reentry_level;
         }
         else if (_reentry_level == 1)
         {
-            // Detect entry-point return by sentinel PC
-            if (_pc == nullptr)
-            {
-                _exit_code     = _d[0];
-                _reentry_level = 0;
-                _state         = noir_state::idle;
-            }
+            _exit_code     = _d[0];
+            _reentry_level = 0;
+            _state         = noir_state::idle;
         }
     }
 
@@ -1069,50 +1080,58 @@ namespace NEONengine
     {
         ensure_stack(2);
         _sp -= 2;
-        _sp[0] = to<u8>(value >> 8);  // big-endian
-        _sp[1] = to<u8>(value & 0xFF);
+        auto* p = stack_at(_sp);
+        p[0]    = to<u8>(value >> 8);  // big-endian
+        p[1]    = to<u8>(value & 0xFF);
     }
 
     void noir_vm::push32(u32 value) noexcept
     {
         ensure_stack(4);
         _sp -= 4;
-        _sp[0] = to<u8>(value >> 24);
-        _sp[1] = to<u8>(value >> 16);
-        _sp[2] = to<u8>(value >> 8);
-        _sp[3] = to<u8>(value & 0xFF);
+        auto* p = stack_at(_sp);
+        p[0]    = to<u8>(value >> 24);
+        p[1]    = to<u8>(value >> 16);
+        p[2]    = to<u8>(value >> 8);
+        p[3]    = to<u8>(value & 0xFF);
     }
 
     u16 noir_vm::pop16() noexcept
     {
-        u16 value = to<u16>((to<u16>(_sp[0]) << 8) | _sp[1]);
+        auto const* p = stack_at(_sp);
+        u16 value     = to<u16>((to<u16>(p[0]) << 8) | p[1]);
         _sp += 2;
         return value;
     }
 
     u32 noir_vm::pop32() noexcept
     {
-        u32 value = (to<u32>(_sp[0]) << 24) | (to<u32>(_sp[1]) << 16)
-                         | (to<u32>(_sp[2]) << 8) | to<u32>(_sp[3]);
+        auto const* p = stack_at(_sp);
+        u32 value     = (to<u32>(p[0]) << 24) | (to<u32>(p[1]) << 16) | (to<u32>(p[2]) << 8)
+                    | to<u32>(p[3]);
         _sp += 4;
         return value;
     }
 
     u16 noir_vm::peek16() const noexcept
     {
-        return to<u16>((to<u16>(_sp[0]) << 8) | _sp[1]);
+        auto const* p = stack_at(_sp);
+        return to<u16>((to<u16>(p[0]) << 8) | p[1]);
     }
 
     void noir_vm::ensure_stack(u16 bytes_needed) noexcept
     {
-        if (_sp - bytes_needed >= _stack.data()) return;
-
-        // Offsets are taken before the reallocation because the vector moves.
-        auto sp_offset = _stack.data() + _stack.size() - _sp;
-        auto fp_offset = _stack.data() + _stack.size() - _fp;
+        if (_sp >= bytes_needed) return;
 
         size_t old_size = _stack.size();
         size_t new_size = old_size * 2;
+
+        if (new_size > MAX_STACK_SIZE)
+        {
+            NE_LOG("stack cannot grow past %lu bytes", to<ULONG>(MAX_STACK_SIZE));
+            return;
+        }
+
         _stack.reserve(new_size);
 
         while (_stack.size() < new_size) _stack.push_back(0);
@@ -1127,8 +1146,10 @@ namespace NEONengine
             new_top[-(to<int>(i)) - 1] = old_top[-(to<int>(i)) - 1];
         }
 
-        _sp = new_top - sp_offset;
-        _fp = new_top - fp_offset;
+        // Every offset moves with the content.
+        auto delta = to<u16>(new_size - old_size);
+        _sp        = to<u16>(_sp + delta);
+        _fp        = to<u16>(_fp + delta);
 
 #ifdef GAME_DEBUG
         NE_LOG("stack grown to %lu bytes", new_size);
@@ -1139,13 +1160,13 @@ namespace NEONengine
 
     u8 noir_vm::read_u8() noexcept
     {
-        return *_pc++;
+        return _bytecode[_pc++];
     }
 
     u16 noir_vm::read_u16() noexcept
     {
-        u16 hi = *_pc++;
-        u16 lo = *_pc++;
+        u16 hi = _bytecode[_pc++];
+        u16 lo = _bytecode[_pc++];
         return to<u16>((hi << 8) | lo);
     }
 
@@ -1170,7 +1191,7 @@ namespace NEONengine
             case LOCAL:
             {
                 i8 offset = to<i8>(read_u8());
-                u8* addr = _fp + offset;
+                u8* addr  = stack_at(_fp) + offset;
                 return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
@@ -1213,9 +1234,9 @@ namespace NEONengine
             case LOCAL:
             {
                 i8 offset = to<i8>(read_u8());
-                u8* addr = _fp + offset;
-                addr[0]       = to<u8>(value >> 8);
-                addr[1]       = to<u8>(value & 0xFF);
+                u8* addr  = stack_at(_fp) + offset;
+                addr[0]   = to<u8>(value >> 8);
+                addr[1]   = to<u8>(value & 0xFF);
                 break;
             }
 
@@ -1271,9 +1292,9 @@ namespace NEONengine
 
             case LOCAL:
             {
-                i8 offset     = to<i8>(read_u8());
+                i8 offset         = to<i8>(read_u8());
                 _cached_dst_param = to<u16>(to<u8>(offset));
-                u8* addr     = _fp + offset;
+                u8* addr          = stack_at(_fp) + offset;
                 return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
@@ -1317,9 +1338,9 @@ namespace NEONengine
             case LOCAL:
             {
                 i8 offset = to<i8>(to<u8>(_cached_dst_param));
-                u8* addr = _fp + offset;
-                addr[0]       = to<u8>(value >> 8);
-                addr[1]       = to<u8>(value & 0xFF);
+                u8* addr  = stack_at(_fp) + offset;
+                addr[0]   = to<u8>(value >> 8);
+                addr[1]   = to<u8>(value & 0xFF);
                 break;
             }
 
@@ -1420,8 +1441,7 @@ namespace NEONengine
 #ifdef GAME_DEBUG
     void noir_vm::update_stack_high_water() noexcept
     {
-        auto stack_top = _stack.data() + _stack.size();
-        u32 used  = to<u32>(stack_top - _sp);
+        u32 used = to<u32>(_stack.size() - _sp);
         if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
     }
 #endif
