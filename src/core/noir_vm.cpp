@@ -57,29 +57,20 @@ namespace NEONengine
         , _func_count(func_count)
         , _bridge(bridge)
         , _stack(to<size_t>(stack_size))
-        , _d{ 0, 0, 0, 0 }
-        , _sp(0)
-        , _fp(0)
-        , _pc(0)
-        , _sr(0)
+        , _cur{}
         , _reentry_level(0)
         , _call_depth(0)
         , _opcodes_per_update(10)
-        , _opcodes_remaining(0)
         , _blocking_counter(0)
-        , _wait_counter(0)
         , _exit_code(0)
         , _last_error(noir_status::ok)
-        , _state(noir_state::idle)
         , _cached_dst_mode(0)
         , _cached_dst_param(0)
     {
         // Grow the vector to fill its capacity so the memory is allocated
         _stack.assign(to<size_t>(stack_size), u8(0));
 
-        // SP starts at the top of the stack (grows downward)
-        _sp = to<u16>(_stack.size());
-        _fp = _sp;
+        reset_session();
 
         if (bytecode_size >= MAX_BYTECODE_SIZE)
         {
@@ -113,50 +104,52 @@ namespace NEONengine
         // Save all registers on re-entry (reentry_level > 1)
         if (_reentry_level > 1)
         {
-            push16(_d[0]);
-            push16(_d[1]);
-            push16(_d[2]);
-            push16(_d[3]);
-            push16(to<u16>(_sr));  // padded to 16-bit
-            push32(to<u32>(_sp));
-            push32(to<u32>(_fp));
-            push32(to<u32>(_pc));
+            push16(_cur.d[0]);
+            push16(_cur.d[1]);
+            push16(_cur.d[2]);
+            push16(_cur.d[3]);
+            push16(to<u16>(_cur.sr));  // padded to 16-bit
+            push32(to<u32>(_cur.sp));
+            push32(to<u32>(_cur.fp));
+            push32(to<u32>(_cur.pc));
         }
 
-        _pc = to<u16>(_func_toc[func_id]);
+        _cur.pc        = to<u16>(_func_toc[func_id]);
+        _cur.script_id = func_id;
 
         // Set up initial stack frame (sentinel return address)
         push32(SENTINEL_PC);
-        push32(to<u32>(_fp));
-        _fp = _sp;
+        push32(to<u32>(_cur.fp));
+        _cur.fp = _cur.sp;
 
-        _state = noir_state::running;
+        _cur.state = noir_state::running;
         return noir_status::ok;
+    }
+
+    // ─── reset_session() ────────────────────────────────────────────────────────
+
+    void noir_vm::reset_session() noexcept
+    {
+        _cur = noir_session{};
+
+        // SP starts at the top of the stack (grows downward)
+        _cur.sp    = to<u16>(_stack.size());
+        _cur.fp    = _cur.sp;
+        _cur.state = noir_state::idle;
     }
 
     // ─── reset_execution() ────────────────────────────────────────────────────────
 
     void noir_vm::reset_execution() noexcept
     {
-        _d[0] = 0;
-        _d[1] = 0;
-        _d[2] = 0;
-        _d[3] = 0;
-        _sr   = 0;
+        reset_session();
 
-        _sp = to<u16>(_stack.size());
-        _fp = _sp;
-        _pc = 0;
-
-        _reentry_level     = 0;
-        _call_depth        = 0;
-        _opcodes_remaining = 0;
-        _blocking_counter  = 0;
-        _wait_counter      = 0;
+        _reentry_level    = 0;
+        _call_depth       = 0;
+        _blocking_counter = 0;
 
         _exit_code        = 0;
         _last_error       = noir_status::ok;
-        _state            = noir_state::idle;
         _cached_dst_mode  = 0;
         _cached_dst_param = 0;
     }
@@ -165,32 +158,32 @@ namespace NEONengine
 
     noir_status noir_vm::update() noexcept
     {
-        if (_state == noir_state::idle) return noir_status::ok;
-        if (_state == noir_state::halted) return _last_error;
+        if (_cur.state == noir_state::idle) return noir_status::ok;
+        if (_cur.state == noir_state::halted) return _last_error;
 
-        if (_state == noir_state::blocked)
+        if (_cur.state == noir_state::blocked)
         {
             if (_blocking_counter > 0) return noir_status::yielded;
-            _state = noir_state::running;
+            _cur.state = noir_state::running;
         }
 
-        if (_state == noir_state::waiting)
+        if (_cur.state == noir_state::waiting)
         {
-            if (_wait_counter > 0)
+            if (_cur.wait_counter > 0)
             {
-                --_wait_counter;
+                --_cur.wait_counter;
                 return noir_status::yielded;
             }
-            _state = noir_state::running;
+            _cur.state = noir_state::running;
         }
 
-        _state             = noir_state::running;
-        _opcodes_remaining = _opcodes_per_update;
+        _cur.state             = noir_state::running;
+        _cur.instructions_left = _opcodes_per_update;
 
-        while (_opcodes_remaining > 0 && _state == noir_state::running)
+        while (_cur.instructions_left > 0 && _cur.state == noir_state::running)
         {
 #ifdef GAME_DEBUG
-            ++_debug_stats.opcode_histogram[_bytecode[_pc]];
+            ++_debug_stats.opcode_histogram[_bytecode[_cur.pc]];
             update_stack_high_water();
 #endif
             auto status = execute_one_opcode();
@@ -198,24 +191,24 @@ namespace NEONengine
                 && status != noir_status::completed)
             {
                 _last_error = status;
-                _state      = noir_state::halted;
+                _cur.state  = noir_state::halted;
                 return status;
             }
-            if (_state != noir_state::running) break;
-            --_opcodes_remaining;
+            if (_cur.state != noir_state::running) break;
+            --_cur.instructions_left;
         }
 
-        if (_state == noir_state::running)
+        if (_cur.state == noir_state::running)
         {
-            _state = noir_state::yielded;
+            _cur.state = noir_state::yielded;
             return noir_status::yielded;
         }
-        if (_state == noir_state::blocked || _state == noir_state::waiting
-            || _state == noir_state::yielded)
+        if (_cur.state == noir_state::blocked || _cur.state == noir_state::waiting
+            || _cur.state == noir_state::yielded)
         {
             return noir_status::yielded;
         }
-        return (_state == noir_state::halted) ? _last_error : noir_status::completed;
+        return (_cur.state == noir_state::halted) ? _last_error : noir_status::completed;
     }
 
     // ─── Opcode dispatch ────────────────────────────────────────────────────────
@@ -257,18 +250,18 @@ namespace NEONengine
             case WAIT:
             {
                 u16 frames = read_u16();
-                _wait_counter += frames;
-                _state = noir_state::waiting;
+                _cur.wait_counter += frames;
+                _cur.state = noir_state::waiting;
                 return noir_status::ok;
             }
 
             case HALT:
                 NE_LOG("HALT executed");
-                _state      = noir_state::halted;
+                _cur.state  = noir_state::halted;
                 _last_error = noir_status::completed;
                 return noir_status::completed;
 
-            case YIELD: _state = noir_state::yielded; return noir_status::yielded;
+            case YIELD: _cur.state = noir_state::yielded; return noir_status::yielded;
 
             case CALL:
             {
@@ -279,10 +272,10 @@ namespace NEONengine
                     return noir_status::err_invalid_func;
                 }
                 auto target = to<u16>(_func_toc[func_id]);
-                push32(to<u32>(_pc));
-                push32(to<u32>(_fp));
-                _fp = _sp;
-                _pc = target;
+                push32(to<u32>(_cur.pc));
+                push32(to<u32>(_cur.fp));
+                _cur.fp = _cur.sp;
+                _cur.pc = target;
 #ifdef GAME_DEBUG
                 ++_call_depth;
                 if (_call_depth > _debug_stats.max_call_depth)
@@ -295,27 +288,27 @@ namespace NEONengine
             {
                 u8 n = read_u8();
                 ensure_stack(n);
-                _sp -= n;
+                _cur.sp -= n;
                 return noir_status::ok;
             }
 
             case RET:
                 do_ret();
-                return (_state == noir_state::idle) ? noir_status::completed : noir_status::ok;
+                return (_cur.state == noir_state::idle) ? noir_status::completed : noir_status::ok;
 
             case RETZ:
-                if (_sr & Z)
+                if (_cur.sr & Z)
                 {
                     do_ret();
-                    return (_state == noir_state::idle) ? noir_status::completed : noir_status::ok;
+                    return (_cur.state == noir_state::idle) ? noir_status::completed : noir_status::ok;
                 }
                 return noir_status::ok;
 
             case RETC:
-                if (_sr & C)
+                if (_cur.sr & C)
                 {
                     do_ret();
-                    return (_state == noir_state::idle) ? noir_status::completed : noir_status::ok;
+                    return (_cur.state == noir_state::idle) ? noir_status::completed : noir_status::ok;
                 }
                 return noir_status::ok;
 
@@ -356,9 +349,9 @@ namespace NEONengine
                 u8 regs = read_u8();
                 u8 ra   = (regs >> DST_SHIFT) - REG_D0;
                 u8 rb   = (regs & SRC_MASK) - REG_D0;
-                u16 tmp = _d[ra & 3];
-                _d[ra & 3]   = _d[rb & 3];
-                _d[rb & 3]   = tmp;
+                u16 tmp = _cur.d[ra & 3];
+                _cur.d[ra & 3] = _cur.d[rb & 3];
+                _cur.d[rb & 3] = tmp;
                 return noir_status::ok;
             }
 
@@ -448,10 +441,10 @@ namespace NEONengine
                 i32 full = sa * sb;
                 u16 r   = to<u16>(full & 0xFFFF);
 
-                _sr = 0;
-                if (r & 0x8000) _sr |= N;
-                if (r == 0) _sr |= Z;
-                if (full != to<i32>(to<i16>(r))) _sr |= V;
+                _cur.sr = 0;
+                if (r & 0x8000) _cur.sr |= N;
+                if (r == 0) _cur.sr |= Z;
+                if (full != to<i32>(to<i16>(r))) _cur.sr |= V;
                 write_operand_cached(r);
                 return noir_status::ok;
             }
@@ -587,14 +580,14 @@ namespace NEONengine
             case SHL:
             {
                 u8 count = read_u8();
-                _sr           = 0;
+                _cur.sr = 0;
                 if (count > 0 && count <= 16)
                 {
-                    if (a & (1u << (16 - count))) _sr |= C;
+                    if (a & (1u << (16 - count))) _cur.sr |= C;
                 }
                 u16 r = (count < 16) ? to<u16>(a << count) : 0;
-                if (r & 0x8000) _sr |= N;
-                if (r == 0) _sr |= Z;
+                if (r & 0x8000) _cur.sr |= N;
+                if (r == 0) _cur.sr |= Z;
                 write_operand_cached(r);
                 return noir_status::ok;
             }
@@ -602,14 +595,14 @@ namespace NEONengine
             case SHR:
             {
                 u8 count = read_u8();
-                _sr           = 0;
+                _cur.sr = 0;
                 if (count > 0 && count <= 16)
                 {
-                    if (a & (1u << (count - 1))) _sr |= C;
+                    if (a & (1u << (count - 1))) _cur.sr |= C;
                 }
                 u16 r = (count < 16) ? to<u16>(a >> count) : 0;
-                if (r & 0x8000) _sr |= N;
-                if (r == 0) _sr |= Z;
+                if (r & 0x8000) _cur.sr |= N;
+                if (r == 0) _cur.sr |= Z;
                 write_operand_cached(r);
                 return noir_status::ok;
             }
@@ -618,15 +611,15 @@ namespace NEONengine
             {
                 u8 count = read_u8();
                 i16 sa    = to<i16>(a);
-                _sr           = 0;
+                _cur.sr = 0;
                 if (count > 0 && count <= 16)
                 {
-                    if (a & (1u << (count - 1))) _sr |= C;
+                    if (a & (1u << (count - 1))) _cur.sr |= C;
                 }
                 i16 r   = (count < 16) ? to<i16>(sa >> count) : (sa < 0 ? -1 : 0);
                 u16 ur = to<u16>(r);
-                if (ur & 0x8000) _sr |= N;
-                if (ur == 0) _sr |= Z;
+                if (ur & 0x8000) _cur.sr |= N;
+                if (ur == 0) _cur.sr |= Z;
                 write_operand_cached(ur);
                 return noir_status::ok;
             }
@@ -646,20 +639,20 @@ namespace NEONengine
         switch (op)
         {
             case JMP: take = true; break;
-            case BEQ: take = (_sr & Z) != 0; break;
-            case BNE: take = (_sr & Z) == 0; break;
-            case BLT: take = ((_sr & N) != 0) != ((_sr & V) != 0); break;
-            case BGE: take = ((_sr & N) != 0) == ((_sr & V) != 0); break;
-            case BGT: take = ((_sr & Z) == 0) && (((_sr & N) != 0) == ((_sr & V) != 0)); break;
-            case BLE: take = ((_sr & Z) != 0) || (((_sr & N) != 0) != ((_sr & V) != 0)); break;
-            case BCS: take = (_sr & C) != 0; break;
-            case BCC: take = (_sr & C) == 0; break;
+            case BEQ: take = (_cur.sr & Z) != 0; break;
+            case BNE: take = (_cur.sr & Z) == 0; break;
+            case BLT: take = ((_cur.sr & N) != 0) != ((_cur.sr & V) != 0); break;
+            case BGE: take = ((_cur.sr & N) != 0) == ((_cur.sr & V) != 0); break;
+            case BGT: take = ((_cur.sr & Z) == 0) && (((_cur.sr & N) != 0) == ((_cur.sr & V) != 0)); break;
+            case BLE: take = ((_cur.sr & Z) != 0) || (((_cur.sr & N) != 0) != ((_cur.sr & V) != 0)); break;
+            case BCS: take = (_cur.sr & C) != 0; break;
+            case BCC: take = (_cur.sr & C) == 0; break;
             default: return noir_status::err_invalid_opcode;
         }
 
         if (take)
         {
-            _pc = to<u16>(_pc + offset);
+            _cur.pc = to<u16>(_cur.pc + offset);
         }
 
         return noir_status::ok;
@@ -698,7 +691,7 @@ namespace NEONengine
                 u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 // Z=1 when flag is clear, Z=0 when flag is set
-                _sr = get_flag(idx) ? 0 : Z;
+                _cur.sr = get_flag(idx) ? 0 : Z;
                 return noir_status::ok;
             }
 
@@ -706,7 +699,7 @@ namespace NEONengine
             case SETFR:
             {
                 u8 reg  = read_u8();
-                u16 idx = _d[reg & 3];
+                u16 idx = _cur.d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, true);
                 return noir_status::ok;
@@ -714,7 +707,7 @@ namespace NEONengine
             case CLRFR:
             {
                 u8 reg  = read_u8();
-                u16 idx = _d[reg & 3];
+                u16 idx = _cur.d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, false);
                 return noir_status::ok;
@@ -722,7 +715,7 @@ namespace NEONengine
             case TOGFR:
             {
                 u8 reg  = read_u8();
-                u16 idx = _d[reg & 3];
+                u16 idx = _cur.d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 set_flag(idx, !get_flag(idx));
                 return noir_status::ok;
@@ -730,9 +723,9 @@ namespace NEONengine
             case TSTFR:
             {
                 u8 reg  = read_u8();
-                u16 idx = _d[reg & 3];
+                u16 idx = _cur.d[reg & 3];
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
-                _sr = get_flag(idx) ? 0 : Z;
+                _cur.sr = get_flag(idx) ? 0 : Z;
                 return noir_status::ok;
             }
 
@@ -743,7 +736,7 @@ namespace NEONengine
                 u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
                 u16 val = get_flag(idx) ? 1 : 0;
-                _d[reg & 3]  = val;
+                _cur.d[reg & 3] = val;
                 set_flags_nz(val);
                 return noir_status::ok;
             }
@@ -752,7 +745,7 @@ namespace NEONengine
                 u8 reg  = read_u8();
                 u16 idx = read_u16();
                 if (!validate_flag_index(idx)) return noir_status::err_flag_oob;
-                set_flag(idx, (_d[reg & 3] & 1) != 0);
+                set_flag(idx, (_cur.d[reg & 3] & 1) != 0);
                 return noir_status::ok;
             }
 
@@ -820,18 +813,18 @@ namespace NEONengine
     {
         switch (op)
         {
-            case INV_ADD: _bridge->inv_add(_d[0]); return noir_status::ok;
+            case INV_ADD: _bridge->inv_add(_cur.d[0]); return noir_status::ok;
 
-            case INV_REMOVE: _bridge->inv_remove(_d[0]); return noir_status::ok;
+            case INV_REMOVE: _bridge->inv_remove(_cur.d[0]); return noir_status::ok;
 
             case INV_HAS:
             {
-                bool has = _bridge->inv_has(_d[0]);
-                _sr      = has ? 0 : Z;
+                bool has = _bridge->inv_has(_cur.d[0]);
+                _cur.sr  = has ? 0 : Z;
                 return noir_status::ok;
             }
 
-            case INV_COUNT: _d[0] = _bridge->inv_count(); return noir_status::ok;
+            case INV_COUNT: _cur.d[0] = _bridge->inv_count(); return noir_status::ok;
 
             case INV_CLEAR: _bridge->inv_clear(); return noir_status::ok;
 
@@ -845,12 +838,12 @@ namespace NEONengine
     {
         switch (op)
         {
-            case ANIM_PLAY: _bridge->anim_play(_d[0]); return noir_status::ok;
+            case ANIM_PLAY: _bridge->anim_play(_cur.d[0]); return noir_status::ok;
 
-            case ANIM_STOP: _bridge->anim_stop(_d[0]); return noir_status::ok;
+            case ANIM_STOP: _bridge->anim_stop(_cur.d[0]); return noir_status::ok;
 
             case ANIM_WAIT:
-                _bridge->anim_wait(_d[0]);
+                _bridge->anim_wait(_cur.d[0]);
                 increment_blocking();
                 return noir_status::ok;
 
@@ -865,17 +858,17 @@ namespace NEONengine
         switch (op)
         {
             case GOTO_SCENE:
-                _bridge->goto_scene(_d[0]);
+                _bridge->goto_scene(_cur.d[0]);
                 increment_blocking();
                 return noir_status::ok;
 
-            case GET_SCENE: _d[0] = _bridge->get_scene(); return noir_status::ok;
+            case GET_SCENE: _cur.d[0] = _bridge->get_scene(); return noir_status::ok;
 
-            case HOTSPOT_ON: _bridge->hotspot_on(_d[0]); return noir_status::ok;
+            case HOTSPOT_ON: _bridge->hotspot_on(_cur.d[0]); return noir_status::ok;
 
-            case HOTSPOT_OFF: _bridge->hotspot_off(_d[0]); return noir_status::ok;
+            case HOTSPOT_OFF: _bridge->hotspot_off(_cur.d[0]); return noir_status::ok;
 
-            case SET_POINTER: _bridge->set_pointer(_d[0]); return noir_status::ok;
+            case SET_POINTER: _bridge->set_pointer(_cur.d[0]); return noir_status::ok;
 
             default: return noir_status::err_invalid_opcode;
         }
@@ -888,24 +881,24 @@ namespace NEONengine
         switch (op)
         {
             case SAY:
-                _bridge->say(_d[0], _d[1]);
+                _bridge->say(_cur.d[0], _cur.d[1]);
                 increment_blocking();
                 return noir_status::ok;
 
             case SHOW_DIALOG:
-                _bridge->show_dialog(_d[0]);
+                _bridge->show_dialog(_cur.d[0]);
                 increment_blocking();
                 return noir_status::ok;
 
-            case SHOW_TEXT: _bridge->show_text(_d[0], _d[1], _d[2]); return noir_status::ok;
+            case SHOW_TEXT: _bridge->show_text(_cur.d[0], _cur.d[1], _cur.d[2]); return noir_status::ok;
 
             case CLEAR_TEXT: _bridge->clear_text(); return noir_status::ok;
 
-            case PLAY_MUSIC: _bridge->play_music(_d[0]); return noir_status::ok;
+            case PLAY_MUSIC: _bridge->play_music(_cur.d[0]); return noir_status::ok;
 
             case STOP_MUSIC: _bridge->stop_music(); return noir_status::ok;
 
-            case PLAY_SFX: _bridge->play_sfx(_d[0]); return noir_status::ok;
+            case PLAY_SFX: _bridge->play_sfx(_cur.d[0]); return noir_status::ok;
 
             default: return noir_status::err_invalid_opcode;
         }
@@ -918,22 +911,22 @@ namespace NEONengine
         switch (op)
         {
             case FADE_OUT:
-                _bridge->fade_out(_d[0]);
+                _bridge->fade_out(_cur.d[0]);
                 increment_blocking();
                 return noir_status::ok;
 
             case FADE_IN:
-                _bridge->fade_in(_d[0]);
+                _bridge->fade_in(_cur.d[0]);
                 increment_blocking();
                 return noir_status::ok;
 
-            case SCREEN_CLR: _bridge->screen_clear(_d[0]); return noir_status::ok;
+            case SCREEN_CLR: _bridge->screen_clear(_cur.d[0]); return noir_status::ok;
 
-            case SET_LANG: _bridge->set_lang(_d[0]); return noir_status::ok;
+            case SET_LANG: _bridge->set_lang(_cur.d[0]); return noir_status::ok;
 
-            case SAVE_GAME: _bridge->save_game(_d[0]); return noir_status::ok;
+            case SAVE_GAME: _bridge->save_game(_cur.d[0]); return noir_status::ok;
 
-            case LOAD_GAME: _bridge->load_game(_d[0]); return noir_status::ok;
+            case LOAD_GAME: _bridge->load_game(_cur.d[0]); return noir_status::ok;
 
             case NEW_GAME: _bridge->new_game(); return noir_status::ok;
 
@@ -950,30 +943,30 @@ namespace NEONengine
 #ifdef GAME_DEBUG
         switch (op)
         {
-            case DBG_LOG: _bridge->debug_log(_d[0]); break;
+            case DBG_LOG: _bridge->debug_log(_cur.d[0]); break;
 
             case DBG_LOGS:
             {
                 u8 len   = read_u8();
-                auto str = force_to<char const*>(_bytecode + _pc);
+                auto str = force_to<char const*>(_bytecode + _cur.pc);
                 _bridge->debug_print(str, len);
-                _pc = to<u16>(_pc + len);
+                _cur.pc = to<u16>(_cur.pc + len);
                 break;
             }
 
             case DBG_REG:
                 NE_LOG("REG: D0=%04X D1=%04X D2=%04X D3=%04X SR=%02X",
-                    _d[0],
-                    _d[1],
-                    _d[2],
-                    _d[3],
-                    _sr);
-                NE_LOG("REG: SP=%04X FP=%04X PC=%04X", _sp, _fp, _pc);
+                    _cur.d[0],
+                    _cur.d[1],
+                    _cur.d[2],
+                    _cur.d[3],
+                    _cur.sr);
+                NE_LOG("REG: SP=%04X FP=%04X PC=%04X", _cur.sp, _cur.fp, _cur.pc);
                 break;
 
             case DBG_STK:
             {
-                u8 const* p   = stack_at(_sp);
+                u8 const* p   = stack_at(_cur.sp);
                 u8 const* end = _stack.data() + _stack.size();
                 NE_LOG("STK: (top → bottom, up to 16 bytes)");
                 for (int i = 0; i < 16 && p < end; ++i, ++p) NE_LOG("  [SP+%d] = %02X", i, *p);
@@ -989,7 +982,7 @@ namespace NEONengine
 
             case DBG_FLAG:
             {
-                if (_d[0] == 0xFFFF)
+                if (_cur.d[0] == 0xFFFF)
                 {
                     u16 total = to<u16>(_flags_size * 8);
                     NE_LOG("FLAGS: (all %u)", total);
@@ -1000,15 +993,15 @@ namespace NEONengine
                 }
                 else
                 {
-                    if (validate_flag_index(_d[0]))
-                        NE_LOG("FLAG[%u] = %u", _d[0], get_flag(_d[0]) ? 1 : 0);
+                    if (validate_flag_index(_cur.d[0]))
+                        NE_LOG("FLAG[%u] = %u", _cur.d[0], get_flag(_cur.d[0]) ? 1 : 0);
                 }
                 break;
             }
 
             case DBG_VAL:
             {
-                if (_d[0] == 0xFFFF)
+                if (_cur.d[0] == 0xFFFF)
                 {
                     NE_LOG("VALUES: (all %u)", _values_count);
                     for (u16 i = 0; i < _values_count; ++i)
@@ -1016,8 +1009,8 @@ namespace NEONengine
                 }
                 else
                 {
-                    if (validate_value_index(_d[0]))
-                        NE_LOG("VALUE[%u] = %u", _d[0], _values[_d[0]]);
+                    if (validate_value_index(_cur.d[0]))
+                        NE_LOG("VALUE[%u] = %u", _cur.d[0], _values[_cur.d[0]]);
                 }
                 break;
             }
@@ -1030,8 +1023,8 @@ namespace NEONengine
         // Release build: skip inline data for DBG_LOGS, otherwise NOP
         if (op == DBG_LOGS)
         {
-            u8 len = read_u8();
-            _pc    = to<u16>(_pc + len);
+            u8 len  = read_u8();
+            _cur.pc = to<u16>(_cur.pc + len);
         }
 #endif
         return noir_status::ok;
@@ -1041,11 +1034,11 @@ namespace NEONengine
 
     void noir_vm::do_ret() noexcept
     {
-        _sp = _fp;
-        _fp = to<u16>(pop32());
+        _cur.sp = _cur.fp;
+        _cur.fp = to<u16>(pop32());
 
         u32 return_pc = pop32();
-        _pc           = to<u16>(return_pc);
+        _cur.pc       = to<u16>(return_pc);
 
 #ifdef GAME_DEBUG
         if (_call_depth > 0) --_call_depth;
@@ -1056,21 +1049,21 @@ namespace NEONengine
         if (_reentry_level > 1)
         {
             // Restore registers saved during execute()
-            _pc   = to<u16>(pop32());
-            _fp   = to<u16>(pop32());
-            _sp   = to<u16>(pop32());
-            _sr   = to<u8>(pop16());
-            _d[3] = pop16();
-            _d[2] = pop16();
-            _d[1] = pop16();
-            _d[0] = pop16();
+            _cur.pc   = to<u16>(pop32());
+            _cur.fp   = to<u16>(pop32());
+            _cur.sp   = to<u16>(pop32());
+            _cur.sr   = to<u8>(pop16());
+            _cur.d[3] = pop16();
+            _cur.d[2] = pop16();
+            _cur.d[1] = pop16();
+            _cur.d[0] = pop16();
             --_reentry_level;
         }
         else if (_reentry_level == 1)
         {
-            _exit_code     = _d[0];
+            _exit_code     = _cur.d[0];
             _reentry_level = 0;
-            _state         = noir_state::idle;
+            _cur.state     = noir_state::idle;
         }
     }
 
@@ -1079,8 +1072,8 @@ namespace NEONengine
     void noir_vm::push16(u16 value) noexcept
     {
         ensure_stack(2);
-        _sp -= 2;
-        auto* p = stack_at(_sp);
+        _cur.sp -= 2;
+        auto* p = stack_at(_cur.sp);
         p[0]    = to<u8>(value >> 8);  // big-endian
         p[1]    = to<u8>(value & 0xFF);
     }
@@ -1088,8 +1081,8 @@ namespace NEONengine
     void noir_vm::push32(u32 value) noexcept
     {
         ensure_stack(4);
-        _sp -= 4;
-        auto* p = stack_at(_sp);
+        _cur.sp -= 4;
+        auto* p = stack_at(_cur.sp);
         p[0]    = to<u8>(value >> 24);
         p[1]    = to<u8>(value >> 16);
         p[2]    = to<u8>(value >> 8);
@@ -1098,30 +1091,30 @@ namespace NEONengine
 
     u16 noir_vm::pop16() noexcept
     {
-        auto const* p = stack_at(_sp);
+        auto const* p = stack_at(_cur.sp);
         u16 value     = to<u16>((to<u16>(p[0]) << 8) | p[1]);
-        _sp += 2;
+        _cur.sp += 2;
         return value;
     }
 
     u32 noir_vm::pop32() noexcept
     {
-        auto const* p = stack_at(_sp);
+        auto const* p = stack_at(_cur.sp);
         u32 value     = (to<u32>(p[0]) << 24) | (to<u32>(p[1]) << 16) | (to<u32>(p[2]) << 8)
                     | to<u32>(p[3]);
-        _sp += 4;
+        _cur.sp += 4;
         return value;
     }
 
     u16 noir_vm::peek16() const noexcept
     {
-        auto const* p = stack_at(_sp);
+        auto const* p = stack_at(_cur.sp);
         return to<u16>((to<u16>(p[0]) << 8) | p[1]);
     }
 
     void noir_vm::ensure_stack(u16 bytes_needed) noexcept
     {
-        if (_sp >= bytes_needed) return;
+        if (_cur.sp >= bytes_needed) return;
 
         size_t old_size = _stack.size();
         size_t new_size = old_size * 2;
@@ -1148,8 +1141,8 @@ namespace NEONengine
 
         // Every offset moves with the content.
         auto delta = to<u16>(new_size - old_size);
-        _sp        = to<u16>(_sp + delta);
-        _fp        = to<u16>(_fp + delta);
+        _cur.sp    = to<u16>(_cur.sp + delta);
+        _cur.fp    = to<u16>(_cur.fp + delta);
 
 #ifdef GAME_DEBUG
         NE_LOG("stack grown to %lu bytes", new_size);
@@ -1160,13 +1153,13 @@ namespace NEONengine
 
     u8 noir_vm::read_u8() noexcept
     {
-        return _bytecode[_pc++];
+        return _bytecode[_cur.pc++];
     }
 
     u16 noir_vm::read_u16() noexcept
     {
-        u16 hi = _bytecode[_pc++];
-        u16 lo = _bytecode[_pc++];
+        u16 hi = _bytecode[_cur.pc++];
+        u16 lo = _bytecode[_cur.pc++];
         return to<u16>((hi << 8) | lo);
     }
 
@@ -1183,15 +1176,15 @@ namespace NEONengine
         {
             case IMM8: return to<u16>(read_u8());
             case IMM16: return read_u16();
-            case REG_D0: return _d[0];
-            case REG_D1: return _d[1];
-            case REG_D2: return _d[2];
-            case REG_D3: return _d[3];
+            case REG_D0: return _cur.d[0];
+            case REG_D1: return _cur.d[1];
+            case REG_D2: return _cur.d[2];
+            case REG_D3: return _cur.d[3];
 
             case LOCAL:
             {
                 i8 offset = to<i8>(read_u8());
-                u8* addr  = stack_at(_fp) + offset;
+                u8* addr  = stack_at(_cur.fp) + offset;
                 return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
@@ -1201,7 +1194,7 @@ namespace NEONengine
                 if (!validate_value_index(idx))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     return 0;
                 }
                 return _values[idx];
@@ -1209,13 +1202,13 @@ namespace NEONengine
 
             case VALUE_D0:
             {
-                if (!validate_value_index(_d[0]))
+                if (!validate_value_index(_cur.d[0]))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     return 0;
                 }
-                return _values[_d[0]];
+                return _values[_cur.d[0]];
             }
 
             default: return 0;
@@ -1226,15 +1219,15 @@ namespace NEONengine
     {
         switch (mode)
         {
-            case REG_D0: _d[0] = value; break;
-            case REG_D1: _d[1] = value; break;
-            case REG_D2: _d[2] = value; break;
-            case REG_D3: _d[3] = value; break;
+            case REG_D0: _cur.d[0] = value; break;
+            case REG_D1: _cur.d[1] = value; break;
+            case REG_D2: _cur.d[2] = value; break;
+            case REG_D3: _cur.d[3] = value; break;
 
             case LOCAL:
             {
                 i8 offset = to<i8>(read_u8());
-                u8* addr  = stack_at(_fp) + offset;
+                u8* addr  = stack_at(_cur.fp) + offset;
                 addr[0]   = to<u8>(value >> 8);
                 addr[1]   = to<u8>(value & 0xFF);
                 break;
@@ -1246,7 +1239,7 @@ namespace NEONengine
                 if (!validate_value_index(idx))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     break;
                 }
                 _values[idx] = value;
@@ -1255,13 +1248,13 @@ namespace NEONengine
 
             case VALUE_D0:
             {
-                if (!validate_value_index(_d[0]))
+                if (!validate_value_index(_cur.d[0]))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     break;
                 }
-                _values[_d[0]] = value;
+                _values[_cur.d[0]] = value;
                 break;
             }
 
@@ -1285,16 +1278,16 @@ namespace NEONengine
         {
             case IMM8: return to<u16>(read_u8());
             case IMM16: return read_u16();
-            case REG_D0: return _d[0];
-            case REG_D1: return _d[1];
-            case REG_D2: return _d[2];
-            case REG_D3: return _d[3];
+            case REG_D0: return _cur.d[0];
+            case REG_D1: return _cur.d[1];
+            case REG_D2: return _cur.d[2];
+            case REG_D3: return _cur.d[3];
 
             case LOCAL:
             {
                 i8 offset         = to<i8>(read_u8());
                 _cached_dst_param = to<u16>(to<u8>(offset));
-                u8* addr          = stack_at(_fp) + offset;
+                u8* addr          = stack_at(_cur.fp) + offset;
                 return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
@@ -1305,7 +1298,7 @@ namespace NEONengine
                 if (!validate_value_index(idx))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     return 0;
                 }
                 return _values[idx];
@@ -1313,13 +1306,13 @@ namespace NEONengine
 
             case VALUE_D0:
             {
-                if (!validate_value_index(_d[0]))
+                if (!validate_value_index(_cur.d[0]))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     return 0;
                 }
-                return _values[_d[0]];
+                return _values[_cur.d[0]];
             }
 
             default: return 0;
@@ -1330,15 +1323,15 @@ namespace NEONengine
     {
         switch (_cached_dst_mode)
         {
-            case REG_D0: _d[0] = value; break;
-            case REG_D1: _d[1] = value; break;
-            case REG_D2: _d[2] = value; break;
-            case REG_D3: _d[3] = value; break;
+            case REG_D0: _cur.d[0] = value; break;
+            case REG_D1: _cur.d[1] = value; break;
+            case REG_D2: _cur.d[2] = value; break;
+            case REG_D3: _cur.d[3] = value; break;
 
             case LOCAL:
             {
                 i8 offset = to<i8>(to<u8>(_cached_dst_param));
-                u8* addr  = stack_at(_fp) + offset;
+                u8* addr  = stack_at(_cur.fp) + offset;
                 addr[0]   = to<u8>(value >> 8);
                 addr[1]   = to<u8>(value & 0xFF);
                 break;
@@ -1349,7 +1342,7 @@ namespace NEONengine
                 if (!validate_value_index(_cached_dst_param))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     break;
                 }
                 _values[_cached_dst_param] = value;
@@ -1358,13 +1351,13 @@ namespace NEONengine
 
             case VALUE_D0:
             {
-                if (!validate_value_index(_d[0]))
+                if (!validate_value_index(_cur.d[0]))
                 {
                     _last_error = noir_status::err_value_oob;
-                    _state      = noir_state::halted;
+                    _cur.state  = noir_state::halted;
                     break;
                 }
-                _values[_d[0]] = value;
+                _values[_cur.d[0]] = value;
                 break;
             }
 
@@ -1376,31 +1369,31 @@ namespace NEONengine
 
     void noir_vm::set_flags_nz(u16 result) noexcept
     {
-        _sr = 0;
-        if (result & 0x8000) _sr |= N;
-        if (result == 0) _sr |= Z;
+        _cur.sr = 0;
+        if (result & 0x8000) _cur.sr |= N;
+        if (result == 0) _cur.sr |= Z;
     }
 
     void noir_vm::set_flags_nzcv_add(u16 a, u16 b, u32 result) noexcept
     {
         u16 r = to<u16>(result & 0xFFFF);
-        _sr        = 0;
-        if (r & 0x8000) _sr |= N;
-        if (r == 0) _sr |= Z;
-        if (result > 0xFFFF) _sr |= C;
+        _cur.sr = 0;
+        if (r & 0x8000) _cur.sr |= N;
+        if (r == 0) _cur.sr |= Z;
+        if (result > 0xFFFF) _cur.sr |= C;
         // Signed overflow: both operands same sign, result different sign
-        if ((~(a ^ b) & (a ^ r)) & 0x8000) _sr |= V;
+        if ((~(a ^ b) & (a ^ r)) & 0x8000) _cur.sr |= V;
     }
 
     void noir_vm::set_flags_nzcv_sub(u16 a, u16 b, u32 result) noexcept
     {
         u16 r = to<u16>(result & 0xFFFF);
-        _sr        = 0;
-        if (r & 0x8000) _sr |= N;
-        if (r == 0) _sr |= Z;
-        if (a < b) _sr |= C;  // Borrow occurred
+        _cur.sr = 0;
+        if (r & 0x8000) _cur.sr |= N;
+        if (r == 0) _cur.sr |= Z;
+        if (a < b) _cur.sr |= C;  // Borrow occurred
         // Signed overflow: operands different sign, result sign differs from a
-        if (((a ^ b) & (a ^ r)) & 0x8000) _sr |= V;
+        if (((a ^ b) & (a ^ r)) & 0x8000) _cur.sr |= V;
     }
 
     // ─── Flag/Value helpers ─────────────────────────────────────────────────────
@@ -1441,7 +1434,7 @@ namespace NEONengine
 #ifdef GAME_DEBUG
     void noir_vm::update_stack_high_water() noexcept
     {
-        u32 used = to<u32>(_stack.size() - _sp);
+        u32 used = to<u32>(_stack.size() - _cur.sp);
         if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
     }
 #endif

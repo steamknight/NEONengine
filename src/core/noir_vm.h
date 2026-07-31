@@ -132,6 +132,33 @@ namespace NEONengine
         halted,   ///< Finished or errored
     };
 
+    // ─── noir_session ───────────────────────────────────────────────────────────
+
+    /**
+     * @brief One running script: its registers, its stack cursor, its state.
+     *
+     * FLAGS, VALUES, the bytecode, the function table and the bridge belong to
+     * the VM, not to a session.
+     *
+     * The two byte-sized fields sit last so every wider field lands on an even
+     * address and the struct needs no padding.
+     */
+    struct noir_session
+    {
+        u16 d[4];               ///< D0–D3
+        u16 sp;                 ///< Offset into the session's stack; grows downward
+        u16 fp;                 ///< Frame offset into the session's stack
+        u16 pc;                 ///< Offset into the shared bytecode
+        u16 instructions_left;  ///< Budget remaining, reset each frame
+        u16 wait_counter;       ///< >0 = waiting N updates
+        u16 script_id;          ///< TOC index this session entered through
+        u16 stack_index;        ///< Which stack this session owns
+        u8 sr;                  ///< Status register (NZCV----)
+        noir_state state;
+    };
+
+    static_assert(sizeof(noir_session) == 24, "noir_session must stay 24 bytes with no padding");
+
     // ─── noir_vm ────────────────────────────────────────────────────────────────
 
     /**
@@ -246,7 +273,7 @@ namespace NEONengine
         void increment_blocking() noexcept
         {
             ++_blocking_counter;
-            _state = noir_state::blocked;
+            _cur.state = noir_state::blocked;
         }
 
         /**
@@ -256,11 +283,11 @@ namespace NEONengine
 
         // ── Accessors ────────────────────────────────────────────────────────
 
-        noir_state state() const noexcept { return _state; }
+        noir_state state() const noexcept { return _cur.state; }
         noir_status last_error() const noexcept { return _last_error; }
         u16 exit_code() const noexcept { return _exit_code; }
-        u16 reg_d(u8 i) const noexcept { return _d[i & 3]; }
-        u8 sr() const noexcept { return _sr; }
+        u16 reg_d(u8 i) const noexcept { return _cur.d[i & 3]; }
+        u8 sr() const noexcept { return _cur.sr; }
 
         /**
          * @brief Set the number of opcodes executed per update() call.
@@ -329,6 +356,10 @@ namespace NEONengine
 
         void do_ret() noexcept;
 
+        // ── Session lifecycle ────────────────────────────────────────────────
+
+        void reset_session() noexcept;
+
         // ── Flag/Value helpers ───────────────────────────────────────────────
 
         bool get_flag(u16 index) const noexcept;
@@ -359,28 +390,21 @@ namespace NEONengine
 
         mtl::vector<u8, mtl::MemF::Fast> _stack;
 
-        // ── Registers ────────────────────────────────────────────────────────
+        // ── The running session ──────────────────────────────────────────────
 
-        u16 _d[4];  ///< D0–D3
-        u16 _sp;    ///< Stack offset from the base; the stack grows downward
-        u16 _fp;    ///< Frame offset from the base
-        u16 _pc;    ///< Bytecode offset of the next byte to read
-        u8 _sr;     ///< Status register (NZCV----)
+        noir_session _cur;
 
         // ── Execution state ──────────────────────────────────────────────────
 
         u8 _reentry_level;        ///< 0 = not running, 1+ = nested calls
         u16 _call_depth;          ///< Current internal CALL nesting
         u16 _opcodes_per_update;  ///< Default: 10
-        u16 _opcodes_remaining;   ///< Decremented each opcode
         u8 _blocking_counter;     ///< >0 = waiting for engine ops
-        u16 _wait_counter;        ///< >0 = waiting N frames
 
         // ── Result ───────────────────────────────────────────────────────────
 
         u16 _exit_code;
         noir_status _last_error;
-        noir_state _state;
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 
