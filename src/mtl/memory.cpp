@@ -54,14 +54,34 @@ using namespace mtl;
  *
  * Layout (addresses increase left → right):
  * @code
- * [ 4-byte size ][ optional padding .. ][ user data ........ ][ canary ]
- * ^ raw pointer returned by memAlloc()      ^ returned to user  ^ (debug only)
+ * [ 4-byte size ][ padding .. ][ user data ..... ][ padding .. ][ canary ]
+ * ^ raw pointer from memAlloc()  ^ returned to user              ^ (debug only)
  * @endcode
+ *
+ * Both the user block and the canary start on an ALIGNMENT boundary, and the
+ * whole block is a multiple of it, so consecutive allocations stay aligned.
  */
 static constexpr size_t RAW_SIZE_FIELD_SIZE = sizeof(uint32_t);
-static constexpr size_t ALIGNMENT           = alignof(max_align_t);
+static constexpr size_t ALIGNMENT = alignof(max_align_t) < 4 ? 4 : alignof(max_align_t);
 static constexpr size_t HEADER_SIZE
     = (RAW_SIZE_FIELD_SIZE + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);  // rounded up
+
+/// Rounds a byte count up to ALIGNMENT so the next block starts aligned too.
+static constexpr size_t alignUp(size_t n)
+{
+    return (n + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);
+}
+
+/// Total bytes memAlloc must supply for a user block of @p size. Allocation and
+/// deallocation both compute it here so memFree is always given what memAlloc got.
+static constexpr size_t blockSize(size_t size)
+{
+    size_t total = HEADER_SIZE + alignUp(size);
+#ifdef MTL_DEBUG_CANARY
+    total += sizeof(uint32_t);
+#endif
+    return total;
+}
 
 #ifdef MTL_DEBUG_CANARY
 static constexpr uint32_t CANARY_VALUE = 0xDEADBEEF;
@@ -77,10 +97,7 @@ static constexpr uint32_t CANARY_VALUE = 0xDEADBEEF;
  */
 static void* allocWithSizeTracking(size_t size, ULONG memFlags, char const* errorMsg)
 {
-    size_t totalSize = HEADER_SIZE + size;
-#ifdef MTL_DEBUG_CANARY
-    totalSize += sizeof(uint32_t);  // space for trailing canary
-#endif
+    size_t totalSize = blockSize(size);
 
     uint8_t* raw = static_cast<uint8_t*>(memAlloc(totalSize, memFlags));
     if (!raw)
@@ -94,9 +111,18 @@ static void* allocWithSizeTracking(size_t size, ULONG memFlags, char const* erro
 
     uint8_t* userPtr = raw + HEADER_SIZE;
 
+    if ((reinterpret_cast<size_t>(userPtr) & (ALIGNMENT - 1)) != 0)
+    {
+        logWrite("[MTL] misaligned block: raw %p user %p size %lu total %lu\n",
+                 raw,
+                 userPtr,
+                 static_cast<unsigned long>(size),
+                 static_cast<unsigned long>(totalSize));
+    }
+
 #ifdef MTL_DEBUG_CANARY
-    // Place canary immediately after user block
-    *reinterpret_cast<uint32_t*>(userPtr + size) = CANARY_VALUE;
+    // Place canary after the user block, on an aligned boundary
+    *reinterpret_cast<uint32_t*>(userPtr + alignUp(size)) = CANARY_VALUE;
 #endif
 
     return userPtr;
@@ -119,7 +145,7 @@ static void deallocWithSizeTracking(void* ptr)
     uint32_t storedSize = *reinterpret_cast<uint32_t*>(raw);
 
 #ifdef MTL_DEBUG_CANARY
-    uint32_t* canary = reinterpret_cast<uint32_t*>(userPtr + storedSize);
+    uint32_t* canary = reinterpret_cast<uint32_t*>(userPtr + alignUp(storedSize));
     if (*canary != CANARY_VALUE)
     {
         logWrite("Memory corruption detected (canary mismatch) for block %p size %lu",
@@ -128,11 +154,7 @@ static void deallocWithSizeTracking(void* ptr)
     }
 #endif
 
-    size_t totalSize = HEADER_SIZE + storedSize;
-#ifdef MTL_DEBUG_CANARY
-    totalSize += sizeof(uint32_t);
-#endif
-    memFree(raw, totalSize);
+    memFree(raw, blockSize(storedSize));
 }
 
 /**
