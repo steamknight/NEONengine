@@ -26,8 +26,8 @@
 #include "tests/noir_vm_menu_tests.h"
 #include "tests/noir_vm_debug_tests.h"
 #include "tests/noir_vm_logic_tests.h"
-#include "tests/noir_vm_reentry_tests.h"
 #include "tests/noir_vm_scene_tests.h"
+#include "tests/noir_vm_scheduler_tests.h"
 #include "tests/noir_vm_tests.h"
 #include "tests/noir_vm_timeline_tests.h"
 #include "tests/noir_vm_value_ops_tests.h"
@@ -37,17 +37,82 @@ NE_LOG_DOMAIN(Test);
 
 namespace NEONengine::tests
 {
-    void runTestSuite(char const* szSuiteName, Test tests[], u32 testCount);
+    bool runTestSuite(char const* szSuiteName, Test tests[], u32 testCount);
 
-#define RUN_SUITE(suite) \
-    runTestSuite(suite##_name, suite##_tests, sizeof(suite##_tests) / sizeof(Test));
+#define RUN_SUITE(suite)                                                                       \
+    do                                                                                         \
+    {                                                                                          \
+        ++suiteCount;                                                                          \
+        if (runTestSuite(suite##_name, suite##_tests, sizeof(suite##_tests) / sizeof(Test)))    \
+            ++suitesPassed;                                                                     \
+    } while (0)
+
+    namespace
+    {
+        /// Next free scanline for report text.
+        u16 s_y = 0;
+
+        // The hardware pointer owns palette entries 24..31, so report text has
+        // to come out of the text range - and set its own colours, since what
+        // the UI palette holds there is whatever the game happens to need.
+        constexpr u8 COLOR_HEADING = 20;
+        constexpr u8 COLOR_FAILURE = 21;
+        constexpr u8 COLOR_PASSED  = 22;
+        constexpr u8 COLOR_FAILED  = 23;
+
+        void set_report_palette()
+        {
+            UWORD* palette         = screenGetPalette(g_mainScreen);
+            palette[COLOR_HEADING] = 0x0FFF;  // white
+            palette[COLOR_FAILURE] = 0x0F44;  // red
+            palette[COLOR_PASSED]  = 0x04E4;  // green
+            palette[COLOR_FAILED]  = 0x0FD2;  // amber
+        }
+
+        /**
+         * @brief Draws one line of report text, if there is room above the footer.
+         *
+         * A failing pass can name more tests than the screen has lines. The log
+         * has them all; the screen keeps the first that fit and reserves the
+         * last line for the summary.
+         */
+        void draw_report_line(char const* str, u8 color)
+        {
+            auto text = g_pEngine->default_text_renderer()->create_text(str, 320, text_justify::LEFT);
+            u16 const height = text->uwActualHeight;
+
+            if (s_y + 2 * height > SCREEN_HEIGHT) return;
+
+            screenTextCopy(g_mainScreen, text.get(), 0, s_y, color, FONT_COOKIE);
+            s_y = to<u16>(s_y + height);
+        }
+
+        /// Draws the summary on the bottom line, whatever came before it.
+        void draw_summary(char const* str, u8 color)
+        {
+            auto text = g_pEngine->default_text_renderer()->create_text(str, 320, text_justify::LEFT);
+            screenTextCopy(g_mainScreen,
+                text.get(),
+                0,
+                to<u16>(SCREEN_HEIGHT - text->uwActualHeight),
+                color,
+                FONT_COOKIE);
+        }
+    }  // namespace
 
     void testRunnerCreate()
     {
         ACE_LOG_BLOCK("testRunner");
 
+        set_report_palette();
         screenFadeFromBlack(g_mainScreen, 25, 0, NULL);
         screenClear(g_mainScreen, 0);
+
+        s_y              = 0;
+        u32 suiteCount   = 0;
+        u32 suitesPassed = 0;
+
+        draw_report_line("Starting test pass...", COLOR_HEADING);
 
         RUN_SUITE(bstr_view);
         RUN_SUITE(mtl_array);
@@ -69,49 +134,45 @@ namespace NEONengine::tests
         RUN_SUITE(noir_vm_dialogue);
         RUN_SUITE(noir_vm_menu);
         RUN_SUITE(noir_vm_debug);
-        RUN_SUITE(noir_vm_reentry);
+        RUN_SUITE(noir_vm_scheduler);
+
+        char summary[64];
+        snprintf(summary,
+            sizeof(summary),
+            "%lu/%lu test suites passed.",
+            to<ULONG>(suitesPassed),
+            to<ULONG>(suiteCount));
+        NE_LOG("%lu/%lu test suites passed", to<ULONG>(suitesPassed), to<ULONG>(suiteCount));
+        draw_summary(summary, suitesPassed == suiteCount ? COLOR_PASSED : COLOR_FAILED);
+
         screenDuplicateBackToFront(g_mainScreen);
     }
 
-    void runTestSuite(char const* szSuiteName, Test tests[], u32 testCount)
+    bool runTestSuite(char const* szSuiteName, Test tests[], u32 testCount)
     {
-        static u32 y  = 0;
-        auto pTextRenderer = g_pEngine->default_text_renderer();
-
         char buffer[256];
-        snprintf(buffer, sizeof(buffer), "Test: %s", szSuiteName);
-        auto text = pTextRenderer->create_text(szSuiteName, 320, text_justify::LEFT);
-
-        screenTextCopy(g_mainScreen, text.get(), 0, y, 24, FONT_COOKIE);
-
         u32 passedTests = 0;
+
         for (u32 i = 0; i < testCount; i++)
         {
             char const* szError = tests[i].test_fn();
-            if (szError)
-            {
-                NE_LOG("FAIL %s.%s: %s", szSuiteName, tests[i].name, szError);
-
-                y += text->uwActualHeight;
-                snprintf(buffer, sizeof(buffer), "%s: %s", tests[i].name, szError);
-                text = pTextRenderer->create_text((char const*)buffer, 320, text_justify::RIGHT);
-                screenTextCopy(g_mainScreen, text.get(), 0, y, 27, FONT_COOKIE);
-                y += text->uwActualHeight;
-
-                // return;
-            }
-            else
+            if (!szError)
             {
                 ++passedTests;
+                continue;
             }
+
+            NE_LOG("FAIL %s.%s: %s", szSuiteName, tests[i].name, szError);
+            snprintf(buffer, sizeof(buffer), "%s.%s: %s", szSuiteName, tests[i].name, szError);
+            draw_report_line(buffer, COLOR_FAILURE);
         }
 
-        NE_LOG("suite %s: %lu/%lu passed", szSuiteName, (ULONG)passedTests, (ULONG)testCount);
+        NE_LOG("suite %s: %lu/%lu passed",
+            szSuiteName,
+            to<ULONG>(passedTests),
+            to<ULONG>(testCount));
 
-        snprintf(buffer, sizeof(buffer), "Passed %ld/%ld tests.", passedTests, testCount);
-        text = pTextRenderer->create_text((char const*)buffer, 320, text_justify::RIGHT);
-        screenTextCopy(g_mainScreen, text.get(), 0, y, 2, FONT_COOKIE);
-        y += text->uwActualHeight;
+        return passedTests == testCount;
     }
 
     void testRunnerProcess()

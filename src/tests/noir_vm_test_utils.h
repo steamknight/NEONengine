@@ -339,8 +339,8 @@ namespace NEONengine
 
     struct bytecode_builder
     {
-        static constexpr u16 MAX_CODE  = 512;
-        static constexpr u16 MAX_FUNCS = 8;
+        static constexpr u16 MAX_CODE  = 1024;
+        static constexpr u16 MAX_FUNCS = 16;
 
         u8 code[MAX_CODE];
         u32 toc[MAX_FUNCS];
@@ -388,7 +388,7 @@ namespace NEONengine
         }
 
         // Build a VM using this bytecode. Caller must keep this builder alive.
-        noir_vm build_vm(u16 stack_size = 256)
+        noir_vm build_vm(u16 stack_size = 256, noir_bridge const* bridge = &g_mock_bridge)
         {
             g_mock_log.reset();
             return noir_vm(flags,
@@ -399,7 +399,7 @@ namespace NEONengine
                 pos,
                 toc,
                 func_count,
-                &g_mock_bridge,
+                bridge,
                 stack_size);
         }
 

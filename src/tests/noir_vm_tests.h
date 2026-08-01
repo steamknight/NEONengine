@@ -483,7 +483,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_opcodes_per_update)
     {
-        // With opcodes_per_update=2, a 4-opcode function should take 2+ updates
+        // With a session budget of 2, a 4-opcode function should take 2+ updates
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -493,7 +493,7 @@ namespace NEONengine
         bc.emit(noir_op::HALT);
 
         auto vm = bc.build_vm();
-        vm.set_opcodes_per_update(2);
+        vm.set_session_budget(2);
 
         auto status = vm.execute(fn);
         TEST_ASSERT(status == noir_status::ok, "execute should succeed");
@@ -544,6 +544,53 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── reset_execution() abandons the run but keeps game state ─────────────────
+
+    TEST_IMPL(test_noir_reset_execution_clears_run_keeps_state)
+    {
+        // Park a session mid-run with a dirty register and a mutated game value,
+        // then reset_execution() and confirm the execution state is clean while
+        // VALUES survive and the VM can run a fresh function afterwards.
+        bytecode_builder bc;
+
+        u16 fn0 = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(42);
+        bc.emit(noir_op::INCV);  // VALUES[0] += 1
+        bc.emit_u16(0);
+        bc.emit(noir_op::WAIT);  // park the session (non-idle) mid-run
+        bc.emit_u16(5);
+        bc.emit(noir_op::RET);
+
+        u16 fn1 = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        TEST_ASSERT(vm.execute(fn0) == noir_status::ok, "fn0 starts");
+        vm.update();
+        TEST_ASSERT(vm.state() == noir_state::waiting, "session parked mid-run");
+        TEST_ASSERT(vm.reg_d(0) == 42, "D0 dirty before reset");
+        TEST_ASSERT(bc.values[0] == 1, "value mutated before reset");
+
+        vm.reset_execution();
+        TEST_ASSERT(vm.state() == noir_state::idle, "idle after reset");
+        TEST_ASSERT(vm.session_count() == 0, "run list emptied by reset");
+        TEST_ASSERT(vm.reg_d(0) == 0 && vm.reg_d(1) == 0 && vm.reg_d(2) == 0 && vm.reg_d(3) == 0,
+            "registers cleared by reset");
+        TEST_ASSERT(vm.sr() == 0, "status register cleared by reset");
+        TEST_ASSERT(vm.exit_code() == 0, "exit code cleared by reset");
+        TEST_ASSERT(bc.values[0] == 1, "game state preserved across reset");
+
+        auto status = bc.run_to_completion(vm, fn1);
+        TEST_ASSERT(status == noir_status::completed, "fresh function runs after reset");
+        TEST_ASSERT(vm.exit_code() == 5, "fresh function produced its own result");
+        TEST_SUCCESS;
+    }
+
     // ── Test suite registration ─────────────────────────────────────────────────
 
     TEST_SUITE_BEGIN(noir_vm)
@@ -565,6 +612,7 @@ namespace NEONengine
     TEST(test_noir_execute_invalid_func)
     TEST(test_noir_opcodes_per_update)
     TEST(test_noir_call_preserves_frame)
+    TEST(test_noir_reset_execution_clears_run_keeps_state)
     TEST_SUITE_END
 
 }  // namespace NEONengine

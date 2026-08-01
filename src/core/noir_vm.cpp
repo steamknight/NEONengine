@@ -28,9 +28,8 @@ namespace NEONengine
 #ifdef GAME_DEBUG
     void noir_debug_stats::reset() noexcept
     {
-        max_stack_used    = 0;
-        max_call_depth    = 0;
-        max_reentry_level = 0;
+        max_stack_used = 0;
+        max_call_depth = 0;
         for (auto& c : opcode_histogram) c = 0;
     }
 #endif
@@ -59,11 +58,15 @@ namespace NEONengine
         , _stack(to<size_t>(stack_size) * SESSION_SLOTS)
         , _stack_base(nullptr)
         , _stack_bytes(stack_size)
+        , _stack_slots(SESSION_SLOTS)
+        , _sessions()
         , _cur{}
-        , _reentry_level(0)
         , _call_depth(0)
-        , _opcodes_per_update(10)
+        , _session_budget(10)
+        , _frame_pool(40)
+        , _rotation(0)
         , _blocking_counter(0)
+        , _run_list_dropped(false)
         , _exit_code(0)
         , _last_error(noir_status::ok)
         , _cached_dst_mode(0)
@@ -71,6 +74,7 @@ namespace NEONengine
     {
         // Grow the vector to fill its capacity so the memory is allocated
         _stack.assign(to<size_t>(stack_size) * SESSION_SLOTS, u8(0));
+        _sessions.reserve(SESSION_SLOTS);
 
         reset_session();
 
@@ -101,40 +105,110 @@ namespace NEONengine
             return noir_status::err_invalid_func;
         }
 
-        ++_reentry_level;
-
-#ifdef GAME_DEBUG
-        if (_reentry_level > _debug_stats.max_reentry_level)
-            _debug_stats.max_reentry_level = _reentry_level;
-#endif
-
-        // Save all registers on re-entry (reentry_level > 1)
-        if (_reentry_level > 1)
+        for (size_t i = 0; i < _sessions.size(); ++i)
         {
-            push16(_cur.d[0]);
-            push16(_cur.d[1]);
-            push16(_cur.d[2]);
-            push16(_cur.d[3]);
-            push16(to<u16>(_cur.sr));  // padded to 16-bit
-            push32(to<u32>(_cur.sp));
-            push32(to<u32>(_cur.fp));
-            push32(to<u32>(_cur.pc));
+            auto const& s = _sessions[i];
+            if (s.script_id == func_id && session_live(s))
+            {
+                NE_LOG("script %u is already running; request dropped", func_id);
+                return noir_status::err_duplicate_script;
+            }
         }
 
-        _cur.pc        = to<u16>(_func_toc[func_id]);
-        _cur.script_id = func_id;
+        u16 const slot = alloc_stack_slot();
+        if (!ensure_stack_slots(to<u16>(slot + 1))) return noir_status::err_stack_overflow;
 
-        // Set up initial stack frame (sentinel return address)
+        noir_session started{};
+        started.script_id   = func_id;
+        started.stack_index = slot;
+        started.sp          = _stack_bytes;
+        started.fp          = _stack_bytes;
+        started.pc          = to<u16>(_func_toc[func_id]);
+        started.state       = noir_state::running;
+
+        // The budget arrives at the top of the next update, so a session
+        // started from inside one does not run until the update after it.
+        started.instructions_left = 0;
+
+        // The frame push goes through the running session's window, so the
+        // caller's - a bridge function is inside an opcode - has to survive it.
+        noir_session const outer = _cur;
+
+        _cur        = started;
+        _stack_base = stack_base_for(slot);
+
         push32(SENTINEL_PC);
         push32(to<u32>(_cur.fp));
 
         // A frame that would not fit leaves the session dead; do not revive it.
-        if (_cur.state == noir_state::halted) return _last_error;
+        bool const fits = _cur.state != noir_state::halted;
+        if (fits)
+        {
+            _cur.fp = _cur.sp;
+            _sessions.push_back(_cur);
+        }
 
-        _cur.fp = _cur.sp;
+        _cur        = outer;
+        _stack_base = stack_base_for(_cur.stack_index);
 
-        _cur.state = noir_state::running;
-        return noir_status::ok;
+        return fits ? noir_status::ok : _last_error;
+    }
+
+    // ─── Stack slots ────────────────────────────────────────────────────────────
+
+    u16 noir_vm::alloc_stack_slot() const noexcept
+    {
+        for (u16 slot = 0;; ++slot)
+        {
+            bool taken = false;
+            for (size_t i = 0; i < _sessions.size(); ++i)
+            {
+                auto const& s = _sessions[i];
+                if (session_live(s) && s.stack_index == slot)
+                {
+                    taken = true;
+                    break;
+                }
+            }
+            if (!taken) return slot;
+        }
+    }
+
+    bool noir_vm::ensure_stack_slots(u16 slots) noexcept
+    {
+        if (slots <= _stack_slots) return true;
+
+        size_t const wanted = to<size_t>(slots) * _stack_bytes;
+
+        // resize() writes through whatever it already has when the allocation
+        // is refused, so take the memory first and only grow once it is there.
+        _stack.reserve(wanted);
+        if (_stack.capacity() < wanted)
+        {
+            NE_LOG("no memory for %u stacks; script not started", slots);
+            return false;
+        }
+
+        _stack.resize(wanted, u8(0));
+        _stack_slots = slots;
+        return true;
+    }
+
+    // ─── Register window ────────────────────────────────────────────────────────
+
+    void noir_vm::load_session(size_t index) noexcept
+    {
+        _cur        = _sessions[index];
+        _stack_base = stack_base_for(_cur.stack_index);
+    }
+
+    void noir_vm::store_session(size_t index) noexcept
+    {
+        // A bridge function can drop the run list from inside an opcode and
+        // start something else in its place, so the entry at this index is no
+        // longer the session that was loaded from it.
+        if (_run_list_dropped || index >= _sessions.size()) return;
+        _sessions[index] = _cur;
     }
 
     // ─── reset_session() ────────────────────────────────────────────────────────
@@ -155,10 +229,13 @@ namespace NEONengine
 
     void noir_vm::reset_execution() noexcept
     {
+        _sessions.clear();
+        _run_list_dropped = true;
+
         reset_session();
 
-        _reentry_level    = 0;
         _call_depth       = 0;
+        _rotation         = 0;
         _blocking_counter = 0;
 
         _exit_code        = 0;
@@ -171,28 +248,83 @@ namespace NEONengine
 
     noir_status noir_vm::update() noexcept
     {
-        if (_cur.state == noir_state::idle) return noir_status::ok;
-        if (_cur.state == noir_state::halted) return _last_error;
+        if (_sessions.empty()) return noir_status::ok;
 
-        if (_cur.state == noir_state::blocked)
+        _run_list_dropped = false;
+        begin_update_budgets();
+
+        u16 pool           = _frame_pool;
+        size_t const start = _rotation % _sessions.size();
+
+        // One walk. Nothing a session can do stops it short of its budget and
+        // still leaves it able to run: it has spent the budget, drained the
+        // pool, parked itself, or ended. A second walk would find the same
+        // sessions and turn all of them down.
+        for (size_t k = 0; k < _sessions.size() && pool > 0 && !_run_list_dropped; ++k)
         {
-            if (_blocking_counter > 0) return noir_status::yielded;
-            _cur.state = noir_state::running;
+            size_t const i = (start + k) % _sessions.size();
+            auto const& s  = _sessions[i];
+            if (s.state != noir_state::running || s.instructions_left == 0) continue;
+
+            load_session(i);
+
+            u16 const budget       = _cur.instructions_left;
+            u16 const slice        = (budget < pool) ? budget : pool;
+            _cur.instructions_left = slice;
+
+            run_slice();
+
+            // What it did not use goes back for whoever comes after it.
+            u16 const used         = to<u16>(slice - _cur.instructions_left);
+            _cur.instructions_left = to<u16>(budget - used);
+            pool                   = to<u16>(pool - used);
+
+            store_session(i);
         }
 
-        if (_cur.state == noir_state::waiting)
+        ++_rotation;
+        remove_dead_sessions();
+
+        if (!_sessions.empty()) return noir_status::yielded;
+        return (_cur.state == noir_state::halted) ? _last_error : noir_status::completed;
+    }
+
+    // ─── Scheduling ─────────────────────────────────────────────────────────────
+
+    void noir_vm::begin_update_budgets() noexcept
+    {
+        for (size_t i = 0; i < _sessions.size(); ++i)
         {
-            if (_cur.wait_counter > 0)
+            auto& s             = _sessions[i];
+            s.instructions_left = 0;
+
+            if (!session_live(s)) continue;
+
+            if (s.state == noir_state::waiting)
             {
-                --_cur.wait_counter;
-                return noir_status::yielded;
+                if (s.wait_counter > 0)
+                {
+                    --s.wait_counter;
+                    continue;
+                }
+                s.state = noir_state::running;
             }
-            _cur.state = noir_state::running;
+            else if (s.state == noir_state::blocked)
+            {
+                if (_blocking_counter > 0) continue;
+                s.state = noir_state::running;
+            }
+            else if (s.state == noir_state::yielded)
+            {
+                s.state = noir_state::running;
+            }
+
+            s.instructions_left = _session_budget;
         }
+    }
 
-        _cur.state             = noir_state::running;
-        _cur.instructions_left = _opcodes_per_update;
-
+    void noir_vm::run_slice() noexcept
+    {
         while (_cur.instructions_left > 0 && _cur.state == noir_state::running)
         {
 #ifdef GAME_DEBUG
@@ -204,23 +336,23 @@ namespace NEONengine
             {
                 _last_error = status;
                 _cur.state  = noir_state::halted;
-                return status;
+                return;
             }
             if (_cur.state != noir_state::running) break;
             --_cur.instructions_left;
         }
+    }
 
-        if (_cur.state == noir_state::running)
+    void noir_vm::remove_dead_sessions() noexcept
+    {
+        size_t write = 0;
+        for (size_t read = 0; read < _sessions.size(); ++read)
         {
-            _cur.state = noir_state::yielded;
-            return noir_status::yielded;
+            if (!session_live(_sessions[read])) continue;
+            if (write != read) _sessions[write] = _sessions[read];
+            ++write;
         }
-        if (_cur.state == noir_state::blocked || _cur.state == noir_state::waiting
-            || _cur.state == noir_state::yielded)
-        {
-            return noir_status::yielded;
-        }
-        return (_cur.state == noir_state::halted) ? _last_error : noir_status::completed;
+        while (_sessions.size() > write) _sessions.pop_back();
     }
 
     // ─── Opcode dispatch ────────────────────────────────────────────────────────
@@ -989,10 +1121,9 @@ namespace NEONengine
             }
 
             case DBG_STAT:
-                NE_LOG("STATS: max_stack=%lu max_call=%u max_reentry=%u",
+                NE_LOG("STATS: max_stack=%lu max_call=%u",
                     _debug_stats.max_stack_used,
-                    _debug_stats.max_call_depth,
-                    _debug_stats.max_reentry_level);
+                    _debug_stats.max_call_depth);
                 break;
 
             case DBG_FLAG:
@@ -1061,25 +1192,8 @@ namespace NEONengine
 
         if (return_pc != SENTINEL_PC) return;
 
-        if (_reentry_level > 1)
-        {
-            // Restore registers saved during execute()
-            _cur.pc   = to<u16>(pop32());
-            _cur.fp   = to<u16>(pop32());
-            _cur.sp   = to<u16>(pop32());
-            _cur.sr   = to<u8>(pop16());
-            _cur.d[3] = pop16();
-            _cur.d[2] = pop16();
-            _cur.d[1] = pop16();
-            _cur.d[0] = pop16();
-            --_reentry_level;
-        }
-        else if (_reentry_level == 1)
-        {
-            _exit_code     = _cur.d[0];
-            _reentry_level = 0;
-            _cur.state     = noir_state::idle;
-        }
+        _exit_code = _cur.d[0];
+        _cur.state = noir_state::idle;
     }
 
     // ─── Stack operations ───────────────────────────────────────────────────────

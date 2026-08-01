@@ -30,6 +30,7 @@ namespace NEONengine
         // Errors (VM halts)
         err_invalid_opcode,   ///< Unknown opcode byte encountered
         err_invalid_func,     ///< Function ID out of range
+        err_duplicate_script, ///< A live session is already running that script
         err_stack_underflow,  ///< Popped more than pushed
         err_stack_overflow,   ///< Pushed past the end of the session's stack
         err_division_zero,    ///< Division or modulo by zero
@@ -49,7 +50,6 @@ namespace NEONengine
     {
         u32 max_stack_used;         ///< High-water mark of stack usage (bytes)
         u16 max_call_depth;         ///< Deepest CALL nesting reached
-        u8 max_reentry_level;       ///< Highest re-entrancy level reached
         u32 opcode_histogram[256];  ///< Execution count per opcode
 
         void reset() noexcept;
@@ -184,9 +184,10 @@ namespace NEONengine
      * 2. Call execute(func_id) to start a script function
      * 3. Call update() each frame until completed or error
      *
-     * @par Re-Entrancy
-     * The engine may call execute() while the VM is already running (from a
-     * bridge callback). All registers are saved/restored automatically.
+     * @par Sessions
+     * Several scripts run at once, each in its own session with its own
+     * registers and stack. update() walks the run list handing out slices of
+     * instructions until the frame's pool is spent or nothing can run.
      *
      * @see noir_bridge
      * @see noir_opcodes.h
@@ -227,11 +228,13 @@ namespace NEONengine
         // ── Execution ────────────────────────────────────────────────────────
 
         /**
-         * @brief Start executing a script function by its TOC index.
+         * @brief Start a script in a new session at the back of the run list.
          *
-         * May be called while the VM is already running (re-entry). In that
-         * case, all registers are saved to the stack and restored when the
-         * function returns.
+         * The session runs on the next update(), which may be in this same
+         * frame if the VM has not run yet.
+         *
+         * One session per script: if a live session is already running this
+         * function the request is dropped.
          *
          * @param func_id Function index in the TOC (0-based)
          * @return noir_status::ok on success, or an error status
@@ -241,28 +244,29 @@ namespace NEONengine
         /**
          * @brief Run one update tick.
          *
-         * Executes up to opcodes_per_update opcodes, handles wait/block
-         * counters, and returns the resulting status.
+         * Walks the run list in passes, giving each session that can run a
+         * slice of instructions, until the frame pool is spent or nothing can
+         * run. Sessions that ended are removed at the end.
          *
          * Call this once per frame. Keep calling while status is `yielded`.
          *
-         * @return Current VM status after the update
+         * @return `yielded` while sessions remain, otherwise how the last one
+         *         ended; `ok` when there was nothing to run.
          */
         noir_status update() noexcept;
 
         /**
-         * @brief Abandon the current execution and return to a clean idle state.
+         * @brief Abandon every session and return to a clean idle state.
          *
-         * Clears all per-run execution state - registers, SR, stack pointer,
-         * frame pointer, program counter, call depth, re-entry level, the
-         * wait/blocking counters and the result - so the next execute() begins a
-         * fresh top-level function. Borrowed memory (FLAGS, VALUES, BYTECODE,
-         * TOC, bridge), the owned stack allocation and the configured
-         * opcodes-per-update are all preserved.
+         * Clears the run list and all per-run execution state - registers, SR,
+         * stack pointer, frame pointer, program counter, call depth, the
+         * wait/blocking counters and the result. Borrowed memory (FLAGS,
+         * VALUES, BYTECODE, TOC, bridge), the stack allocation and the
+         * configured budgets are all preserved.
          *
-         * Used when control transfers away from the running script - a scene
-         * change, say - and the current call chain must be discarded rather than
-         * resumed. Game state in FLAGS/VALUES is untouched.
+         * Used when control transfers away from the running scripts - a scene
+         * change, say - and the current call chains must be discarded rather
+         * than resumed. Game state in FLAGS/VALUES is untouched.
          */
         void reset_execution() noexcept;
 
@@ -290,11 +294,20 @@ namespace NEONengine
         u16 reg_d(u8 i) const noexcept { return _cur.d[i & 3]; }
         u8 sr() const noexcept { return _cur.sr; }
 
+        /// Sessions in the run list, live or waiting to be removed.
+        u16 session_count() const noexcept { return to<u16>(_sessions.size()); }
+
         /**
-         * @brief Set the number of opcodes executed per update() call.
-         * @param count Opcodes per update (default: 10)
+         * @brief Set the most instructions one session may run in one frame.
+         * @param count Instructions per session per frame (default: 10)
          */
-        void set_opcodes_per_update(u16 count) noexcept { _opcodes_per_update = count; }
+        void set_session_budget(u16 count) noexcept { _session_budget = count; }
+
+        /**
+         * @brief Set the most all sessions together may run in one frame.
+         * @param count Instructions per frame (default: 40)
+         */
+        void set_frame_pool(u16 count) noexcept { _frame_pool = count; }
 
 #ifdef GAME_DEBUG
         noir_debug_stats const& debug_stats() const noexcept { return _debug_stats; }
@@ -378,6 +391,33 @@ namespace NEONengine
 
         void reset_session() noexcept;
 
+        /// True while a session can still be given instructions.
+        static bool session_live(noir_session const& s) noexcept
+        {
+            return s.state != noir_state::idle && s.state != noir_state::halted;
+        }
+
+        /// Lowest stack slot no live session holds.
+        u16 alloc_stack_slot() const noexcept;
+
+        /// Makes room for @p slots stacks. False if the memory was refused.
+        bool ensure_stack_slots(u16 slots) noexcept;
+
+        /// Loads run list entry @p index into the register window.
+        void load_session(size_t index) noexcept;
+
+        /// Writes the register window back to run list entry @p index.
+        void store_session(size_t index) noexcept;
+
+        /// Hands every session its budget for this update and ages the waits.
+        void begin_update_budgets() noexcept;
+
+        /// Runs the loaded session until its slice or its state runs out.
+        void run_slice() noexcept;
+
+        /// Drops ended sessions, keeping the order of the rest.
+        void remove_dead_sessions() noexcept;
+
         // ── Flag/Value helpers ───────────────────────────────────────────────
 
         bool get_flag(u16 index) const noexcept;
@@ -403,6 +443,11 @@ namespace NEONengine
         mtl::vector<u8, mtl::MemF::Fast> _stack;
         u8* _stack_base;   ///< Base of the running session's stack
         u16 _stack_bytes;  ///< Size of one session's stack
+        u16 _stack_slots;  ///< Stacks the allocation currently holds
+
+        // ── The run list ─────────────────────────────────────────────────────
+
+        mtl::vector<noir_session, mtl::MemF::Fast> _sessions;
 
         // ── The running session ──────────────────────────────────────────────
 
@@ -410,10 +455,12 @@ namespace NEONengine
 
         // ── Execution state ──────────────────────────────────────────────────
 
-        u8 _reentry_level;        ///< 0 = not running, 1+ = nested calls
-        u16 _call_depth;          ///< Current internal CALL nesting
-        u16 _opcodes_per_update;  ///< Default: 10
-        u8 _blocking_counter;     ///< >0 = waiting for engine ops
+        u16 _call_depth;       ///< Current internal CALL nesting
+        u16 _session_budget;   ///< Instructions per session per frame (default: 10)
+        u16 _frame_pool;       ///< Instructions per frame, all sessions (default: 40)
+        u16 _rotation;         ///< Run list position the next update starts at
+        u8 _blocking_counter;  ///< >0 = waiting for engine ops
+        bool _run_list_dropped;  ///< reset_execution() ran inside an update
 
         // ── Result ───────────────────────────────────────────────────────────
 

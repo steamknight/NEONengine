@@ -13,7 +13,7 @@ opcodes themselves, the bytecode format, or the addressing modes; those live in
 1. [The model in short](#the-model-in-short)
 2. [Sessions](#sessions)
 3. [The run list](#the-run-list)
-4. [Budgets and passes](#budgets-and-passes)
+4. [Budgets and the walk](#budgets-and-the-walk)
 5. [Starting a script](#starting-a-script)
 6. [Bridge functions](#bridge-functions)
 7. [The frame](#the-frame)
@@ -137,35 +137,33 @@ There is no cap on the number of sessions.
 
 ---
 
-## Budgets and passes
+## Budgets and the walk
 
 Two limits, both configurable:
 
 - **Session budget — 10 instructions.** The most one session may run in one
-  frame, counted across every pass.
+  frame.
 - **Frame pool — 40 instructions.** The most all sessions together may run in
   one frame.
 
-A session that stops early hands its unused instructions back to the pool.
+A session that stops early hands its unused instructions back to the pool, and
+whichever session comes after it in the walk may spend them.
 
-### Passes
+### The walk
 
-The VM walks the run list, giving each session that can run up to what is left
-of its own budget. Then it walks it again. It stops when either:
+The VM walks the run list once, giving each session that can run the smaller of
+what is left of its own budget and what is left of the pool. It stops early if
+the pool reaches zero.
 
-- the pool reaches zero, or
-- no session can run — every one has spent its budget, is waiting, or is dead.
-
-A second pass matters when a session stopped early on the first one and the pool
-still has room.
+One walk is enough. A session only stops short of its budget by parking itself
+in a `WAIT`, by making a deferred bridge call, or by ending, and none of those
+leave it able to run again in the same update. Walking a second time would find
+the same sessions and turn all of them down.
 
 ### Order
 
 Sessions run in the order the scripts were spawned. Each time the VM runs it
 begins one place further along the run list, wrapping at the end.
-
-Every pass within a single update begins at the same session. The move happens
-between updates, never between passes.
 
 The position advances only on updates the VM actually runs. A frame the scene
 skips does not count, so the order depends on how many times the VM has run, not
@@ -176,7 +174,7 @@ is room in the global instruction pool.
 
 ### Reporting
 
-Two things can end a pass:
+Two things can end a walk early:
 
 - A script called a deferred bridge function. The VM drains the pool on purpose.
   This is normal and the VM says nothing.
@@ -243,7 +241,7 @@ Rules:
 Every bridge function falls into one of three kinds. The kind decides three
 separate things, so it is one property, not three lists.
 
-| Kind | What it does | Ends the pass | Allowed under `execute_now` |
+| Kind | What it does | Ends the walk | Allowed under `execute_now` |
 | --- | --- | --- | --- |
 | **Immediate** | Acts inside the opcode and returns | No | Yes |
 | **Deferred modal** | Records a request; the scene shows it and holds the VM | Yes | No |
@@ -255,7 +253,7 @@ separate things, so it is one property, not three lists.
 ### Deferred requests
 
 A deferred call does not act. It records what the script wants and returns. Then
-it drains the frame pool, which ends the pass at once. No session runs again
+it drains the frame pool, which ends the walk at once. No session runs again
 this frame.
 
 Draining the pool is what makes speech work in order:
@@ -444,8 +442,8 @@ VM still stopped; the script that opened the dialogue has not moved
 Five sessions, budget 10, pool 40.
 
 ```
-pass 1   A 10   B 10   C 10   D 3 (deferred call)
-         pool 7 left, but the pass ends here — D drained it
+A 10   B 10   C 10   D 3 (deferred call)
+pool 7 left, but the walk ends here — D drained it
 ```
 
 Without the request, D would spend its full 10, the pool would hit 40, and E
