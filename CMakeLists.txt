@@ -41,6 +41,22 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DAMIGA -Wall -Wextra -fomit-frame-pointer")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-attributes")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes")
 
+# No FPU.
+#
+# The toolchain compiles with -m68020 (m68k-bartman.cmake), which for m68k GCC
+# turns on hardware floating point. Nothing here does floating-point maths, but
+# the interrupt attribute makes GCC save every call-clobbered register in an
+# ISR prologue, and with an FPU in the machine description that includes fp0
+# and fp1. Each of ACE's four handlers therefore opens with an fmovem.
+#
+# A stock A1200 is a 68EC020 and has no FPU, so those are F-line instructions:
+# on real hardware the first vertical blank takes exception 11 and gurus
+# 8000000B. The flag has to reach the link line as well, since -flto -fwhole-
+# program means codegen happens there.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msoft-float")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msoft-float")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -msoft-float")
+
 set(ACE_TEST_RUNNER OFF CACHE BOOL "Enable the test runner")
 set(ACE_USE_AGA_FEATURES ON)
 set(ACE_USE_ECS_FEATURES ON)
