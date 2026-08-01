@@ -20,8 +20,8 @@ namespace NEONengine
     /// The PC is 16-bit, so bytecode past this cannot be addressed.
     constexpr u32 MAX_BYTECODE_SIZE = 0x10000u;
 
-    /// SP and FP are 16-bit, so a stack past this cannot be addressed.
-    constexpr size_t MAX_STACK_SIZE = 0xFFFFu;
+    /// Stacks the VM has room for before the vector has to grow.
+    constexpr size_t SESSION_SLOTS = 4;
 
     // ─── Debug stats ────────────────────────────────────────────────────────────
 
@@ -56,7 +56,9 @@ namespace NEONengine
         , _func_toc(func_toc)
         , _func_count(func_count)
         , _bridge(bridge)
-        , _stack(to<size_t>(stack_size))
+        , _stack(to<size_t>(stack_size) * SESSION_SLOTS)
+        , _stack_base(nullptr)
+        , _stack_bytes(stack_size)
         , _cur{}
         , _reentry_level(0)
         , _call_depth(0)
@@ -68,9 +70,14 @@ namespace NEONengine
         , _cached_dst_param(0)
     {
         // Grow the vector to fill its capacity so the memory is allocated
-        _stack.assign(to<size_t>(stack_size), u8(0));
+        _stack.assign(to<size_t>(stack_size) * SESSION_SLOTS, u8(0));
 
         reset_session();
+
+        if (stack_size == 0)
+        {
+            NE_LOG("stack size is 0; every script will die on its first push");
+        }
 
         if (bytecode_size >= MAX_BYTECODE_SIZE)
         {
@@ -120,6 +127,10 @@ namespace NEONengine
         // Set up initial stack frame (sentinel return address)
         push32(SENTINEL_PC);
         push32(to<u32>(_cur.fp));
+
+        // A frame that would not fit leaves the session dead; do not revive it.
+        if (_cur.state == noir_state::halted) return _last_error;
+
         _cur.fp = _cur.sp;
 
         _cur.state = noir_state::running;
@@ -132,8 +143,10 @@ namespace NEONengine
     {
         _cur = noir_session{};
 
+        _stack_base = stack_base_for(_cur.stack_index);
+
         // SP starts at the top of the stack (grows downward)
-        _cur.sp    = to<u16>(_stack.size());
+        _cur.sp    = _stack_bytes;
         _cur.fp    = _cur.sp;
         _cur.state = noir_state::idle;
     }
@@ -184,7 +197,6 @@ namespace NEONengine
         {
 #ifdef GAME_DEBUG
             ++_debug_stats.opcode_histogram[_bytecode[_cur.pc]];
-            update_stack_high_water();
 #endif
             auto status = execute_one_opcode();
             if (status != noir_status::ok && status != noir_status::yielded
@@ -274,6 +286,9 @@ namespace NEONengine
                 auto target = to<u16>(_func_toc[func_id]);
                 push32(to<u32>(_cur.pc));
                 push32(to<u32>(_cur.fp));
+
+                if (_cur.state == noir_state::halted) return _last_error;
+
                 _cur.fp = _cur.sp;
                 _cur.pc = target;
 #ifdef GAME_DEBUG
@@ -287,7 +302,7 @@ namespace NEONengine
             case LOCALS:
             {
                 u8 n = read_u8();
-                ensure_stack(n);
+                if (stack_overflow(n)) return noir_status::err_stack_overflow;
                 _cur.sp -= n;
                 return noir_status::ok;
             }
@@ -1071,7 +1086,7 @@ namespace NEONengine
 
     void noir_vm::push16(u16 value) noexcept
     {
-        ensure_stack(2);
+        if (stack_overflow(2)) return;
         _cur.sp -= 2;
         auto* p = stack_at(_cur.sp);
         p[0]    = to<u8>(value >> 8);  // big-endian
@@ -1080,7 +1095,7 @@ namespace NEONengine
 
     void noir_vm::push32(u32 value) noexcept
     {
-        ensure_stack(4);
+        if (stack_overflow(4)) return;
         _cur.sp -= 4;
         auto* p = stack_at(_cur.sp);
         p[0]    = to<u8>(value >> 24);
@@ -1091,6 +1106,7 @@ namespace NEONengine
 
     u16 noir_vm::pop16() noexcept
     {
+        if (stack_underflow(2)) return 0;
         auto const* p = stack_at(_cur.sp);
         u16 value     = to<u16>((to<u16>(p[0]) << 8) | p[1]);
         _cur.sp += 2;
@@ -1099,6 +1115,7 @@ namespace NEONengine
 
     u32 noir_vm::pop32() noexcept
     {
+        if (stack_underflow(4)) return 0;
         auto const* p = stack_at(_cur.sp);
         u32 value     = (to<u32>(p[0]) << 24) | (to<u32>(p[1]) << 16) | (to<u32>(p[2]) << 8)
                     | to<u32>(p[3]);
@@ -1106,47 +1123,40 @@ namespace NEONengine
         return value;
     }
 
-    u16 noir_vm::peek16() const noexcept
+    u16 noir_vm::peek16() noexcept
     {
+        if (stack_underflow(2)) return 0;
         auto const* p = stack_at(_cur.sp);
         return to<u16>((to<u16>(p[0]) << 8) | p[1]);
     }
 
-    void noir_vm::ensure_stack(u16 bytes_needed) noexcept
+    bool noir_vm::stack_overflow(u16 bytes) noexcept
     {
-        if (_cur.sp >= bytes_needed) return;
-
-        size_t old_size = _stack.size();
-        size_t new_size = old_size * 2;
-
-        if (new_size > MAX_STACK_SIZE)
+        if (_cur.sp < bytes)
         {
-            NE_LOG("stack cannot grow past %lu bytes", to<ULONG>(MAX_STACK_SIZE));
-            return;
+            NE_LOG("script %u overran its %u byte stack", _cur.script_id, _stack_bytes);
+            _last_error = noir_status::err_stack_overflow;
+            _cur.state  = noir_state::halted;
+            return true;
         }
-
-        _stack.reserve(new_size);
-
-        while (_stack.size() < new_size) _stack.push_back(0);
-
-        // The stack grows down, so the old content belongs at the new top.
-        auto new_base = _stack.data();
-        auto old_top  = new_base + old_size;
-        auto new_top  = new_base + new_size;
-
-        for (size_t i = 0; i < old_size; ++i)
-        {
-            new_top[-(to<int>(i)) - 1] = old_top[-(to<int>(i)) - 1];
-        }
-
-        // Every offset moves with the content.
-        auto delta = to<u16>(new_size - old_size);
-        _cur.sp    = to<u16>(_cur.sp + delta);
-        _cur.fp    = to<u16>(_cur.fp + delta);
 
 #ifdef GAME_DEBUG
-        NE_LOG("stack grown to %lu bytes", new_size);
+        u16 used = to<u16>(_stack_bytes - (_cur.sp - bytes));
+        if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
 #endif
+        return false;
+    }
+
+    bool noir_vm::stack_underflow(u16 bytes) noexcept
+    {
+        if (_cur.sp + bytes > _stack_bytes)
+        {
+            NE_LOG("script %u popped more than it pushed", _cur.script_id);
+            _last_error = noir_status::err_stack_underflow;
+            _cur.state  = noir_state::halted;
+            return true;
+        }
+        return false;
     }
 
     // ─── Bytecode reading ───────────────────────────────────────────────────────
@@ -1430,13 +1440,5 @@ namespace NEONengine
     }
 
     // ─── Debug ──────────────────────────────────────────────────────────────────
-
-#ifdef GAME_DEBUG
-    void noir_vm::update_stack_high_water() noexcept
-    {
-        u32 used = to<u32>(_stack.size() - _cur.sp);
-        if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
-    }
-#endif
 
 }  // namespace NEONengine

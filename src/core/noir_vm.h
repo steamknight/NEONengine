@@ -31,6 +31,7 @@ namespace NEONengine
         err_invalid_opcode,   ///< Unknown opcode byte encountered
         err_invalid_func,     ///< Function ID out of range
         err_stack_underflow,  ///< Popped more than pushed
+        err_stack_overflow,   ///< Pushed past the end of the session's stack
         err_division_zero,    ///< Division or modulo by zero
         err_invalid_address,  ///< PC or address out of bytecode bounds
         err_value_oob,        ///< VALUE index out of range
@@ -169,12 +170,12 @@ namespace NEONengine
      * (68020 CPU, big-endian, limited RAM).
      *
      * The VM borrows external memory (FLAGS, VALUES, BYTECODE, TOC, bridge)
-     * and owns only its execution stack. All borrowed memory must outlive
+     * and owns only the session stacks. All borrowed memory must outlive
      * the VM instance.
      *
      * @par Registers
      * - D0–D3: 16-bit general-purpose data registers
-     * - SP/FP: 16-bit offsets from the stack base; the stack grows downward
+     * - SP/FP: 16-bit offsets into the session's own stack; it grows downward
      * - PC: 16-bit offset into the bytecode, at the next byte to read
      * - SR: 8-bit status register (NZCV----)
      *
@@ -205,7 +206,7 @@ namespace NEONengine
          * @param func_toc        Borrowed array of u32 offsets into bytecode
          * @param func_count      Number of entries in the function TOC
          * @param bridge          Borrowed engine bridge (must outlive VM)
-         * @param stack_size      Initial stack capacity in bytes (e.g. 256)
+         * @param stack_size      Stack capacity of one session, in bytes
          */
         noir_vm(u8* flags,
             u16 flags_size,
@@ -327,11 +328,28 @@ namespace NEONengine
         void push32(u32 value) noexcept;
         u16 pop16() noexcept;
         u32 pop32() noexcept;
-        u16 peek16() const noexcept;
-        void ensure_stack(u16 bytes_needed) noexcept;
+        u16 peek16() noexcept;
 
-        u8* stack_at(u16 offset) noexcept { return _stack.data() + offset; }
-        u8 const* stack_at(u16 offset) const noexcept { return _stack.data() + offset; }
+        /**
+         * @brief True if pushing this many bytes would overrun the session's stack.
+         * Kills the session with err_stack_overflow when it would. Records a new
+         * high-water mark when it would not.
+         */
+        bool stack_overflow(u16 bytes) noexcept;
+
+        /**
+         * @brief True if popping this many bytes would underrun the session's stack.
+         * Kills the session with err_stack_underflow when it would.
+         */
+        bool stack_underflow(u16 bytes) noexcept;
+
+        u8* stack_at(u16 offset) noexcept { return _stack_base + offset; }
+        u8 const* stack_at(u16 offset) const noexcept { return _stack_base + offset; }
+
+        u8* stack_base_for(u16 index) noexcept
+        {
+            return _stack.data() + to<size_t>(index) * _stack_bytes;
+        }
 
         // ── Bytecode reading ─────────────────────────────────────────────────
 
@@ -367,12 +385,6 @@ namespace NEONengine
         bool validate_flag_index(u16 index) const noexcept;
         bool validate_value_index(u16 index) const noexcept;
 
-        // ── Stack high-water ─────────────────────────────────────────────────
-
-#ifdef GAME_DEBUG
-        void update_stack_high_water() noexcept;
-#endif
-
         private:  //////////////////////////////////////////////////////////////////////////////////
         // ── Borrowed memory (caller manages lifetime) ────────────────────────
 
@@ -389,6 +401,8 @@ namespace NEONengine
         // ── Owned memory ─────────────────────────────────────────────────────
 
         mtl::vector<u8, mtl::MemF::Fast> _stack;
+        u8* _stack_base;   ///< Base of the running session's stack
+        u16 _stack_bytes;  ///< Size of one session's stack
 
         // ── The running session ──────────────────────────────────────────────
 
