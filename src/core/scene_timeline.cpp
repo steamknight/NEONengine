@@ -121,25 +121,6 @@ namespace NEONengine
         mtl::vector<cycle_span> s_cycles;
 
         /**
-         * @brief The ANIM_WAIT a blocked script is sitting on, if any.
-         *
-         * Held as a record rather than a sentinel index because "no track of
-         * that name in this scene" is a normal wait that has to be released,
-         * not the absence of a wait, and the two cannot share an encoding with
-         * a track index without eventually colliding with a real one.
-         */
-        struct wait_state
-        {
-            u16 name  = 0;      ///< Track name the script asked for.
-            u16 track = 0;      ///< Scene-local index; only valid when found.
-            u8 depth  = 0;      ///< Waits on the blocking counter; 0 = none.
-            bool found     = false;  ///< Whether this scene has that track.
-        };
-
-        wait_state s_wait;
-
-
-        /**
          * @brief Names @p mode the way the editor and the format docs do.
          */
         char const* loop_mode_name(u8 mode)
@@ -321,55 +302,6 @@ namespace NEONengine
                 if (tracks[index].name_id == name_id) return index;
             }
             return NO_TRACK;
-        }
-
-        /**
-         * @brief Lets the script blocked on ANIM_WAIT carry on.
-         *
-         * @param why How the wait came to be over, for the log.
-         */
-        void release_waiter(char const* why)
-        {
-            if (s_wait.depth == 0) return;
-
-            u16 const name = s_wait.name;
-            u8 const depth = s_wait.depth;
-            s_wait              = wait_state{};
-
-            auto& vm = g_pEngine->vm();
-
-            // Unconditional, exactly as nb_fade_done() is, and for the same
-            // reason: every wait recorded here was paired with an
-            // increment_blocking(), so skipping the decrement leaves the counter
-            // permanently one too high and wedges the *next* blocking call just
-            // as surely as an extra decrement would wrap it to 255. A hotspot
-            // click can cancel the block out from under a wait (it re-enters
-            // execute() without checking the VM is idle), and when it does this
-            // is what puts the counter back where it started.
-            for (u8 step = 0; step < depth; ++step) vm.decrement_blocking();
-
-            if (vm.state() != noir_state::blocked)
-            {
-                NE_LOG("the wait on track name %hu (%s) had already been cancelled",
-                    name,
-                    why);
-                return;
-            }
-            NE_LOG("the wait on track name %hu is over (%s)", name, why);
-        }
-
-        /**
-         * @brief Ends a wait that is already satisfied before any track ticks.
-         *
-         * Covers the ways a wait can be over without a cycle boundary to notice
-         * it by: a name this scene has no track for, a track that was never
-         * started or has already finished, and one stopped by ANIM_STOP.
-         */
-        void update_waiter()
-        {
-            if (s_wait.depth == 0) return;
-            if (!s_wait.found) return release_waiter("no such track in this scene");
-            if (!s_clocks[s_wait.track].is_running()) return release_waiter("it is not running");
         }
 
         /**
@@ -925,13 +857,6 @@ namespace NEONengine
 
     void scene_timeline_clear()
     {
-        // Tracks cannot outlive their scene, so neither can a wait on one: the
-        // record has to go before s_clocks is emptied, or it would index the
-        // next scene's playheads. The release itself is belt and braces, since
-        // load_scene() resets the VM straight after this and that clears the
-        // blocking counter anyway.
-        release_waiter("the scene ended");
-
         s_first      = 0;
         s_count      = 0;
         s_gfxi_first = 0;
@@ -1120,11 +1045,6 @@ namespace NEONengine
 
     void scene_timeline_update()
     {
-        // Ahead of the early-out, because a scene with no tracks at all can
-        // still have a script blocked on a track it does not have, and leaving
-        // that one blocked would strand it for the rest of the game.
-        update_waiter();
-
         if (s_count == 0) return;
 
         // Ahead of the tracks, so that a movement is read off the playhead the
@@ -1156,11 +1076,6 @@ namespace NEONengine
                     // than gliding once and teleporting ever after.
                     prime_glides(index, tracks[index]);
 
-                    // A wait ends at the first cycle boundary after it began, so
-                    // that waiting on a track that loops for ever costs one
-                    // cycle instead of the whole scene.
-                    if (s_wait.found && s_wait.track == index) release_waiter("it came round");
-
                     // A short looping track turns over dozens of times a second,
                     // which would bury everything else in the log, so only the
                     // first few of each track's cycles are reported.
@@ -1175,7 +1090,6 @@ namespace NEONengine
                     break;
 
                 case tick_result::FINISHED:
-                    if (s_wait.found && s_wait.track == index) release_waiter("it finished");
                     NE_LOG("track %hu finished after %hu cycle(s)", index, clock.cycles_done());
                     break;
 
@@ -1239,46 +1153,10 @@ namespace NEONengine
         // of a track's state before playing it, so it passes quietly.
         if (!s_clocks[index].is_running()) return;
 
-        // Anything waiting on this track is released by the next
-        // scene_timeline_update(), which finds it no longer running.
         s_clocks[index].stop();
         NE_LOG("ANIM_STOP halted track %hu (name %hu) at position %hu",
             index,
             name_id,
             s_clocks[index].position());
-    }
-
-    void scene_timeline_wait(u16 name_id)
-    {
-        u16 const index = find_track(name_id);
-        if (index == NO_TRACK)
-        {
-            NE_LOG("ANIM_WAIT names track %hu, which this scene does not have", name_id);
-        }
-
-        // Two waits can only stack if a hotspot click re-entered the VM over an
-        // already blocked script. They share the one blocking counter and the
-        // one state, so the newer wait takes over and both end together.
-        if (s_wait.depth != 0)
-        {
-            NE_LOG("ANIM_WAIT on track name %hu displaced a wait on track name %hu",
-                name_id,
-                s_wait.name);
-        }
-
-        // The opcode handler blocks the VM only after this returns, so the
-        // counter cannot be balanced here even when the wait is already
-        // satisfied; scene_timeline_update() picks it up later in the same
-        // frame. Every recorded wait is therefore owed exactly one decrement.
-        wait_state next;
-        next.name  = name_id;
-        next.found = (index != NO_TRACK);
-        next.track = next.found ? index : u16(0);
-
-        // Saturating rather than wrapping, though by 255 nested waits the VM's
-        // own u8 counter has wrapped too and nothing is recoverable.
-        next.depth = (s_wait.depth == UINT8_MAX) ? s_wait.depth
-                                                 : to<u8>(s_wait.depth + 1);
-        s_wait     = next;
     }
 }  // namespace NEONengine

@@ -17,11 +17,11 @@ namespace NEONengine
     // All menu/settings opcodes are 1-byte (opcode only). Arguments in D0.
     // Bridge function pointers are called.
     //
-    // FADE_OUT    (0xC0): D0=frames → bridge->fade_out(D0)    — blocking
-    // FADE_IN     (0xC1): D0=frames → bridge->fade_in(D0)     — blocking
+    // FADE_OUT    (0xC0): D0=frames → bridge->fade_out(D0)    — deferred modal
+    // FADE_IN     (0xC1): D0=frames → bridge->fade_in(D0)     — deferred modal
     // SCREEN_CLR  (0xC2): D0=color  → bridge->screen_clear(D0) — non-blocking
     // SET_LANG    (0xC3): D0=lang_id → bridge->set_lang(D0)   — non-blocking
-    // SAVE_GAME   (0xC4): D0=slot   → bridge->save_game(D0)   — non-blocking
+    // SAVE_GAME   (0xC4): D0=slot   → bridge->save_game(D0)   — deferred modal
     // LOAD_GAME   (0xC5): D0=slot   → bridge->load_game(D0)   — non-blocking
     // NEW_GAME    (0xC6): bridge->new_game()                   — non-blocking
     // QUIT_GAME   (0xC7): bridge->quit_game()                  — non-blocking
@@ -55,9 +55,9 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_fade_out_blocks_vm)
+    TEST_IMPL(test_noir_fade_out_parks_the_session)
     {
-        // FADE_OUT is a blocking opcode
+        // FADE_OUT is deferred: the walk ends on it, before the RET
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -72,42 +72,49 @@ namespace NEONengine
         vm.execute(fn);
         auto status = vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
-        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
+        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_fade_out_stays_blocked)
+    TEST_IMPL(test_noir_fade_out_then_goto_scene_take_an_update_each)
     {
-        // VM stays blocked across multiple update() calls
+        // The pattern every scene transition is written in. Each call ends its
+        // own update, so the scene change cannot be recorded in the same one the
+        // fade was asked for - which is what stops a scene tearing down while
+        // its own fade-out is still running.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(30);
-
         bc.emit(noir_op::FADE_OUT);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(4);
+        bc.emit(noir_op::GOTO_SCENE);
+
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn);
+
         vm.update();
+        TEST_ASSERT(g_mock_log.fade_out_called, "the fade was asked for");
+        TEST_ASSERT(!g_mock_log.goto_scene_called, "and the scene change was not");
 
-        auto s1 = vm.update();
-        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
-
-        auto s2 = vm.update();
-        TEST_ASSERT(s2 == noir_status::yielded, "still yielded after 3rd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 3rd update");
-
+        vm.update();
+        TEST_ASSERT(g_mock_log.goto_scene_called, "which waited for its own update");
+        TEST_ASSERT(g_mock_log.goto_scene_id == 4, "and carried the right scene");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_fade_out_resumes_after_unblock)
     {
-        // After decrement_blocking(), VM resumes and completes
+        // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -127,9 +134,8 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after FADE_OUT");
+        TEST_ASSERT(vm.session_count() == 1, "parked at FADE_OUT");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -166,7 +172,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -200,7 +205,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -274,9 +278,9 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_fade_in_blocks_vm)
+    TEST_IMPL(test_noir_fade_in_parks_the_session)
     {
-        // FADE_IN is a blocking opcode
+        // FADE_IN is deferred: the walk ends on it, before the RET
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -291,38 +295,49 @@ namespace NEONengine
         vm.execute(fn);
         auto status = vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
-        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
+        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_fade_in_stays_blocked)
+    TEST_IMPL(test_noir_fade_in_leaves_the_pool_empty)
     {
-        // VM stays blocked until unblocked
+        // The pool is drained, not merely nudged: raising it changes nothing,
+        // because the walk ends on the deferred call whatever room was left.
+        //
+        // The second session marks itself on the bridge rather than in a
+        // register: reg_d() reads the window, which holds whichever session went
+        // last, so it cannot say whether a particular one ran.
         bytecode_builder bc;
-        u16 fn = bc.begin_func();
 
+        u16 fn_fade = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(20);
-
         bc.emit(noir_op::FADE_IN);
         bc.emit(noir_op::RET);
 
+        u16 fn_other = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(555);
+        bc.emit(noir_op::HOTSPOT_ON);
+        bc.emit(noir_op::RET);
+
         auto vm = bc.build_vm();
-        vm.execute(fn);
+        vm.set_frame_pool(400);
+        g_mock_log.reset();
+        vm.execute(fn_fade);
+        vm.execute(fn_other);
+
         vm.update();
-
-        auto s1 = vm.update();
-        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
-
+        TEST_ASSERT(g_mock_log.hotspot_on_id != 555, "the pool had 398 left and still nobody ran");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_fade_in_resumes_after_unblock)
     {
-        // After decrement_blocking(), VM resumes and completes
+        // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -342,9 +357,8 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after FADE_IN");
+        TEST_ASSERT(vm.session_count() == 1, "parked at FADE_IN");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -381,7 +395,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 55, "D0 preserved");
@@ -415,7 +428,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -489,7 +501,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 777, "code continued past SCREEN_CLR");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -643,7 +654,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 555, "code continued past SET_LANG");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -754,9 +764,10 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_save_game_does_not_block)
+    TEST_IMPL(test_noir_save_game_defers_then_carries_on)
     {
-        // SAVE_GAME is non-blocking
+        // SAVE_GAME is deferred modal: it ends the update it runs in, and the
+        // script picks up on the opcode after it once the save is done with.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -772,12 +783,19 @@ namespace NEONengine
 
         bc.emit(noir_op::RET);
 
-        auto vm     = bc.build_vm();
-        auto status = bc.run_to_completion(vm, fn);
+        auto vm = bc.build_vm();
+        g_mock_log.reset();
+        vm.execute(fn);
+
+        auto first = vm.update();
+        TEST_ASSERT(g_mock_log.save_slot == 2, "the save was asked for");
+        TEST_ASSERT(first == noir_status::yielded, "and the update ended there");
+        TEST_ASSERT(vm.reg_d(0) != 444, "the opcode after it did not run");
+
+        auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 444, "code continued past SAVE_GAME");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -911,7 +929,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 333, "code continued past LOAD_GAME");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -1037,7 +1054,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 222, "code continued past NEW_GAME");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -1139,7 +1155,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 111, "code continued past QUIT_GAME");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -1207,7 +1222,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_fade_out_then_fade_in)
     {
-        // Common pattern: fade out, then fade in (two sequential blocking ops)
+        // Common pattern: fade out, then fade in - one update each
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -1233,20 +1248,18 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on FADE_OUT");
+        TEST_ASSERT(vm.session_count() == 1, "parked at FADE_OUT");
         TEST_ASSERT(g_mock_log.fade_out_called, "fade_out called");
         TEST_ASSERT(g_mock_log.fade_out_frames == 25, "fade_out(25)");
 
         // Unblock FADE_OUT — should block on FADE_IN
-        vm.decrement_blocking();
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on FADE_IN");
+        TEST_ASSERT(vm.session_count() == 1, "parked at FADE_IN");
         TEST_ASSERT(g_mock_log.fade_in_called, "fade_in called");
         TEST_ASSERT(g_mock_log.fade_in_frames == 30, "fade_in(30)");
 
         // Unblock FADE_IN — should complete
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after both");
@@ -1282,19 +1295,17 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on FADE_OUT");
+        TEST_ASSERT(vm.session_count() == 1, "parked at FADE_OUT");
         TEST_ASSERT(g_mock_log.fade_out_frames == 20, "fade_out(20)");
 
         // Unblock FADE_OUT → SCREEN_CLR runs, then blocks on FADE_IN
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(g_mock_log.screen_clr_color == 0, "screen_clear(0)");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on FADE_IN");
+        TEST_ASSERT(vm.session_count() == 1, "parked at FADE_IN");
         TEST_ASSERT(g_mock_log.fade_in_frames == 20, "fade_in(20)");
 
         // Unblock FADE_IN → completes
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes");
@@ -1390,25 +1401,27 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn);
-        vm.update();
 
-        // Blocked on FADE_OUT
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on FADE_OUT");
+        // Each deferred call ends the update it runs in, so the flow takes one
+        // update per deferred call plus one for the RET. The immediate calls
+        // between them ride along in the same update as the deferred one that
+        // follows.
+        vm.update();
         TEST_ASSERT(g_mock_log.fade_out_frames == 15, "fade_out(15)");
+        TEST_ASSERT(g_mock_log.screen_clr_color != 7, "and nothing after it ran");
 
-        // Unblock → non-blocking ops run, then blocks on FADE_IN
-        vm.decrement_blocking();
         vm.update();
-
         TEST_ASSERT(g_mock_log.screen_clr_color == 7, "screen_clear(7)");
         TEST_ASSERT(g_mock_log.set_lang_id == 2, "set_lang(2)");
         TEST_ASSERT(g_mock_log.save_slot == 0, "save_game(0)");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on FADE_IN");
-        TEST_ASSERT(g_mock_log.fade_in_frames == 15, "fade_in(15)");
+        TEST_ASSERT(!g_mock_log.fade_in_called, "save_game stopped it before the fade in");
 
-        // Unblock FADE_IN
-        vm.decrement_blocking();
+        vm.update();
+        TEST_ASSERT(g_mock_log.fade_in_frames == 15, "fade_in(15)");
+        TEST_ASSERT(vm.session_count() == 1, "parked at the RET");
+
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes");
@@ -1445,10 +1458,9 @@ namespace NEONengine
         vm.execute(fn0);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked inside fn1");
+        TEST_ASSERT(vm.session_count() == 1, "parked inside fn1");
         TEST_ASSERT(g_mock_log.fade_out_frames == 10, "fade_out(10)");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -1515,8 +1527,8 @@ namespace NEONengine
     Test noir_vm_menu_tests[] = {
         // FADE_OUT
         { "fade_out basic", test_noir_fade_out_basic },
-        { "fade_out blocks VM", test_noir_fade_out_blocks_vm },
-        { "fade_out stays blocked", test_noir_fade_out_stays_blocked },
+        { "fade_out parks the session", test_noir_fade_out_parks_the_session },
+        { "fade_out then goto_scene: an update each", test_noir_fade_out_then_goto_scene_take_an_update_each },
         { "fade_out resumes", test_noir_fade_out_resumes_after_unblock },
         { "fade_out preserves regs", test_noir_fade_out_preserves_all_regs },
         { "fade_out preserves SR", test_noir_fade_out_preserves_sr },
@@ -1525,8 +1537,8 @@ namespace NEONengine
 
         // FADE_IN
         { "fade_in basic", test_noir_fade_in_basic },
-        { "fade_in blocks VM", test_noir_fade_in_blocks_vm },
-        { "fade_in stays blocked", test_noir_fade_in_stays_blocked },
+        { "fade_in parks the session", test_noir_fade_in_parks_the_session },
+        { "fade_in drains the pool", test_noir_fade_in_leaves_the_pool_empty },
         { "fade_in resumes", test_noir_fade_in_resumes_after_unblock },
         { "fade_in preserves regs", test_noir_fade_in_preserves_all_regs },
         { "fade_in preserves SR", test_noir_fade_in_preserves_sr },
@@ -1549,7 +1561,7 @@ namespace NEONengine
 
         // SAVE_GAME
         { "save_game basic", test_noir_save_game_basic },
-        { "save_game does not block", test_noir_save_game_does_not_block },
+        { "save_game defers then carries on", test_noir_save_game_defers_then_carries_on },
         { "save_game preserves regs", test_noir_save_game_preserves_regs },
         { "save_game preserves SR", test_noir_save_game_preserves_sr },
         { "save_game zero slot", test_noir_save_game_zero_slot },

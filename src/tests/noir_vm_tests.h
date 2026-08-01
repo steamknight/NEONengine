@@ -11,7 +11,7 @@ namespace NEONengine
 {
     // ═════════════════════════════════════════════════════════════════════════════
     // Script Execution opcodes (0x00–0x0F)
-    //   NOP, WAIT, HALT, YIELD, CALL, LOCALS, RET, RETZ, RETC
+    //   NOP, WAIT, HALT, CALL, LOCALS, RET, RETZ, RETC
     // ═════════════════════════════════════════════════════════════════════════════
 
     // ── NOP ──────────────────────────────────────────────────────────────────────
@@ -24,12 +24,12 @@ namespace NEONengine
         bc.emit(noir_op::NOP);
         bc.emit(noir_op::NOP);
         bc.emit(noir_op::NOP);
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "NOPs followed by HALT should complete");
+        TEST_ASSERT(status == noir_status::completed, "NOPs followed by RET should complete");
         TEST_SUCCESS;
     }
 
@@ -37,6 +37,8 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_halt)
     {
+        // HALT is an error, not an exit: it says the author reached a case that
+        // cannot happen. A script that HALTs must not look like one that ended.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -45,46 +47,94 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "HALT should return completed");
-        TEST_ASSERT(vm.state() == noir_state::halted, "state should be halted after HALT");
+        TEST_ASSERT(status == noir_status::err_halt, "HALT reports err_halt");
+        TEST_ASSERT(vm.last_error() == noir_status::err_halt, "and records it as the error");
         TEST_SUCCESS;
     }
 
-    // ── YIELD ────────────────────────────────────────────────────────────────────
-
-    TEST_IMPL(test_noir_yield_resumes)
+    TEST_IMPL(test_noir_halt_stops_the_session_there)
     {
-        // YIELD should pause execution and resume on the next update()
+        // The opcodes after a HALT belong to a case the author ruled out, so
+        // none of them may run.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
-        // MOV16 D0 <- imm16 42
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(42);
-
-        bc.emit(noir_op::YIELD);
-
-        // After resume: MOV16 D1 <- imm16 99
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
-        bc.emit_u16(99);
+        bc.emit_u16(11);
 
         bc.emit(noir_op::HALT);
 
-        auto vm     = bc.build_vm();
-        auto status = vm.execute(fn);
-        TEST_ASSERT(status == noir_status::ok, "execute should succeed");
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(22);
 
-        // First update: runs MOV D0, YIELD → yields
-        status = vm.update();
-        TEST_ASSERT(status == noir_status::yielded, "should yield after YIELD opcode");
-        TEST_ASSERT(vm.reg_d(0) == 42, "D0 should be 42 before yield");
+        bc.emit(noir_op::RET);
 
-        // Second update: runs MOV D1, HALT → completes
-        status = vm.update();
-        TEST_ASSERT(status == noir_status::completed, "should complete after resume");
-        TEST_ASSERT(vm.reg_d(1) == 99, "D1 should be 99 after resume");
+        auto vm = bc.build_vm();
+        bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(vm.reg_d(0) == 11, "the MOV before HALT ran");
+        TEST_ASSERT(vm.session_count() == 0, "the session was removed");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_halt_spares_the_other_session)
+    {
+        // A script error kills one session. The rest keep running.
+        bytecode_builder bc;
+
+        u16 fn_halt = bc.begin_func();
+        bc.emit(noir_op::HALT);
+
+        u16 fn_live = bc.begin_func();
+        bc.emit(noir_op::WAIT);
+        bc.emit_u16(4);
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(777);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn_halt);
+        vm.execute(fn_live);
+
+        vm.update();
+
+        TEST_ASSERT(vm.session_count() == 1, "only the halting session was removed");
+
+        // Age out the wait, then let the survivor finish.
+        for (u16 i = 0; i < 6; ++i) vm.update();
+
+        TEST_ASSERT(vm.reg_d(0) == 777, "the survivor ran to its end");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_halt_does_not_poison_later_updates)
+    {
+        // An error belongs to the update it happened in. A defensive HALT in one
+        // script must not make every later clean completion look like a failure.
+        bytecode_builder bc;
+
+        u16 fn_halt = bc.begin_func();
+        bc.emit(noir_op::HALT);
+
+        u16 fn_clean = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+
+        vm.execute(fn_halt);
+        auto first = vm.update();
+        TEST_ASSERT(first == noir_status::err_halt, "the HALT was reported");
+
+        vm.execute(fn_clean);
+        auto second = vm.update();
+
+        TEST_ASSERT(second == noir_status::completed, "the clean script completed cleanly");
         TEST_SUCCESS;
     }
 
@@ -104,7 +154,7 @@ namespace NEONengine
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(0xBEEF);
 
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = vm.execute(fn);
@@ -137,7 +187,7 @@ namespace NEONengine
 
         bc.emit(noir_op::WAIT);
         bc.emit_u16(0);
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = vm.execute(fn);
@@ -172,7 +222,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "RET should complete");
-        TEST_ASSERT(vm.state() == noir_state::idle, "state should be idle after RET");
+        TEST_ASSERT(vm.session_count() == 0, "the run list is empty after RET");
         TEST_ASSERT(vm.exit_code() == 7, "exit code should be D0 value");
         TEST_SUCCESS;
     }
@@ -222,7 +272,7 @@ namespace NEONengine
         // CALL func_id 99 — out of range
         bc.emit(noir_op::CALL);
         bc.emit_u16(99);
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
@@ -329,13 +379,13 @@ namespace NEONengine
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(999);
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "RETZ taken should complete");
-        TEST_ASSERT(vm.state() == noir_state::idle, "state should be idle (RET path)");
+        TEST_ASSERT(vm.session_count() == 0, "the run list is empty (RET path)");
         TEST_ASSERT(vm.exit_code() == 5, "D0 should still be 5");
         TEST_SUCCESS;
     }
@@ -400,13 +450,13 @@ namespace NEONengine
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(999);
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_status::completed, "RETC taken should complete");
-        TEST_ASSERT(vm.state() == noir_state::idle, "state should be idle (RET path)");
+        TEST_ASSERT(vm.session_count() == 0, "the run list is empty (RET path)");
         TEST_ASSERT(vm.exit_code() == 3, "D0 should still be 3");
         TEST_SUCCESS;
     }
@@ -470,7 +520,7 @@ namespace NEONengine
     {
         bytecode_builder bc;
         bc.begin_func();
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = vm.execute(99);
@@ -490,7 +540,7 @@ namespace NEONengine
         bc.emit(noir_op::NOP);
         bc.emit(noir_op::NOP);
         bc.emit(noir_op::NOP);
-        bc.emit(noir_op::HALT);
+        bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
         vm.set_session_budget(2);
@@ -577,8 +627,8 @@ namespace NEONengine
         TEST_ASSERT(bc.values[0] == 1, "value mutated before reset");
 
         vm.reset_execution();
-        TEST_ASSERT(vm.state() == noir_state::idle, "idle after reset");
         TEST_ASSERT(vm.session_count() == 0, "run list emptied by reset");
+        TEST_ASSERT(vm.state() == noir_state::halted, "and the register window with it");
         TEST_ASSERT(vm.reg_d(0) == 0 && vm.reg_d(1) == 0 && vm.reg_d(2) == 0 && vm.reg_d(3) == 0,
             "registers cleared by reset");
         TEST_ASSERT(vm.sr() == 0, "status register cleared by reset");
@@ -596,7 +646,9 @@ namespace NEONengine
     TEST_SUITE_BEGIN(noir_vm)
     TEST(test_noir_nop_then_halt)
     TEST(test_noir_halt)
-    TEST(test_noir_yield_resumes)
+    TEST(test_noir_halt_stops_the_session_there)
+    TEST(test_noir_halt_spares_the_other_session)
+    TEST(test_noir_halt_does_not_poison_later_updates)
     TEST(test_noir_wait_delays_frames)
     TEST(test_noir_wait_zero_frames)
     TEST(test_noir_ret_completes)

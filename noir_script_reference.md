@@ -27,7 +27,7 @@
 10. [Flag Operations (0x50–0x5F)](#flag-operations-0x500x5f)
 11. [Value Operations (0x60–0x6F)](#value-operations-0x600x6f)
 12. [Game Calls (0x80–0xCF)](#game-calls-0x800xcf)
-    - [Blocking Operations](#blocking-operations)
+    - [Deferred calls](#deferred-calls)
     - [Inventory (0x80–0x8F)](#inventory-0x800x8f)
     - [Timeline (0x90–0x9F)](#timeline-0x900x9f)
     - [Scenes (0xA0–0xAF)](#scenes-0xa00xaf)
@@ -38,7 +38,7 @@
     - [CALL / RET Mechanics](#call--ret-mechanics)
     - [LOCALS (Local Variables)](#locals-local-variables)
     - [Stack Frame Layout](#stack-frame-layout)
-    - [Re-Entrancy](#re-entrancy)
+    - [Starting a script](#starting-a-script)
 15. [VM Lifecycle](#vm-lifecycle)
     - [Initialization](#initialization)
     - [Update Loop](#update-loop)
@@ -56,8 +56,8 @@ NoirScript is a bytecode format and virtual machine for driving game scripts in 
 **Key properties:**
 - Register-based (4 data registers + stack)
 - 16-bit word size, big-endian bytecode
-- Cooperative yielding (time-sliced execution)
-- Re-entrant (engine can call VM while VM is running)
+- Several scripts at once, each a session with its own stack and registers
+- Time-sliced: a per-session instruction budget and a per-frame pool
 - No exceptions — all errors returned as status codes
 - External FLAGS (bitfield) and VALUES (16-bit array) for game state
 
@@ -208,8 +208,8 @@ No mode byte — fixed or implicit operands.
 |--------|------|----------|-------------|
 | 0x00 | NOP | — | No operation |
 | 0x01 | WAIT | u16 frames | Increment `wait_counter`, enter Waiting state |
-| 0x02 | HALT | — | Stop execution, set error state |
-| 0x03 | YIELD | — | Voluntarily give up time slice |
+| 0x02 | HALT | — | Kill this session with `err_halt` |
+| 0x03 | — | — | Reserved |
 | 0x04 | CALL | u16 func_id | Call function by TOC ID |
 | 0x05 | LOCALS | u8 n | Reserve n bytes for locals (must be even) |
 | 0x06 | RET | — | Return: SP=FP; pop FP; pop PC |
@@ -434,18 +434,28 @@ VALUES is a borrowed u16 array. Values are also accessible via the general mode 
 
 Game call opcodes invoke engine systems through the `NoirBridge` function pointer table. All game call opcodes are **1 byte** (opcode only) — arguments are passed in D0–D3, return values in D0.
 
-### Blocking Operations
+### Deferred calls
 
-Some game calls are **blocking** — the VM enters `State::Blocked` until the engine signals completion:
+Every bridge function is one of three kinds, and the kind decides whether the
+opcode ends the VM's walk over its run list.
 
-1. Opcode handler calls bridge function (e.g., `bridge->say(d[0], d[1])`)
-2. Opcode handler increments `blocking_counter` and sets `state = Blocked`
-3. VM yields
-4. Engine processes the operation (shows dialogue, runs fade, etc.)
-5. Engine decrements `blocking_counter` when operation completes
-6. On next `update()`, VM checks `blocking_counter == 0` → resumes
+| Kind | What it does | Ends the walk |
+|------|--------------|---------------|
+| Immediate | Acts inside the opcode and returns | No |
+| Deferred modal | Records a request; the scene shows it and holds the VM | Yes |
+| Deferred terminal | Records a request; the scene tears down | Yes |
 
-Multiple blocking ops can overlap. VM resumes only when **all** complete (counter reaches 0).
+A deferred call does not act. It records what the script asked for, returns, and
+drains the frame pool, which ends the walk at once — no session runs again in
+that update, the caller included. The session stays runnable with its program
+counter on the opcode after the call, and the scene decides when the VM runs
+again.
+
+This is what makes two `SAY`s in a row show two boxes rather than one: the
+session stops after the first with its program counter on the second.
+
+See [noir_vm_execution_model.md](noir_vm_execution_model.md) for the frame the
+scene runs them in.
 
 ### Inventory (0x80–0x8F)
 
@@ -460,51 +470,50 @@ Multiple blocking ops can overlap. VM resumes only when **all** complete (counte
 
 ### Timeline (0x90–0x9F)
 
-| Opcode | Name | Args | Bridge Call | Blocking | Description |
-|--------|------|------|-------------|----------|-------------|
-| 0x90 | ANIM_PLAY | D0=track name id | `anim_play(d[0])` | No | Play the current scene's track of that name from its start, if it is not already running |
-| 0x91 | ANIM_STOP | D0=track name id | `anim_stop(d[0])` | No | Halt that track where it stands |
-| 0x92 | ANIM_WAIT | D0=track name id | `anim_wait(d[0])` | **Yes** | Hold until that track completes a cycle or stops |
-| 0x93–0x9F | — | — | — | — | Reserved |
+| Opcode | Name | Args | Bridge Call | Kind | Description |
+|--------|------|------|-------------|------|-------------|
+| 0x90 | ANIM_PLAY | D0=track name id | `anim_play(d[0])` | Immediate | Play the current scene's track of that name from its start, if it is not already running |
+| 0x91 | ANIM_STOP | D0=track name id | `anim_stop(d[0])` | Immediate | Halt that track where it stands |
+| 0x92–0x9F | — | — | — | — | Reserved |
 
-The argument is a track *name* id, not a track id: tracks cannot outlive their scene, so the engine resolves the name against the current scene's tracks and nowhere else. Naming a track the current scene does not own is not an error — play and stop do nothing, and a wait releases on the next frame. `ANIM_PLAY` begins a run, so it declines to act on a track that is already running; stop it first. `ANIM_STOP` on a track that is not running passes quietly, which makes that pairing safe to write unconditionally.
+The argument is a track *name* id, not a track id: tracks cannot outlive their scene, so the engine resolves the name against the current scene's tracks and nowhere else. Naming a track the current scene does not own is not an error — play and stop simply do nothing. `ANIM_PLAY` begins a run, so it declines to act on a track that is already running; stop it first. `ANIM_STOP` on a track that is not running passes quietly, which makes that pairing safe to write unconditionally.
 
 ### Scenes (0xA0–0xAF)
 
-| Opcode | Name | Args | Bridge Call | Blocking | Description |
-|--------|------|------|-------------|----------|-------------|
-| 0xA0 | GOTO_SCENE | D0=scene_id | `goto_scene(d[0])` | **Yes** | Transition to scene |
-| 0xA1 | GET_SCENE | → D0 | `get_scene()` | No | Get current scene ID |
-| 0xA2 | HOTSPOT_ON | D0=id | `hotspot_on(d[0])` | No | Enable hotspot |
-| 0xA3 | HOTSPOT_OFF | D0=id | `hotspot_off(d[0])` | No | Disable hotspot |
-| 0xA4 | SET_POINTER | D0=type | `set_pointer(d[0])` | No | Set cursor type |
+| Opcode | Name | Args | Bridge Call | Kind | Description |
+|--------|------|------|-------------|------|-------------|
+| 0xA0 | GOTO_SCENE | D0=scene_id | `goto_scene(d[0])` | Deferred terminal | Transition to scene |
+| 0xA1 | GET_SCENE | → D0 | `get_scene()` | Immediate | Get current scene ID |
+| 0xA2 | HOTSPOT_ON | D0=id | `hotspot_on(d[0])` | Immediate | Enable hotspot |
+| 0xA3 | HOTSPOT_OFF | D0=id | `hotspot_off(d[0])` | Immediate | Disable hotspot |
+| 0xA4 | SET_POINTER | D0=type | `set_pointer(d[0])` | Immediate | Set cursor type |
 | 0xA5–0xAF | — | — | — | — | Reserved |
 
 ### Dialogue / Audio (0xB0–0xBF)
 
-| Opcode | Name | Args | Bridge Call | Blocking | Description |
-|--------|------|------|-------------|----------|-------------|
-| 0xB0 | SAY | D0=string, D1=speaker | `say(d[0], d[1])` | **Yes** | Show dialogue |
-| 0xB1 | SHOW_DIALOG | D0=dialogue_id | `show_dialog(d[0])` | **Yes** | Show dialogue tree |
-| 0xB2 | SHOW_TEXT | D0=string, D1=x, D2=y | `show_text(d[0], d[1], d[2])` | No | Display text |
-| 0xB3 | CLEAR_TEXT | — | `clear_text()` | No | Clear displayed text |
-| 0xB4 | PLAY_MUSIC | D0=music_id | `play_music(d[0])` | No | Play MOD track |
-| 0xB5 | STOP_MUSIC | — | `stop_music()` | No | Stop music |
-| 0xB6 | PLAY_SFX | D0=sfx_id | `play_sfx(d[0])` | No | Play sound effect |
+| Opcode | Name | Args | Bridge Call | Kind | Description |
+|--------|------|------|-------------|------|-------------|
+| 0xB0 | SAY | D0=string, D1=speaker | `say(d[0], d[1])` | Deferred modal | Show dialogue |
+| 0xB1 | SHOW_DIALOG | D0=dialogue_id | `show_dialog(d[0])` | Deferred modal | Show dialogue tree |
+| 0xB2 | SHOW_TEXT | D0=string, D1=x, D2=y | `show_text(d[0], d[1], d[2])` | Immediate | Display text |
+| 0xB3 | CLEAR_TEXT | — | `clear_text()` | Immediate | Clear displayed text |
+| 0xB4 | PLAY_MUSIC | D0=music_id | `play_music(d[0])` | Immediate | Play MOD track |
+| 0xB5 | STOP_MUSIC | — | `stop_music()` | Immediate | Stop music |
+| 0xB6 | PLAY_SFX | D0=sfx_id | `play_sfx(d[0])` | Immediate | Play sound effect |
 | 0xB7–0xBF | — | — | — | — | Reserved |
 
-SHOW_DIALOG is blocking but does not return a value. Dialogue tree logic is handled by the engine.
+SHOW_DIALOG does not return a value. Dialogue tree logic is handled by the engine.
 
 ### Menu / Settings (0xC0–0xCF)
 
-| Opcode | Name | Args | Bridge Call | Blocking | Description |
-|--------|------|------|-------------|----------|-------------|
-| 0xC0 | FADE_OUT | D0=frames | `fade_out(d[0])` | **Yes** | Fade to black |
-| 0xC1 | FADE_IN | D0=frames | `fade_in(d[0])` | **Yes** | Fade from black |
-| 0xC2 | SCREEN_CLR | D0=color | `screen_clear(d[0])` | No | Clear screen |
-| 0xC3 | SET_LANG | D0=lang_id | `set_lang(d[0])` | No | Set language |
-| 0xC4 | SAVE_GAME | D0=slot | `save_game(d[0])` | No | Save game |
-| 0xC5 | LOAD_GAME | D0=slot | `load_game(d[0])` | No | Load game |
+| Opcode | Name | Args | Bridge Call | Kind | Description |
+|--------|------|------|-------------|------|-------------|
+| 0xC0 | FADE_OUT | D0=frames | `fade_out(d[0])` | Deferred modal | Fade to black |
+| 0xC1 | FADE_IN | D0=frames | `fade_in(d[0])` | Deferred modal | Fade from black |
+| 0xC2 | SCREEN_CLR | D0=color | `screen_clear(d[0])` | Immediate | Clear screen |
+| 0xC3 | SET_LANG | D0=lang_id | `set_lang(d[0])` | Immediate | Set language |
+| 0xC4 | SAVE_GAME | D0=slot | `save_game(d[0])` | Deferred modal | Save game |
+| 0xC5 | LOAD_GAME | D0=slot | `load_game(d[0])` | Immediate | Load game |
 | 0xC6 | NEW_GAME | — | `new_game()` | No | Start new game |
 | 0xC7 | QUIT_GAME | — | `quit_game()` | No | Quit to OS |
 | 0xC8–0xCF | — | — | — | — | Reserved |
@@ -591,16 +600,21 @@ After CALL (no locals):        After CALL + LOCALS 6:
                                ├─────────────────┤ ← SP
 ```
 
-### Re-Entrancy
+### Starting a script
 
-The engine can call `execute(func_id)` while the VM is already running (e.g., from a bridge callback). This is a **re-entry**:
+The engine starts a script with `execute(func_id)`, which puts a new session at
+the back of the run list. It runs on the next `update()`, which may be the same
+frame if the VM has not run yet.
 
-| Type | Trigger | Registers Saved |
-|------|---------|-----------------|
-| Internal CALL | Bytecode `CALL func_id` | Return PC + FP only |
-| Re-entry | External `execute(func_id)` | All: D0–D3, SR, SP, FP, PC |
+Scripts cannot start scripts. A script already running as a live session is not
+started a second time; the request is dropped with `err_duplicate_script`, which
+is why clicking a door twice opens it once.
 
-On re-entry (`reentry_level > 1`), the VM pushes all registers (22 bytes), then sets up a fresh execution context. On return, registers are restored in reverse order (pop PC, FP, SP, then SR, then D0–D3).
+Only `CALL` nests, and it saves nothing but the return PC and FP:
+
+| Type | Trigger | Saved |
+|------|---------|-------|
+| Internal CALL | Bytecode `CALL func_id` | Return PC + FP |
 
 ---
 
@@ -630,30 +644,37 @@ Each frame:
   3. Repeat until Completed or error
 ```
 
-`update()` executes up to `opcodes_per_update` (default: 10) opcodes per call. If the VM is Blocked or Waiting, it checks/decrements counters and returns Yielded without executing opcodes.
+`update()` gives each session in the run list a slice of instructions, bounded by
+the per-session budget (default: 10) and the per-frame pool (default: 40). A
+session that is Waiting has its counter decremented and is passed over.
 
 ### States
 
 | State | Meaning |
 |-------|---------|
-| Idle | No function running |
 | Running | Actively executing opcodes |
-| Yielded | Time-slice expired, call `update()` again |
 | Waiting | WAIT timer active (`wait_counter > 0`, decremented each `update()`) |
-| Blocked | Waiting for engine ops (`blocking_counter > 0`, decremented by engine) |
-| Halted | Finished or error |
+| Halted | Finished or errored; the session is removed at the end of the update |
+
+A session is always one of these three. "Nothing is running" is a property of the
+run list, not a state: it is `session_count() == 0`.
 
 ### Error Handling
 
-All errors are returned as `VMStatus` codes from `update()`:
+All errors are returned as `noir_status` codes from `update()`. An error kills the
+session that raised it; the rest keep running.
 
 | Status | Cause |
 |--------|-------|
-| Ok | Normal execution |
-| Yielded | Time-slice or wait/block in progress |
-| Completed | Entry function returned (`exit_code` = D0) |
+| Ok | Nothing to run |
+| Yielded | Sessions remain — call `update()` again next frame |
+| Completed | The run list emptied |
+| Deferred | A deferred bridge call drained the pool and ended the walk |
+| Halt | The script ran `HALT` |
 | InvalidOpcode | Unknown opcode byte |
 | InvalidFuncId | func_id ≥ func_count |
+| DuplicateScript | A live session is already running that script |
+| StackOverflow | Pushed past the end of the session's stack |
 | StackUnderflow | Pop from empty stack |
 | DivisionByZero | DIV or MOD with src = 0 |
 | InvalidAddress | PC out of bytecode bounds |
@@ -676,15 +697,15 @@ struct NoirBridge {
     void (*inv_clear)();
 
     // Scenes
-    void (*goto_scene)(u16 scene_id);        // blocking
+    void (*goto_scene)(u16 scene_id);        // deferred terminal
     u16  (*get_scene)();
     void (*hotspot_on)(u16 interaction_id);
     void (*hotspot_off)(u16 interaction_id);
     void (*set_pointer)(u16 pointer_type);
 
     // Dialogue / Text
-    void (*say)(u16 string_id, u16 speaker_id);  // blocking
-    void (*show_dialog)(u16 dialogue_id);          // blocking
+    void (*say)(u16 string_id, u16 speaker_id);  // deferred modal
+    void (*show_dialog)(u16 dialogue_id);          // deferred modal
     void (*show_text)(u16 string_id, u16 x, u16 y);
     void (*clear_text)();
 
@@ -694,18 +715,17 @@ struct NoirBridge {
     void (*play_sfx)(u16 sfx_id);
 
     // Screen
-    void (*fade_out)(u16 duration_frames);   // blocking
-    void (*fade_in)(u16 duration_frames);    // blocking
+    void (*fade_out)(u16 duration_frames);   // deferred modal
+    void (*fade_in)(u16 duration_frames);    // deferred modal
     void (*screen_clear)(u16 color_index);
 
     // Animation
     void (*anim_play)(u16 anim_id);
     void (*anim_stop)(u16 anim_id);
-    void (*anim_wait)(u16 anim_id);          // blocking
 
     // System
     void (*set_lang)(u16 lang_id);
-    void (*save_game)(u16 slot);
+    void (*save_game)(u16 slot);             // deferred modal
     void (*load_game)(u16 slot);
     void (*new_game)();
     void (*quit_game)();
@@ -754,10 +774,10 @@ struct NoirBridge {
     DEC D0
     BNE .loop
 
-; infinite game loop
+; a script that runs for the life of the scene
 .loop:
     ; ... per-frame logic ...
-    YIELD
+    WAIT #1
     JMP .loop
 ```
 
@@ -815,13 +835,13 @@ add:
 
 ```asm
     MOV D0, #30
-    FADE_OUT                ; blocking — fade to black over 30 frames
+    FADE_OUT                ; deferred — fade to black over 30 frames
     MOV D0, #SCENE_OFFICE
-    GOTO_SCENE              ; blocking — load new scene
+    GOTO_SCENE              ; deferred — the scene loads next frame
     MOV D0, #30
-    FADE_IN                 ; blocking — fade in
+    FADE_IN                 ; deferred — fade in
     MOV D0, #STR_WELCOME
     MOV D1, #SPEAKER_NARRATOR
-    SAY                     ; blocking — show dialogue
+    SAY                     ; deferred — show dialogue
     WAIT 60                 ; wait 1 second (at 60fps)
 ```

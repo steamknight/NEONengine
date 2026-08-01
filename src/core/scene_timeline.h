@@ -105,19 +105,6 @@ namespace NEONengine
     void scene_timeline_stop(u16 name_id);
 
     /**
-     * @brief Holds the running script until the track called @p name_id comes round.
-     *
-     * Backs the ANIM_WAIT opcode, which blocks the VM. The script resumes once
-     * the track completes a cycle or stops, whichever happens first - so waiting
-     * on a track that loops for ever costs one cycle rather than the whole
-     * scene, and waiting on one that is not running at all costs a frame.
-     *
-     * Call from the opcode handler only: the VM is released through its blocking
-     * counter, so a wait nobody is blocked on would unbalance it.
-     */
-    void scene_timeline_wait(u16 name_id);
-
-    /**
      * @brief The TRAK records the current scene owns, in timeline order.
      *
      * Empty when the scene has no timeline. The span points into the loaded

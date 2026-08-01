@@ -825,11 +825,10 @@ track begins when the scene loads; any other waits for a script to play it, and
 a track started later begins at its own time zero rather than joining a track
 already running. Tracks do not outlive their scene.
 
-`ANIM_PLAY`, `ANIM_STOP` and `ANIM_WAIT` take a track-name id, written in NNASM
-as `&track.Name`, and resolve it against the current scene's tracks only. Names
-are deliberately reused across scenes so a script that is not owned by any scene
-can still address "my scene's Flicker". `ANIM_WAIT` releases after one completed
-cycle, and immediately if the track is not running.
+`ANIM_PLAY` and `ANIM_STOP` take a track-name id, written in NNASM as
+`&track.Name`, and resolve it against the current scene's tracks only. Names are
+deliberately reused across scenes so a script that is not owned by any scene can
+still address "my scene's Flicker".
 
 Scene-level `goto_scene`, rather than a keyframe, runs when a track completes
 its finite playback. The track need not be `auto_start` — an elevator that
@@ -841,21 +840,23 @@ could complete, the first one wins and the goto fires once.
 
 ## NoirScript VM
 
-The scripting virtual machine is fully specified in [noir_script_reference.md](noir_script_reference.md).
+The scripting virtual machine is fully specified in [noir_script_reference.md](noir_script_reference.md),
+and its execution model in [noir_vm_execution_model.md](noir_vm_execution_model.md).
 
 **Summary:**
 
-- **Register-based** — 4 general-purpose data registers (D0–D3, 16-bit), status register (N/Z/C/V flags), stack/frame/program counter pointers (32-bit raw addresses)
-- **16-bit word size**, big-endian bytecode, cooperative yielding with configurable opcode budget per frame
+- **Register-based** — 4 general-purpose data registers (D0–D3, 16-bit), status register (N/Z/C/V flags), stack/frame/program counter offsets
+- **16-bit word size**, big-endian bytecode
+- **Several scripts at once** — sessions in a run list, each with its own stack and registers, each given a slice of a per-frame instruction pool
 - **Addressing modes** packed in a single mode byte — immediates, registers, FP-relative locals, VALUES array (direct and register-indexed)
 - **External game state**: borrowed FLAGS bitfield plus its exact logical flag
   count, and a VALUES array of 16-bit integers; padding bits in the final FLAGS
   byte are never addressable
 - **Engine bridge**: `NoirBridge` struct of function pointers decouples VM from all engine systems (inventory, scenes, dialogue, audio, screen, animations, save/load)
-- **Blocking operations**: WAIT (frame-counting timer) and bridge calls (SAY, FADE_OUT/IN, GOTO_SCENE, ANIM_WAIT, SHOW_DIALOG) that enter Blocked state until engine signals completion
-- **Re-entrant**: engine can call `execute()` while VM is running (e.g. from dialogue or hotspot callbacks); full register context saved/restored automatically
+- **Deferred bridge calls**: SAY, SHOW_DIALOG, SAVE_GAME, FADE_OUT/IN and GOTO_SCENE record a request and drain the frame pool, ending the update. The scene acts on the request and decides when the VM runs again
+- **Waiting**: `WAIT n` parks one session for n VM updates
 - **~70 opcodes** across 10 categories: script execution, data movement, arithmetic, logic, control flow, flag operations, value operations, game calls (inventory / timeline / scenes / dialogue-audio / menu-settings), and debug
-- **Error handling**: all errors returned as `VMStatus` codes — no exceptions
+- **Error handling**: all errors returned as `noir_status` codes — no exceptions. An error kills the session that caused it and leaves the rest running
 
 ---
 

@@ -48,6 +48,21 @@ namespace NEONengine
         /// A language change left the backdrop's text regions in the old language.
         bool s_backdropStale = false;
 
+        /// The modal on screen now, or kind::none when the scene is free.
+        modal_request s_modal{};
+
+        /**
+         * @brief Ends the fade modal that a script asked for.
+         *
+         * The scene owns script-driven fades, so it hears about the end of one
+         * here rather than through the VM. A fade the engine starts for itself
+         * passes no callback and never reaches this.
+         */
+        void scene_fade_done()
+        {
+            s_modal = modal_request{};
+        }
+
         /**
          * @brief Puts the pointer into its WAIT role and makes it visible.
          *
@@ -275,6 +290,12 @@ namespace NEONengine
             auto const& sc = scenes[scene_id];
             g_pEngine->set_current_scene(scene_id);
 
+            // GOTO_SCENE ends everything: anything on screen belonged to the old
+            // scene, and a request recorded by a script that is about to be
+            // discarded has nobody left to act for.
+            s_modal = modal_request{};
+            g_pEngine->take_pending_modal();
+
             // Everything this load asks the cache for is stamped as wanted now,
             // which is what stops the load evicting its own assets and what
             // makes the previous scene's leftovers the first to go.
@@ -329,6 +350,57 @@ namespace NEONengine
             screenFadeFromBlack(
                 g_mainScreen, to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
             return false;
+        }
+
+        /**
+         * @brief Puts the modal a script asked for last frame on screen.
+         *
+         * A bare FADE_IN/FADE_OUT (no MOV D0, #frames) arrives as 0 frames, so
+         * the project's configured default stands in and scripts can omit the
+         * count.
+         *
+         * A kind with nothing to draw yet is logged and dropped rather than
+         * left standing, because a modal nobody can dismiss would hold the VM
+         * for the rest of the scene.
+         */
+        void start_pending_modal()
+        {
+            auto const request = g_pEngine->take_pending_modal();
+
+            auto fade_frames = [&] {
+                u16 const frames = request.a ? request.a
+                                             : g_pEngine->data().config().default_fade_frames;
+                return to<UBYTE>(frames > 255 ? 255 : frames);
+            };
+
+            switch (request.kind)
+            {
+                case modal_kind::fade_out:
+                    s_modal = request;
+                    screenFadeToBlack(g_mainScreen, fade_frames(), 0, scene_fade_done);
+                    return;
+
+                case modal_kind::fade_in:
+                    s_modal = request;
+                    screenFadeFromBlack(g_mainScreen, fade_frames(), 0, scene_fade_done);
+                    return;
+
+                case modal_kind::say:
+                    NE_LOG("SAY string %hu, speaker %hu: no dialogue box yet",
+                        request.a,
+                        request.b);
+                    return;
+
+                case modal_kind::show_dialog:
+                    NE_LOG("SHOW_DIALOG %hu: no dialogue box yet", request.a);
+                    return;
+
+                case modal_kind::save_game:
+                    NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.a);
+                    return;
+
+                case modal_kind::none: return;
+            }
         }
     }  // namespace
 
@@ -386,6 +458,7 @@ namespace NEONengine
             show_wait_pointer();
             load_scene(g_pEngine->take_pending_scene());
         }
+        if (g_pEngine->has_pending_modal()) start_pending_modal();
 
         // A language change owes the backdrop a repaint, which costs a full
         // background decode. A fade-out is the front half of a scene change -
@@ -399,12 +472,18 @@ namespace NEONengine
             redraw_backdrop();
         }
 
-        // Every request is answered by now, so a fade-out is all that can still
-        // hold the scene, and it holds it for a strong reason: it is the front
-        // half of a scene change, so anything a track moved would be thrown
-        // away, a keyframe running a script could queue a second scene change,
-        // and a hovered hotspot would put its role back over the WAIT pointer.
-        bool const holding = screenIsFadingOut(g_mainScreen);
+        // ── Modals ───────────────────────────────────────────────────────────
+        // Fades take themselves down through scene_fade_done(). A dismissible
+        // box would be closed here, before the timeline and the VM are asked to
+        // run, so that both start again in the frame it closes.
+
+        // Every request is answered by now, so a modal is all that can still
+        // hold the scene, and it holds it for a strong reason: a fade is the
+        // front half of a scene change, so anything a track moved would be
+        // thrown away, a keyframe running a script could queue a second scene
+        // change, and a hovered hotspot would put its role back over the WAIT
+        // pointer.
+        bool const holding = s_modal.kind != modal_kind::none;
 
         // ── Timeline ─────────────────────────────────────────────────────────
         if (!holding) scene_timeline_update();
@@ -417,7 +496,7 @@ namespace NEONengine
         // its first slice now instead of next frame, and so whatever it moves is
         // drawn below. A hotspot can leave the scene without a script; when one
         // has, this scene is already over and nothing here should touch it.
-        if (!g_pEngine->has_pending_scene()) g_pEngine->vm().update();
+        if (!holding && !g_pEngine->has_pending_scene()) g_pEngine->vm().update();
 
         mousePointerUpdate();
         scene_bobs_update();
@@ -427,6 +506,7 @@ namespace NEONengine
     void sceneDestroy(void)
     {
         s_backdropStale = false;
+        s_modal         = modal_request{};
         scene_hotspots_clear();
         scene_timeline_clear();
         mousePointerDestroy();

@@ -466,6 +466,3 @@ needed a second one. That design is gone, along with:
 
 Nothing takes their place. The scene deciding not to call the VM does the same
 job, and a stopped session holds no state at all.
-
-The summary in [neonengine_spec.md](neonengine_spec.md) under **NoirScript VM**
-still describes the old model and needs updating when this is built.

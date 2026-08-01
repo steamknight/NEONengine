@@ -16,7 +16,7 @@ namespace NEONengine
     // All scene opcodes are 1-byte (opcode only). Arguments passed in D0.
     // Bridge function pointers are called.
     //
-    // GOTO_SCENE  (0xA0): D0=scene_id → bridge->goto_scene(D0)  — blocking
+    // GOTO_SCENE  (0xA0): D0=scene_id → bridge->goto_scene(D0)  — deferred terminal
     // GET_SCENE   (0xA1): bridge->get_scene() → D0              — non-blocking
     // HOTSPOT_ON  (0xA2): D0=id → bridge->hotspot_on(D0)        — non-blocking
     // HOTSPOT_OFF (0xA3): D0=id → bridge->hotspot_off(D0)       — non-blocking
@@ -51,9 +51,9 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_goto_scene_blocks_vm)
+    TEST_IMPL(test_noir_goto_scene_parks_the_session)
     {
-        // GOTO_SCENE is a blocking opcode
+        // GOTO_SCENE is deferred: the walk ends on it, before the RET
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -68,14 +68,16 @@ namespace NEONengine
         vm.execute(fn);
         auto status = vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
-        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
+        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_goto_scene_stays_blocked)
+    TEST_IMPL(test_noir_goto_scene_parks_before_the_next_opcode)
     {
-        // VM stays blocked across multiple update() calls until unblocked
+        // GOTO_SCENE is deferred terminal: the scene tears down at the top of
+        // the next frame, so the opcodes behind it must not run in this one.
+        // The PC parks on the next opcode rather than stepping over it.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -84,26 +86,27 @@ namespace NEONengine
         bc.emit_u16(1);
 
         bc.emit(noir_op::GOTO_SCENE);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
+        bc.emit_u16(31337);
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
         vm.execute(fn);
+
         vm.update();
+        TEST_ASSERT(vm.reg_d(3) != 31337, "the opcode after GOTO_SCENE did not run");
+        TEST_ASSERT(vm.session_count() == 1, "the session is parked, not gone");
 
-        auto s1 = vm.update();
-        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
-
-        auto s2 = vm.update();
-        TEST_ASSERT(s2 == noir_status::yielded, "still yielded after 3rd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 3rd update");
-
+        vm.update();
+        TEST_ASSERT(vm.reg_d(3) == 31337, "and it is exactly where the next update starts");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_goto_scene_resumes_after_unblock)
     {
-        // After decrement_blocking(), VM resumes and completes
+        // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -124,9 +127,8 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after GOTO_SCENE");
+        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -136,7 +138,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_goto_scene_preserves_d0)
     {
-        // D0 should be preserved across the blocking period
+        // D0 should be preserved across the park
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -151,7 +153,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.exit_code() == 42, "D0 preserved across GOTO_SCENE block");
@@ -187,7 +188,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -221,7 +221,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -306,10 +305,9 @@ namespace NEONengine
         vm.execute(fn0);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked inside fn1");
+        TEST_ASSERT(vm.session_count() == 1, "parked inside fn1");
         TEST_ASSERT(g_mock_log.goto_scene_id == 8, "goto_scene with id 8");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -436,7 +434,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
         TEST_ASSERT(vm.reg_d(1) == 777, "execution continued past GET_SCENE");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -959,9 +956,8 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on GOTO_SCENE");
+        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes");
@@ -999,10 +995,9 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on GOTO_SCENE");
+        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
         TEST_ASSERT(g_mock_log.goto_scene_id == 3, "goto_scene(3)");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes");
@@ -1046,9 +1041,8 @@ namespace NEONengine
         // Current scene was 3, not 5, so should branch to GOTO_SCENE
         TEST_ASSERT(g_mock_log.goto_scene_called, "goto_scene called");
         TEST_ASSERT(g_mock_log.goto_scene_id == 5, "goto_scene(5)");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on GOTO_SCENE");
+        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
 
-        vm.decrement_blocking();
         auto status = vm.update();
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
         TEST_SUCCESS;
@@ -1113,8 +1107,8 @@ namespace NEONengine
     Test noir_vm_scene_tests[] = {
         // GOTO_SCENE
         { "goto_scene basic", test_noir_goto_scene_basic },
-        { "goto_scene blocks VM", test_noir_goto_scene_blocks_vm },
-        { "goto_scene stays blocked", test_noir_goto_scene_stays_blocked },
+        { "goto_scene parks the session", test_noir_goto_scene_parks_the_session },
+        { "goto_scene parks before next opcode", test_noir_goto_scene_parks_before_the_next_opcode },
         { "goto_scene resumes", test_noir_goto_scene_resumes_after_unblock },
         { "goto_scene preserves D0", test_noir_goto_scene_preserves_d0 },
         { "goto_scene preserves regs", test_noir_goto_scene_preserves_all_regs },

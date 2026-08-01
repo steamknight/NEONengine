@@ -18,29 +18,16 @@ namespace NEONengine
 {
     namespace
     {
-        // Fires when a bridge-initiated fade finishes: the VM's blocking counter
-        // drops and the paused script resumes on the next update().
-        void nb_fade_done()
-        {
-            if (g_pEngine) g_pEngine->vm().decrement_blocking();
-        }
-
         // ── Screen ───────────────────────────────────────────────────────────
-        // A bare FADE_IN/FADE_OUT (no MOV D0, #frames) arrives as 0 frames; fall
-        // back to the project's configured default so scripts can omit the count.
-        u16 nb_resolve_fade_frames(u16 frames)
-        {
-            if (frames) return frames;
-            return g_pEngine ? g_pEngine->data().config().default_fade_frames : u16(0);
-        }
-
+        // Fades are deferred modals: the scene starts them at the top of the
+        // next frame and holds the VM until they finish.
         void nb_fade_out(u16 frames)
         {
-            screenFadeToBlack(g_mainScreen, to<UBYTE>(nb_resolve_fade_frames(frames)), 0, nb_fade_done);
+            if (g_pEngine) g_pEngine->request_modal(modal_kind::fade_out, frames);
         }
         void nb_fade_in(u16 frames)
         {
-            screenFadeFromBlack(g_mainScreen, to<UBYTE>(nb_resolve_fade_frames(frames)), 0, nb_fade_done);
+            if (g_pEngine) g_pEngine->request_modal(modal_kind::fade_in, frames);
         }
         void nb_screen_clear(u16) {}
 
@@ -69,8 +56,14 @@ namespace NEONengine
         void nb_inv_clear() {}
 
         // ── Dialogue / Audio ─────────────────────────────────────────────────
-        void nb_say(u16, u16) {}
-        void nb_show_dialog(u16) {}
+        void nb_say(u16 string_id, u16 speaker_id)
+        {
+            if (g_pEngine) g_pEngine->request_modal(modal_kind::say, string_id, speaker_id);
+        }
+        void nb_show_dialog(u16 dialogue_id)
+        {
+            if (g_pEngine) g_pEngine->request_modal(modal_kind::show_dialog, dialogue_id);
+        }
         void nb_show_text(u16, u16, u16) {}
         void nb_clear_text() {}
         void nb_play_music(u16) {}
@@ -82,7 +75,6 @@ namespace NEONengine
         // names a track another scene owns simply does nothing here.
         void nb_anim_play(u16 name_id) { scene_timeline_play(name_id); }
         void nb_anim_stop(u16 name_id) { scene_timeline_stop(name_id); }
-        void nb_anim_wait(u16 name_id) { scene_timeline_wait(name_id); }
 
         // ── System ───────────────────────────────────────────────────────────
         // Records the request; the state loop applies it at a safe point. Doing
@@ -99,7 +91,10 @@ namespace NEONengine
                 language_code(to<language>(lang)));
             if (g_pEngine) g_pEngine->request_language(to<language>(lang));
         }
-        void nb_save_game(u16) {}
+        void nb_save_game(u16 slot)
+        {
+            if (g_pEngine) g_pEngine->request_modal(modal_kind::save_game, slot);
+        }
         void nb_load_game(u16) {}
         void nb_new_game() {}
         void nb_quit_game() {}
@@ -137,7 +132,6 @@ namespace NEONengine
 
             .anim_play = nb_anim_play,
             .anim_stop = nb_anim_stop,
-            .anim_wait = nb_anim_wait,
 
             .set_lang  = nb_set_lang,
             .save_game = nb_save_game,

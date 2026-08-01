@@ -14,10 +14,10 @@ namespace NEONengine
      * only invoked once a script runs, by which point the engine is live. Pass
      * its address to the noir_vm constructor.
      *
-     * Blocking opcodes (FADE_IN/OUT, GOTO_SCENE, ...) are put into the blocked
-     * state by the VM itself; the bridge only starts the work and arranges the
-     * matching decrement_blocking() - a fade completion callback for the fades,
-     * and a scene transition (which resets the VM) for goto_scene.
+     * Deferred calls (SAY, SHOW_DIALOG, SAVE_GAME, FADE_IN/OUT, GOTO_SCENE) do
+     * no work here. They record what the script asked for - a modal request or a
+     * scene request - and the scene acts on it at the top of the next frame,
+     * deciding for itself when the VM runs again.
      */
     noir_bridge const& engine_bridge() noexcept;
 }  // namespace NEONengine

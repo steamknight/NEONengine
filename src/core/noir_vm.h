@@ -18,16 +18,16 @@ namespace NEONengine
     /**
      * @brief Status codes returned by update() and execute().
      *
-     * Non-error statuses (Ok, Yielded, Completed) indicate normal operation.
-     * Error statuses cause the VM to halt and stop executing.
+     * An error kills the session that raised it. The rest keep running.
      */
     enum class noir_status : u8
     {
         ok,         ///< Execution proceeded normally
-        yielded,    ///< Yielded — call update() again next frame
-        completed,  ///< Entry function returned, check exit_code()
+        yielded,    ///< Sessions remain — call update() again next frame
+        completed,  ///< The run list emptied
+        deferred,   ///< A deferred bridge call drained the pool and ended the walk
 
-        // Errors (VM halts)
+        // Errors (the session dies)
         err_invalid_opcode,   ///< Unknown opcode byte encountered
         err_invalid_func,     ///< Function ID out of range
         err_duplicate_script, ///< A live session is already running that script
@@ -37,6 +37,7 @@ namespace NEONengine
         err_invalid_address,  ///< PC or address out of bytecode bounds
         err_value_oob,        ///< VALUE index out of range
         err_flag_oob,         ///< FLAG index out of range
+        err_halt,             ///< The script ran HALT: a case its author says cannot happen
     };
 
     // ─── Debug statistics ───────────────────────────────────────────────────────
@@ -65,9 +66,10 @@ namespace NEONengine
      * decoupled from engine headers. All function pointers must be valid for
      * the lifetime of the VM.
      *
-     * A blocking bridge call, marked below, leaves the VM blocked. The engine
-     * must call noir_vm::decrement_blocking() when the operation completes, or
-     * the script never resumes.
+     * Each function is one of three kinds. A deferred one records what the
+     * script asked for and returns; the opcode then drains the frame pool, so
+     * no session runs again this update. The scene acts on the request at the
+     * top of the next frame.
      *
      * @see noir_vm
      */
@@ -81,15 +83,15 @@ namespace NEONengine
         void (*inv_clear)();
 
         // Scenes
-        void (*goto_scene)(u16 scene_id);  ///< blocking
+        void (*goto_scene)(u16 scene_id);  ///< deferred terminal
         u16 (*get_scene)();
         void (*hotspot_on)(u16 id);
         void (*hotspot_off)(u16 id);
         void (*set_pointer)(u16 type);
 
         // Dialogue / Text
-        void (*say)(u16 string_id, u16 speaker_id);  ///< blocking
-        void (*show_dialog)(u16 dialogue_id);             ///< blocking
+        void (*say)(u16 string_id, u16 speaker_id);  ///< deferred modal
+        void (*show_dialog)(u16 dialogue_id);        ///< deferred modal
         void (*show_text)(u16 string_id, u16 x, u16 y);
         void (*clear_text)();
 
@@ -99,18 +101,17 @@ namespace NEONengine
         void (*play_sfx)(u16 sfx_id);
 
         // Screen
-        void (*fade_out)(u16 duration_frames);  ///< blocking
-        void (*fade_in)(u16 duration_frames);   ///< blocking
+        void (*fade_out)(u16 duration_frames);  ///< deferred modal
+        void (*fade_in)(u16 duration_frames);   ///< deferred modal
         void (*screen_clear)(u16 color_index);
 
         // Animation
         void (*anim_play)(u16 anim_id);
         void (*anim_stop)(u16 anim_id);
-        void (*anim_wait)(u16 anim_id);  ///< blocking
 
         // System
         void (*set_lang)(u16 lang_id);
-        void (*save_game)(u16 slot);
+        void (*save_game)(u16 slot);  ///< deferred modal
         void (*load_game)(u16 slot);
         void (*new_game)();
         void (*quit_game)();
@@ -125,11 +126,8 @@ namespace NEONengine
 
     enum class noir_state : u8
     {
-        idle,     ///< No function running
         running,  ///< Actively executing opcodes
-        yielded,  ///< Waiting for next update()
         waiting,  ///< WAIT timer active (wait_counter > 0)
-        blocked,  ///< Waiting for engine ops (blocking_counter > 0)
         halted,   ///< Finished or errored
     };
 
@@ -256,11 +254,11 @@ namespace NEONengine
         noir_status update() noexcept;
 
         /**
-         * @brief Abandon every session and return to a clean idle state.
+         * @brief Abandon every session and empty the run list.
          *
          * Clears the run list and all per-run execution state - registers, SR,
          * stack pointer, frame pointer, program counter, call depth, the
-         * wait/blocking counters and the result. Borrowed memory (FLAGS,
+         * wait counter and the result. Borrowed memory (FLAGS,
          * VALUES, BYTECODE, TOC, bridge), the stack allocation and the
          * configured budgets are all preserved.
          *
@@ -269,22 +267,6 @@ namespace NEONengine
          * than resumed. Game state in FLAGS/VALUES is untouched.
          */
         void reset_execution() noexcept;
-
-        // ── Blocking counter (for engine use) ────────────────────────────────
-
-        /**
-         * @brief Blocks the VM until decrement_blocking() balances this.
-         */
-        void increment_blocking() noexcept
-        {
-            ++_blocking_counter;
-            _cur.state = noir_state::blocked;
-        }
-
-        /**
-         * @brief Resumes the VM on the next update() once the count hits zero.
-         */
-        void decrement_blocking() noexcept { --_blocking_counter; }
 
         // ── Accessors ────────────────────────────────────────────────────────
 
@@ -394,7 +376,7 @@ namespace NEONengine
         /// True while a session can still be given instructions.
         static bool session_live(noir_session const& s) noexcept
         {
-            return s.state != noir_state::idle && s.state != noir_state::halted;
+            return s.state != noir_state::halted;
         }
 
         /// Lowest stack slot no live session holds.
@@ -459,8 +441,9 @@ namespace NEONengine
         u16 _session_budget;   ///< Instructions per session per frame (default: 10)
         u16 _frame_pool;       ///< Instructions per frame, all sessions (default: 40)
         u16 _rotation;         ///< Run list position the next update starts at
-        u8 _blocking_counter;  ///< >0 = waiting for engine ops
         bool _run_list_dropped;  ///< reset_execution() ran inside an update
+        bool _walk_ended;        ///< A deferred call drained the pool this update
+        bool _error_this_update; ///< A session died on an error this update
 
         // ── Result ───────────────────────────────────────────────────────────
 

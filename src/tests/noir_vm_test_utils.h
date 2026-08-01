@@ -46,6 +46,7 @@ namespace NEONengine
         u16 play_music_id;
         u16 play_sfx_id;
         bool say_called;
+        u16 say_count;  ///< A deferred call must not be made twice by one park.
         bool show_dialog_called;
         bool clear_text_called;
         bool stop_music_called;
@@ -60,8 +61,6 @@ namespace NEONengine
         // Animation
         u16 anim_play_id;
         u16 anim_stop_id;
-        u16 anim_wait_id;
-        bool anim_wait_called;
 
         // System
         u16 set_lang_id;
@@ -104,6 +103,7 @@ namespace NEONengine
             play_music_id      = 0;
             play_sfx_id        = 0;
             say_called         = false;
+            say_count          = 0;
             show_dialog_called = false;
             clear_text_called  = false;
             stop_music_called  = false;
@@ -116,8 +116,6 @@ namespace NEONengine
 
             anim_play_id     = 0;
             anim_stop_id     = 0;
-            anim_wait_id     = 0;
-            anim_wait_called = false;
 
             set_lang_id      = 0;
             save_slot        = 0;
@@ -188,6 +186,7 @@ namespace NEONengine
         g_mock_log.say_string_id  = s;
         g_mock_log.say_speaker_id = sp;
         g_mock_log.say_called     = true;
+        ++g_mock_log.say_count;
     }
     static void mock_show_dialog(u16 id)
     {
@@ -239,11 +238,6 @@ namespace NEONengine
     static void mock_anim_stop(u16 id)
     {
         g_mock_log.anim_stop_id = id;
-    }
-    static void mock_anim_wait(u16 id)
-    {
-        g_mock_log.anim_wait_id     = id;
-        g_mock_log.anim_wait_called = true;
     }
 
     static void mock_set_lang(u16 id)
@@ -313,7 +307,6 @@ namespace NEONengine
 
         .anim_play = mock_anim_play,
         .anim_stop = mock_anim_stop,
-        .anim_wait = mock_anim_wait,
 
         .set_lang  = mock_set_lang,
         .save_game = mock_save_game,
@@ -333,7 +326,7 @@ namespace NEONengine
     //
     //   bytecode_builder bc;
     //   bc.emit(noir_op::NOP);
-    //   bc.emit(noir_op::HALT);
+    //   bc.emit(noir_op::RET);
     //   auto vm = bc.build_vm();
     //
 

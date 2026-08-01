@@ -20,8 +20,7 @@ namespace NEONengine
 
         constexpr u8 NOP    = 0x00;  // No operation
         constexpr u8 WAIT   = 0x01;  // u16 frame_count — increment wait_counter
-        constexpr u8 HALT   = 0x02;  // Stop execution, set error state
-        constexpr u8 YIELD  = 0x03;  // Give up time slice
+        constexpr u8 HALT   = 0x02;  // Kill this session with err_halt
         constexpr u8 CALL   = 0x04;  // u16 func_id — call via TOC lookup
         constexpr u8 LOCALS = 0x05;  // u8 n — reserve n bytes for locals
         constexpr u8 RET    = 0x06;  // Return: SP=FP; pop FP; pop PC
@@ -114,11 +113,10 @@ namespace NEONengine
 
         constexpr u8 ANIM_PLAY = 0x90;  // D0=anim_id
         constexpr u8 ANIM_STOP = 0x91;  // D0=anim_id
-        constexpr u8 ANIM_WAIT = 0x92;  // D0=anim_id — blocking
 
         // ── Game Calls — Scenes (0xA0–0xAF) ────────────────────────────────────
 
-        constexpr u8 GOTO_SCENE  = 0xA0;  // D0=scene_id — blocking
+        constexpr u8 GOTO_SCENE  = 0xA0;  // D0=scene_id — deferred terminal
         constexpr u8 GET_SCENE   = 0xA1;  // → D0
         constexpr u8 HOTSPOT_ON  = 0xA2;  // D0=id
         constexpr u8 HOTSPOT_OFF = 0xA3;  // D0=id
@@ -126,8 +124,8 @@ namespace NEONengine
 
         // ── Game Calls — Dialogue / Audio (0xB0–0xBF) ──────────────────────────
 
-        constexpr u8 SAY         = 0xB0;  // D0=string, D1=speaker — blocking
-        constexpr u8 SHOW_DIALOG = 0xB1;  // D0=dialogue_id — blocking
+        constexpr u8 SAY         = 0xB0;  // D0=string, D1=speaker — deferred modal
+        constexpr u8 SHOW_DIALOG = 0xB1;  // D0=dialogue_id — deferred modal
         constexpr u8 SHOW_TEXT   = 0xB2;  // D0=string, D1=x, D2=y
         constexpr u8 CLEAR_TEXT  = 0xB3;
         constexpr u8 PLAY_MUSIC  = 0xB4;  // D0=music_id
@@ -136,11 +134,11 @@ namespace NEONengine
 
         // ── Game Calls — Menu / Settings (0xC0–0xCF) ───────────────────────────
 
-        constexpr u8 FADE_OUT   = 0xC0;  // D0=frames — blocking
-        constexpr u8 FADE_IN    = 0xC1;  // D0=frames — blocking
+        constexpr u8 FADE_OUT   = 0xC0;  // D0=frames — deferred modal
+        constexpr u8 FADE_IN    = 0xC1;  // D0=frames — deferred modal
         constexpr u8 SCREEN_CLR = 0xC2;  // D0=color
         constexpr u8 SET_LANG   = 0xC3;  // D0=lang_id
-        constexpr u8 SAVE_GAME  = 0xC4;  // D0=slot
+        constexpr u8 SAVE_GAME  = 0xC4;  // D0=slot — deferred modal
         constexpr u8 LOAD_GAME  = 0xC5;  // D0=slot
         constexpr u8 NEW_GAME   = 0xC6;
         constexpr u8 QUIT_GAME  = 0xC7;

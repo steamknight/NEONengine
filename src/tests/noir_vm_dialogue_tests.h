@@ -16,8 +16,8 @@ namespace NEONengine
     // All dialogue/audio opcodes are 1-byte (opcode only). Arguments in D0–D2.
     // Bridge function pointers are called.
     //
-    // SAY         (0xB0): D0=string_id, D1=speaker_id → bridge->say(D0,D1) — blocking
-    // SHOW_DIALOG (0xB1): D0=dialogue_id → bridge->show_dialog(D0)         — blocking
+    // SAY         (0xB0): D0=string_id, D1=speaker_id → bridge->say(D0,D1) — deferred modal
+    // SHOW_DIALOG (0xB1): D0=dialogue_id → bridge->show_dialog(D0)         — deferred modal
     // SHOW_TEXT   (0xB2): D0=string_id, D1=x, D2=y → bridge->show_text     — non-blocking
     // CLEAR_TEXT  (0xB3): bridge->clear_text()                              — non-blocking
     // PLAY_MUSIC  (0xB4): D0=music_id → bridge->play_music(D0)             — non-blocking
@@ -58,9 +58,9 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_say_blocks_vm)
+    TEST_IMPL(test_noir_say_parks_the_session)
     {
-        // SAY is a blocking opcode — VM should be blocked after SAY
+        // SAY is deferred: the walk ends on it and the RET waits for the next update
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -79,46 +79,49 @@ namespace NEONengine
         vm.execute(fn);
         auto status = vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
-        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
+        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_say_stays_blocked)
+    TEST_IMPL(test_noir_say_one_line_per_update)
     {
-        // VM stays blocked across multiple update() calls until unblocked
+        // The spec's headline case. Two SAYs in a row must not both run in one
+        // slice, or the player would only ever see the second line. Draining the
+        // pool is what puts one update between them.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(5);
+        bc.emit_u16(12);
+        bc.emit(noir_op::SAY);
 
         bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
-        bc.emit_u16(1);
-
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(13);
         bc.emit(noir_op::SAY);
+
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn);
+
         vm.update();
+        TEST_ASSERT(g_mock_log.say_string_id == 12, "the first line went out");
 
-        auto s1 = vm.update();
-        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
+        vm.update();
+        TEST_ASSERT(g_mock_log.say_string_id == 13, "the second line waited a whole update");
 
-        auto s2 = vm.update();
-        TEST_ASSERT(s2 == noir_status::yielded, "still yielded after 3rd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 3rd update");
-
+        auto last = vm.update();
+        TEST_ASSERT(last == noir_status::completed, "then the script ran out");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_say_resumes_after_unblock)
     {
-        // After decrement_blocking(), VM resumes and completes
+        // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -143,9 +146,8 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after SAY");
+        TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -155,7 +157,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_say_preserves_d0_d1)
     {
-        // D0 and D1 should be preserved across the blocking period
+        // D0 and D1 should be preserved across the park
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -174,7 +176,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 42, "D0 preserved across SAY block");
@@ -211,7 +212,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -249,7 +249,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across SAY block");
@@ -343,11 +342,10 @@ namespace NEONengine
         vm.execute(fn0);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked inside fn1");
+        TEST_ASSERT(vm.session_count() == 1, "parked inside fn1");
         TEST_ASSERT(g_mock_log.say_string_id == 100, "say string_id 100");
         TEST_ASSERT(g_mock_log.say_speaker_id == 2, "say speaker_id 2");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -379,9 +377,9 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_show_dialog_blocks_vm)
+    TEST_IMPL(test_noir_show_dialog_parks_the_session)
     {
-        // SHOW_DIALOG is a blocking opcode
+        // SHOW_DIALOG is deferred: the walk ends on it, before the RET
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -396,38 +394,52 @@ namespace NEONengine
         vm.execute(fn);
         auto status = vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "VM should be blocked");
-        TEST_ASSERT(status == noir_status::yielded, "update returns yielded while blocked");
+        TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
+        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_show_dialog_stays_blocked)
+    TEST_IMPL(test_noir_show_dialog_ends_the_walk_for_everyone)
     {
-        // VM stays blocked until unblocked
+        // A deferred call takes the rest of the frame pool with it, so a session
+        // further down the run list gets nothing - even though the pool had
+        // plenty left. Without that, a conversation would open while the script
+        // behind it carried on rearranging the room.
+        //
+        // The second session marks itself on the bridge rather than in a
+        // register: reg_d() reads the window, which holds whichever session went
+        // last, so it cannot say whether a particular one ran.
         bytecode_builder bc;
-        u16 fn = bc.begin_func();
 
+        u16 fn_dialog = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(1);
-
         bc.emit(noir_op::SHOW_DIALOG);
         bc.emit(noir_op::RET);
 
+        u16 fn_other = bc.begin_func();
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(4242);
+        bc.emit(noir_op::HOTSPOT_ON);
+        bc.emit(noir_op::RET);
+
         auto vm = bc.build_vm();
-        vm.execute(fn);
+        g_mock_log.reset();
+        vm.execute(fn_dialog);
+        vm.execute(fn_other);
+
         vm.update();
 
-        auto s1 = vm.update();
-        TEST_ASSERT(s1 == noir_status::yielded, "still yielded after 2nd update");
-        TEST_ASSERT(vm.state() == noir_state::blocked, "still blocked after 2nd update");
-
+        TEST_ASSERT(g_mock_log.hotspot_on_id != 4242, "the session behind it did not run");
+        TEST_ASSERT(vm.session_count() == 2, "and it is still there to run later");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_show_dialog_resumes_after_unblock)
     {
-        // After decrement_blocking(), VM resumes and completes
+        // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -447,9 +459,8 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked after SHOW_DIALOG");
+        TEST_ASSERT(vm.session_count() == 1, "parked at SHOW_DIALOG");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -486,7 +497,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -520,7 +530,6 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        vm.decrement_blocking();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -634,7 +643,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
         TEST_ASSERT(vm.exit_code() == 555, "execution continued past SHOW_TEXT");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -777,7 +785,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 444, "code continued past CLEAR_TEXT");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -887,7 +894,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 777, "code continued past PLAY_MUSIC");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -1033,7 +1039,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 333, "code continued past STOP_MUSIC");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -1143,7 +1148,6 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_status::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 222, "code continued past PLAY_SFX");
-        TEST_ASSERT(vm.state() != noir_state::blocked, "not blocked");
         TEST_SUCCESS;
     }
 
@@ -1371,10 +1375,9 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SAY");
+        TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after unblock");
@@ -1386,7 +1389,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_sequential_say_then_show_dialog)
     {
-        // Two blocking opcodes in sequence: SAY then SHOW_DIALOG
+        // Two deferred calls in sequence: SAY then SHOW_DIALOG, one update each
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -1417,19 +1420,17 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SAY");
+        TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
         // Unblock SAY — should then block on SHOW_DIALOG
-        vm.decrement_blocking();
         vm.update();
 
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SHOW_DIALOG");
+        TEST_ASSERT(vm.session_count() == 1, "parked at SHOW_DIALOG");
         TEST_ASSERT(g_mock_log.show_dialog_called, "show_dialog called");
         TEST_ASSERT(g_mock_log.show_dialog_id == 50, "show_dialog(50)");
 
         // Unblock SHOW_DIALOG — should complete
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after both unblocked");
@@ -1455,7 +1456,7 @@ namespace NEONengine
         bc.emit_u16(12);
         bc.emit(noir_op::PLAY_SFX);
 
-        // SAY (blocking)
+        // SAY (deferred)
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(100);
@@ -1486,13 +1487,12 @@ namespace NEONengine
         vm.update();
 
         // Should be blocked on SAY
-        TEST_ASSERT(vm.state() == noir_state::blocked, "blocked on SAY");
+        TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
         TEST_ASSERT(g_mock_log.play_music_id == 3, "play_music(3) called before SAY");
         TEST_ASSERT(g_mock_log.play_sfx_id == 12, "play_sfx(12) called before SAY");
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
         // Unblock SAY — rest should run to completion
-        vm.decrement_blocking();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_status::completed, "completes after SAY unblocked");
@@ -1561,8 +1561,8 @@ namespace NEONengine
     Test noir_vm_dialogue_tests[] = {
         // SAY
         { "say basic", test_noir_say_basic },
-        { "say blocks VM", test_noir_say_blocks_vm },
-        { "say stays blocked", test_noir_say_stays_blocked },
+        { "say parks the session", test_noir_say_parks_the_session },
+        { "say: one line per update", test_noir_say_one_line_per_update },
         { "say resumes", test_noir_say_resumes_after_unblock },
         { "say preserves D0,D1", test_noir_say_preserves_d0_d1 },
         { "say preserves all regs", test_noir_say_preserves_all_regs },
@@ -1573,8 +1573,8 @@ namespace NEONengine
 
         // SHOW_DIALOG
         { "show_dialog basic", test_noir_show_dialog_basic },
-        { "show_dialog blocks VM", test_noir_show_dialog_blocks_vm },
-        { "show_dialog stays blocked", test_noir_show_dialog_stays_blocked },
+        { "show_dialog parks the session", test_noir_show_dialog_parks_the_session },
+        { "show_dialog ends the walk", test_noir_show_dialog_ends_the_walk_for_everyone },
         { "show_dialog resumes", test_noir_show_dialog_resumes_after_unblock },
         { "show_dialog preserves regs", test_noir_show_dialog_preserves_all_regs },
         { "show_dialog preserves SR", test_noir_show_dialog_preserves_sr },

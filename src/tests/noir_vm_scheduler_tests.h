@@ -654,7 +654,7 @@ namespace NEONengine
         auto status = vm.update();
         TEST_ASSERT(status == noir_status::completed, "the update ended cleanly");
         TEST_ASSERT(vm.session_count() == 0, "every session was dropped");
-        TEST_ASSERT(vm.state() == noir_state::idle, "the VM is idle");
+        TEST_ASSERT(vm.state() == noir_state::halted, "including the one that was running");
         TEST_ASSERT(bc.values[0] == 0, "the opcode after the reset never ran");
 
         // The VM has to be usable afterwards.

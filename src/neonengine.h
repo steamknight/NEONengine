@@ -20,6 +20,30 @@
 
 namespace NEONengine
 {
+    /**
+     * @brief What a deferred modal bridge call asked the scene to put up.
+     *
+     * The kinds match the bridge functions that record one. @c none means the
+     * request slot is empty.
+     */
+    enum class modal_kind : u8
+    {
+        none,
+        say,          ///< a = string id, b = speaker id
+        show_dialog,  ///< a = dialogue id
+        fade_out,     ///< a = frames
+        fade_in,      ///< a = frames
+        save_game,    ///< a = slot
+    };
+
+    /** @brief One recorded modal request, with the opcode's D0 and D1. */
+    struct modal_request
+    {
+        modal_kind kind{ modal_kind::none };
+        u16 a{ 0 };
+        u16 b{ 0 };
+    };
+
     class engine;
     using engine_ptr = mtl::unique_ptr<engine>;
     class engine
@@ -100,6 +124,32 @@ namespace NEONengine
             return _pending_language;
         }
 
+        /**
+         * @brief Post a modal requested by a script (SAY, FADE_OUT, and so on).
+         *
+         * The opcode drains the frame pool as it records this, so no session
+         * runs again until the scene has put the modal up and taken it down.
+         * One slot is enough: nothing else runs to record a second.
+         */
+        void request_modal(modal_kind kind, u16 a, u16 b = 0) noexcept
+        {
+            _pending_modal = modal_request{ kind, a, b };
+        }
+
+        /** @brief True when a script has requested a modal. */
+        bool has_pending_modal() const noexcept
+        {
+            return _pending_modal.kind != modal_kind::none;
+        }
+
+        /** @brief Consume the pending modal request, clearing it. */
+        modal_request take_pending_modal() noexcept
+        {
+            modal_request const taken = _pending_modal;
+            _pending_modal            = modal_request{};
+            return taken;
+        }
+
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         u16 current_scene() const noexcept { return _current_scene; }
         void set_current_scene(u16 scene_id) noexcept { _current_scene = scene_id; }
@@ -119,6 +169,7 @@ namespace NEONengine
         bool _has_pending_scene{ false };
         language _pending_language{ language::EN };  ///< Language requested by a script, awaiting a swap.
         bool _has_pending_language{ false };
+        modal_request _pending_modal{};  ///< Modal requested by a script, awaiting the next frame.
         u16 _current_scene{ 0 };   ///< Scene the runtime is presenting.
     };
 

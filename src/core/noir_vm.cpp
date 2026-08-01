@@ -65,8 +65,9 @@ namespace NEONengine
         , _session_budget(10)
         , _frame_pool(40)
         , _rotation(0)
-        , _blocking_counter(0)
         , _run_list_dropped(false)
+        , _walk_ended(false)
+        , _error_this_update(false)
         , _exit_code(0)
         , _last_error(noir_status::ok)
         , _cached_dst_mode(0)
@@ -222,7 +223,7 @@ namespace NEONengine
         // SP starts at the top of the stack (grows downward)
         _cur.sp    = _stack_bytes;
         _cur.fp    = _cur.sp;
-        _cur.state = noir_state::idle;
+        _cur.state = noir_state::halted;
     }
 
     // ─── reset_execution() ────────────────────────────────────────────────────────
@@ -236,7 +237,6 @@ namespace NEONengine
 
         _call_depth       = 0;
         _rotation         = 0;
-        _blocking_counter = 0;
 
         _exit_code        = 0;
         _last_error       = noir_status::ok;
@@ -251,15 +251,18 @@ namespace NEONengine
         if (_sessions.empty()) return noir_status::ok;
 
         _run_list_dropped = false;
+        _walk_ended       = false;
+        _error_this_update = false;
         begin_update_budgets();
 
         u16 pool           = _frame_pool;
         size_t const start = _rotation % _sessions.size();
 
-        // One walk. Nothing a session can do stops it short of its budget and
-        // still leaves it able to run: it has spent the budget, drained the
-        // pool, parked itself, or ended. A second walk would find the same
-        // sessions and turn all of them down.
+        // One walk. Every way a session can stop short of its budget - spending
+        // it, parking on a WAIT, making a deferred call, or ending - leaves it
+        // unable to run again in this update, and a deferred call ends the walk
+        // outright. A second walk would find the same sessions and turn all of
+        // them down.
         for (size_t k = 0; k < _sessions.size() && pool > 0 && !_run_list_dropped; ++k)
         {
             size_t const i = (start + k) % _sessions.size();
@@ -280,13 +283,21 @@ namespace NEONengine
             pool                   = to<u16>(pool - used);
 
             store_session(i);
+
+            // A deferred call takes the rest of the pool with it, which is what
+            // stops the next session - and this one - running again this frame.
+            if (_walk_ended) pool = 0;
         }
 
         ++_rotation;
         remove_dead_sessions();
 
         if (!_sessions.empty()) return noir_status::yielded;
-        return (_cur.state == noir_state::halted) ? _last_error : noir_status::completed;
+
+        // The run list emptied. Report an error only if one happened in this
+        // update: _last_error is sticky, so without this the first HALT of a
+        // scene would be handed back by every later clean completion.
+        return _error_this_update ? _last_error : noir_status::completed;
     }
 
     // ─── Scheduling ─────────────────────────────────────────────────────────────
@@ -309,15 +320,6 @@ namespace NEONengine
                 }
                 s.state = noir_state::running;
             }
-            else if (s.state == noir_state::blocked)
-            {
-                if (_blocking_counter > 0) continue;
-                s.state = noir_state::running;
-            }
-            else if (s.state == noir_state::yielded)
-            {
-                s.state = noir_state::running;
-            }
 
             s.instructions_left = _session_budget;
         }
@@ -331,11 +333,22 @@ namespace NEONengine
             ++_debug_stats.opcode_histogram[_bytecode[_cur.pc]];
 #endif
             auto status = execute_one_opcode();
-            if (status != noir_status::ok && status != noir_status::yielded
-                && status != noir_status::completed)
+
+            // A deferred call has already run and its PC has already moved on,
+            // so it costs an instruction like any other. The session stays
+            // runnable and parked on the opcode after it.
+            if (status == noir_status::deferred)
             {
-                _last_error = status;
-                _cur.state  = noir_state::halted;
+                --_cur.instructions_left;
+                _walk_ended = true;
+                return;
+            }
+
+            if (status != noir_status::ok && status != noir_status::completed)
+            {
+                _last_error        = status;
+                _error_this_update = true;
+                _cur.state         = noir_state::halted;
                 return;
             }
             if (_cur.state != noir_state::running) break;
@@ -400,12 +413,10 @@ namespace NEONengine
             }
 
             case HALT:
-                NE_LOG("HALT executed");
-                _cur.state  = noir_state::halted;
-                _last_error = noir_status::completed;
-                return noir_status::completed;
-
-            case YIELD: _cur.state = noir_state::yielded; return noir_status::yielded;
+                // Not "finished" - a case the author says cannot happen. It
+                // kills this session and reports, like any other script error.
+                NE_LOG("HALT executed in script %hu", _cur.script_id);
+                return noir_status::err_halt;
 
             case CALL:
             {
@@ -441,13 +452,13 @@ namespace NEONengine
 
             case RET:
                 do_ret();
-                return (_cur.state == noir_state::idle) ? noir_status::completed : noir_status::ok;
+                return (_cur.state == noir_state::halted) ? noir_status::completed : noir_status::ok;
 
             case RETZ:
                 if (_cur.sr & Z)
                 {
                     do_ret();
-                    return (_cur.state == noir_state::idle) ? noir_status::completed : noir_status::ok;
+                    return (_cur.state == noir_state::halted) ? noir_status::completed : noir_status::ok;
                 }
                 return noir_status::ok;
 
@@ -455,7 +466,7 @@ namespace NEONengine
                 if (_cur.sr & C)
                 {
                     do_ret();
-                    return (_cur.state == noir_state::idle) ? noir_status::completed : noir_status::ok;
+                    return (_cur.state == noir_state::halted) ? noir_status::completed : noir_status::ok;
                 }
                 return noir_status::ok;
 
@@ -989,11 +1000,6 @@ namespace NEONengine
 
             case ANIM_STOP: _bridge->anim_stop(_cur.d[0]); return noir_status::ok;
 
-            case ANIM_WAIT:
-                _bridge->anim_wait(_cur.d[0]);
-                increment_blocking();
-                return noir_status::ok;
-
             default: return noir_status::err_invalid_opcode;
         }
     }
@@ -1006,8 +1012,7 @@ namespace NEONengine
         {
             case GOTO_SCENE:
                 _bridge->goto_scene(_cur.d[0]);
-                increment_blocking();
-                return noir_status::ok;
+                return noir_status::deferred;
 
             case GET_SCENE: _cur.d[0] = _bridge->get_scene(); return noir_status::ok;
 
@@ -1029,13 +1034,11 @@ namespace NEONengine
         {
             case SAY:
                 _bridge->say(_cur.d[0], _cur.d[1]);
-                increment_blocking();
-                return noir_status::ok;
+                return noir_status::deferred;
 
             case SHOW_DIALOG:
                 _bridge->show_dialog(_cur.d[0]);
-                increment_blocking();
-                return noir_status::ok;
+                return noir_status::deferred;
 
             case SHOW_TEXT: _bridge->show_text(_cur.d[0], _cur.d[1], _cur.d[2]); return noir_status::ok;
 
@@ -1059,19 +1062,17 @@ namespace NEONengine
         {
             case FADE_OUT:
                 _bridge->fade_out(_cur.d[0]);
-                increment_blocking();
-                return noir_status::ok;
+                return noir_status::deferred;
 
             case FADE_IN:
                 _bridge->fade_in(_cur.d[0]);
-                increment_blocking();
-                return noir_status::ok;
+                return noir_status::deferred;
 
             case SCREEN_CLR: _bridge->screen_clear(_cur.d[0]); return noir_status::ok;
 
             case SET_LANG: _bridge->set_lang(_cur.d[0]); return noir_status::ok;
 
-            case SAVE_GAME: _bridge->save_game(_cur.d[0]); return noir_status::ok;
+            case SAVE_GAME: _bridge->save_game(_cur.d[0]); return noir_status::deferred;
 
             case LOAD_GAME: _bridge->load_game(_cur.d[0]); return noir_status::ok;
 
@@ -1193,7 +1194,7 @@ namespace NEONengine
         if (return_pc != SENTINEL_PC) return;
 
         _exit_code = _cur.d[0];
-        _cur.state = noir_state::idle;
+        _cur.state = noir_state::halted;
     }
 
     // ─── Stack operations ───────────────────────────────────────────────────────
