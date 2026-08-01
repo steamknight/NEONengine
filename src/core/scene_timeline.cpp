@@ -692,21 +692,18 @@ namespace NEONengine
             auto const& payload = *force_to<data::execute_script_payload const*>(key.payload);
             auto& vm            = g_pEngine->vm();
 
-            // execute() saves the registers of a re-entered call but not the
-            // VM's state or its blocking and wait counters, so starting a script
-            // over a blocked one would strand the counter and release the outer
-            // script early - taking ANIM_WAIT with it. The same test means only
-            // the first script keyframe of a frame runs, which is deliberate:
-            // two execute() calls in one frame would run in reverse order.
-            if (vm.state() != noir_state::idle)
+            // Sessions run side by side, so several keyframes in one frame each
+            // get one, in the order they fired. The one refusal left is a script
+            // that is already running: it keeps its place in the run list rather
+            // than restarting, and the keyframe counts as not fired.
+            if (vm.execute(payload.function_id) != noir_status::ok)
             {
-                NE_LOG("track %hu cannot run script %hu, the VM is busy",
+                NE_LOG("track %hu could not run script %hu",
                     track_index,
                     payload.function_id);
                 return false;
             }
 
-            vm.execute(payload.function_id);
             NE_LOG("track %hu ran script %hu", track_index, payload.function_id);
             return true;
         }

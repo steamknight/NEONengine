@@ -255,8 +255,12 @@ namespace NEONengine
          * Serves both the initial boot scene and every GOTO_SCENE transition. Pak
          * access runs under a system_use_guard; music playback and the VM run
          * afterwards with the system released (the game-loop baseline).
+         *
+         * @return Whether an entry script is now running. When it is, nothing
+         *         has brought the palette up yet: the script's own FADE_IN does
+         *         that on its first slice.
          */
-        void load_scene(u16 scene_id)
+        bool load_scene(u16 scene_id)
         {
             auto& gd          = g_pEngine->data();
             auto const scenes = gd.scenes();
@@ -265,7 +269,7 @@ namespace NEONengine
                 NE_LOG("invalid scene id %hu (%lu scenes)",
                     scene_id,
                     to<ULONG>(scenes.size()));
-                return;
+                return false;
             }
 
             auto const& sc = scenes[scene_id];
@@ -314,21 +318,17 @@ namespace NEONengine
             if (sc.on_enter_function_id != data::NO_ID
                 && g_pEngine->vm().execute(sc.on_enter_function_id) == noir_status::ok)
             {
-                // Run the entry script's first opcodes (its FADE_IN) this frame,
-                // before screenProcess renders, so the freshly loaded palette
-                // fades up from black instead of flashing at full brightness.
-                g_pEngine->vm().update();
+                return true;
             }
-            else
-            {
-                // No entry script ran, so nothing would bring the palette up (the
-                // loaded palette only reaches the display through a fade). Fade in
-                // from black with the project's default so a script-less scene is
-                // still visible.
-                u16 const frames = gd.config().default_fade_frames;
-                screenFadeFromBlack(
-                    g_mainScreen, to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
-            }
+
+            // No entry script ran, so nothing would bring the palette up (the
+            // loaded palette only reaches the display through a fade). Fade in
+            // from black with the project's default so a script-less scene is
+            // still visible.
+            u16 const frames = gd.config().default_fade_frames;
+            screenFadeFromBlack(
+                g_mainScreen, to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
+            return false;
         }
     }  // namespace
 
@@ -348,12 +348,18 @@ namespace NEONengine
         // draw_backdrop only settles the band once it has the scene in hand.
         screenSetCursorBandExempt(g_mainScreen, true);
         show_wait_pointer();
-        load_scene(g_pEngine->data().config().boot_scene_id);
+        // Every later load is followed by the same frame's own VM update; this
+        // one runs before the loop starts, so the entry script's FADE_IN needs
+        // priming here or the first frame renders at full brightness.
+        if (load_scene(g_pEngine->data().config().boot_scene_id))
+        {
+            g_pEngine->vm().update();
+        }
     }
 
     void sceneProcess(void)
     {
-        g_pEngine->vm().update();
+        // ── Requests recorded last frame ─────────────────────────────────────
 
         // A transition runs from the script's fade-out through the load that
         // follows it, and in the frames between the two nothing is pending.
@@ -377,8 +383,6 @@ namespace NEONengine
         }
         if (g_pEngine->has_pending_scene())
         {
-            // The one case that cannot wait for the end of the frame, because
-            // loading blocks the loop and the fade left the palette black.
             show_wait_pointer();
             load_scene(g_pEngine->take_pending_scene());
         }
@@ -395,17 +399,25 @@ namespace NEONengine
             redraw_backdrop();
         }
 
-        // Hotspots stay inert for the length of a transition; letting them run
-        // would put the hovered role back and undo the WAIT pointer.
-        if (!transitioning) scene_hotspots_update();
+        // Every request is answered by now, so a fade-out is all that can still
+        // hold the scene, and it holds it for a strong reason: it is the front
+        // half of a scene change, so anything a track moved would be thrown
+        // away, a keyframe running a script could queue a second scene change,
+        // and a hovered hotspot would put its role back over the WAIT pointer.
+        bool const holding = screenIsFadingOut(g_mainScreen);
 
-        // Timelines are held for the same span, and for a stronger reason: a
-        // transition is the scene ending, so anything a track did would be
-        // thrown away, and a keyframe running a script while a scene change is
-        // already pending could queue a second one. Ticked before the bobs so
-        // that whatever a later slice's keyframes move or show is drawn in the
-        // frame it happened.
-        if (!transitioning) scene_timeline_update();
+        // ── Timeline ─────────────────────────────────────────────────────────
+        if (!holding) scene_timeline_update();
+
+        // ── UI ───────────────────────────────────────────────────────────────
+        if (!holding) scene_hotspots_update();
+
+        // ── Scripts ──────────────────────────────────────────────────────────
+        // Last, so a session started this frame by a keyframe or a click runs
+        // its first slice now instead of next frame, and so whatever it moves is
+        // drawn below. A hotspot can leave the scene without a script; when one
+        // has, this scene is already over and nothing here should touch it.
+        if (!g_pEngine->has_pending_scene()) g_pEngine->vm().update();
 
         mousePointerUpdate();
         scene_bobs_update();
