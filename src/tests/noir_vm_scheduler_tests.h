@@ -706,6 +706,93 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── The stack has two ends and both of them kill ────────────────────────────
+
+    TEST_IMPL(test_sched_stack_overflow_kills_the_session)
+    {
+        // A 16-byte stack holds the 8-byte sentinel frame and four pushes. The
+        // fifth runs out of room.
+        bytecode_builder bc;
+
+        u16 greedy = bc.begin_func();
+        for (u16 i = 0; i < 5; ++i)
+        {
+            bc.emit(noir_op::PUSH);
+            bc.emit_mode(0, noir_mode::IMM16);
+            bc.emit_u16(to<u16>(0xC000 + i));
+        }
+        bc.emit(noir_op::INCV);  // must never run
+        bc.emit_u16(0);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm(16);
+        TEST_ASSERT(vm.execute(greedy) == noir_status::ok, "the frame itself fits");
+
+        vm.update();
+        TEST_ASSERT(vm.last_error() == noir_status::err_stack_overflow, "overflow was reported");
+        TEST_ASSERT(bc.values[0] == 0, "the script stopped at the failed push");
+        TEST_ASSERT(vm.session_count() == 0, "and the session was removed");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_sched_stack_underflow_kills_the_session)
+    {
+        // Four pops empty the frame execute() pushed. The fifth has nothing
+        // left to take.
+        bytecode_builder bc;
+
+        u16 hungry = bc.begin_func();
+        for (u16 i = 0; i < 5; ++i)
+        {
+            bc.emit(noir_op::POP);
+            bc.emit_mode(noir_mode::REG_D0, 0);
+        }
+        bc.emit(noir_op::INCV);  // must never run
+        bc.emit_u16(0);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm(256);
+        TEST_ASSERT(vm.execute(hungry) == noir_status::ok, "it starts");
+
+        vm.update();
+        TEST_ASSERT(vm.last_error() == noir_status::err_stack_underflow, "underflow was reported");
+        TEST_ASSERT(bc.values[0] == 0, "the script stopped at the failed pop");
+        TEST_ASSERT(vm.session_count() == 0, "and the session was removed");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_sched_stack_death_spares_the_neighbours)
+    {
+        // The stacks are separate, so one session running out must not disturb
+        // a session sitting next to it.
+        bytecode_builder bc;
+
+        u16 healthy = emit_local_roundtrip(bc, 0x2B2B, 0, 3);
+
+        u16 doomed = bc.begin_func();
+        bc.emit(noir_op::WAIT);
+        bc.emit_u16(1);
+        for (u16 i = 0; i < 5; ++i)
+        {
+            bc.emit(noir_op::POP);
+            bc.emit_mode(noir_mode::REG_D0, 0);
+        }
+        bc.emit(noir_op::INCV);  // must never run
+        bc.emit_u16(1);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(healthy);
+        vm.execute(doomed);
+
+        u16 updates = run_until_empty(vm);
+        TEST_ASSERT(updates < 200, "the run list drained");
+        TEST_ASSERT(vm.last_error() == noir_status::err_stack_underflow, "the doomed one died");
+        TEST_ASSERT(bc.values[1] == 0, "and it died where it ran out");
+        TEST_ASSERT(bc.values[0] == 0x2B2B, "the neighbour finished its work untouched");
+        TEST_SUCCESS;
+    }
+
     // ── Nothing to run ──────────────────────────────────────────────────────────
 
     TEST_IMPL(test_sched_update_with_empty_run_list)
@@ -765,6 +852,9 @@ namespace NEONengine
     TEST(test_sched_spawn_from_opcode_may_grow_the_stacks)
     TEST(test_sched_reset_from_opcode_drops_everything)
     TEST(test_sched_reset_then_spawn_from_opcode)
+    TEST(test_sched_stack_overflow_kills_the_session)
+    TEST(test_sched_stack_underflow_kills_the_session)
+    TEST(test_sched_stack_death_spares_the_neighbours)
     TEST(test_sched_update_with_empty_run_list)
     TEST(test_sched_session_that_cannot_be_framed_is_not_listed)
     TEST_SUITE_END
