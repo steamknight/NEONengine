@@ -64,12 +64,13 @@ namespace NEONengine
 
     // Runs the VM until nothing is left or the update cap is hit. Returns the
     // number of updates spent; the cap doubles as a hang detector.
-    inline u16 run_until_empty(noir_vm& vm, u16 max_updates = 200)
+    inline u16 run_until_empty(noir_vm& vm, u16 max_updates = 200, noir_error* caught = nullptr)
     {
         u16 updates = 0;
         while (updates < max_updates && vm.session_count() > 0)
         {
-            vm.update();
+            auto status = vm.update();
+            if (caught && !status && *caught == noir_error::none) *caught = status.error();
             ++updates;
         }
         return updates;
@@ -84,8 +85,8 @@ namespace NEONengine
         u16 fn1 = emit_local_roundtrip(bc, 0x2222, 1, 1);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn0) == noir_result::ok, "first session starts");
-        TEST_ASSERT(vm.execute(fn1) == noir_result::ok, "second session starts");
+        TEST_ASSERT(vm.execute(fn0), "first session starts");
+        TEST_ASSERT(vm.execute(fn1), "second session starts");
         TEST_ASSERT(vm.session_count() == 2, "both are in the run list");
 
         u16 updates = run_until_empty(vm);
@@ -110,14 +111,14 @@ namespace NEONengine
         auto vm = bc.build_vm();
 
         for (u16 i = 0; i < 4; ++i)
-            TEST_ASSERT(vm.execute(fn[i]) == noir_result::ok, "first four start");
+            TEST_ASSERT(vm.execute(fn[i]), "first four start");
 
         // Let them write their locals and park.
         vm.update();
 
         // These two force the allocation to grow twice over.
-        TEST_ASSERT(vm.execute(fn[4]) == noir_result::ok, "fifth session starts");
-        TEST_ASSERT(vm.execute(fn[5]) == noir_result::ok, "sixth session starts");
+        TEST_ASSERT(vm.execute(fn[4]), "fifth session starts");
+        TEST_ASSERT(vm.execute(fn[5]), "sixth session starts");
         TEST_ASSERT(vm.session_count() == 6, "six sessions live");
 
         u16 updates = run_until_empty(vm);
@@ -244,13 +245,13 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn) == noir_result::ok, "first request starts a session");
-        TEST_ASSERT(failed_with(vm, vm.execute(fn), noir_error::duplicate_script), "second is dropped");
+        TEST_ASSERT(vm.execute(fn), "first request starts a session");
+        TEST_ASSERT(failed_with(vm.execute(fn), noir_error::duplicate_script), "second is dropped");
         TEST_ASSERT(vm.session_count() == 1, "only one session exists");
 
         // Still refused once it is parked in a WAIT rather than running.
         vm.update();
-        TEST_ASSERT(failed_with(vm, vm.execute(fn), noir_error::duplicate_script), "a waiting one counts");
+        TEST_ASSERT(failed_with(vm.execute(fn), noir_error::duplicate_script), "a waiting one counts");
 
         u16 updates = run_until_empty(vm);
         TEST_ASSERT(updates < 200, "session ended");
@@ -269,11 +270,11 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn) == noir_result::ok, "first run starts");
+        TEST_ASSERT(vm.execute(fn), "first run starts");
         run_until_empty(vm);
         TEST_ASSERT(vm.session_count() == 0, "run list emptied");
 
-        TEST_ASSERT(vm.execute(fn) == noir_result::ok, "the same script may start again");
+        TEST_ASSERT(vm.execute(fn), "the same script may start again");
         run_until_empty(vm);
         TEST_ASSERT(bc.values[0] == 2, "it ran both times");
         TEST_SUCCESS;
@@ -657,7 +658,7 @@ namespace NEONengine
         TEST_ASSERT(status == noir_result::completed, "the update ended cleanly");
         TEST_ASSERT(!vm.terminated(), "the teardown it asked for already happened");
         TEST_ASSERT(vm.session_count() == 0, "every session was dropped");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "including the one that was running");
+        TEST_ASSERT(vm.state() == noir_session_state::ended, "including the one that was running");
         TEST_ASSERT(bc.values[0] == 0, "the instruction after the reset never ran");
 
         // The VM has to be usable afterwards.
@@ -690,10 +691,9 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm(16);
-        TEST_ASSERT(vm.execute(greedy) == noir_result::ok, "the frame itself fits");
+        TEST_ASSERT(vm.execute(greedy), "the frame itself fits");
 
-        vm.update();
-        TEST_ASSERT(vm.last_error() == noir_error::stack_overflow, "overflow was reported");
+        TEST_ASSERT(failed_with(vm.update(), noir_error::stack_overflow), "overflow was reported");
         TEST_ASSERT(bc.values[0] == 0, "the script stopped at the failed push");
         TEST_ASSERT(vm.session_count() == 0, "and the session was removed");
         TEST_SUCCESS;
@@ -716,10 +716,9 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm(256);
-        TEST_ASSERT(vm.execute(hungry) == noir_result::ok, "it starts");
+        TEST_ASSERT(vm.execute(hungry), "it starts");
 
-        vm.update();
-        TEST_ASSERT(vm.last_error() == noir_error::stack_underflow, "underflow was reported");
+        TEST_ASSERT(failed_with(vm.update(), noir_error::stack_underflow), "underflow was reported");
         TEST_ASSERT(bc.values[0] == 0, "the script stopped at the failed pop");
         TEST_ASSERT(vm.session_count() == 0, "and the session was removed");
         TEST_SUCCESS;
@@ -749,9 +748,10 @@ namespace NEONengine
         vm.execute(healthy);
         vm.execute(doomed);
 
-        u16 updates = run_until_empty(vm);
+        auto caught = noir_error::none;
+        u16 updates = run_until_empty(vm, 200, &caught);
         TEST_ASSERT(updates < 200, "the run list drained");
-        TEST_ASSERT(vm.last_error() == noir_error::stack_underflow, "the doomed one died");
+        TEST_ASSERT(caught == noir_error::stack_underflow, "the doomed one died");
         TEST_ASSERT(bc.values[1] == 0, "and it died where it ran out");
         TEST_ASSERT(bc.values[0] == 0x2B2B, "the neighbour finished its work untouched");
         TEST_SUCCESS;
@@ -785,7 +785,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::stack_underflow), "the death is reported");
+        TEST_ASSERT(failed_with(status, noir_error::stack_underflow), "the death is reported");
         TEST_ASSERT(vm.session_count() == 1, "though a session is still live");
         TEST_SUCCESS;
     }
@@ -813,12 +813,14 @@ namespace NEONengine
         vm.execute(survivor);
         vm.execute(doomed);
 
-        TEST_ASSERT(vm.update() == noir_result::failed, "the update the death happened in");
+        TEST_ASSERT(failed_with(vm.update(), noir_error::stack_underflow),
+            "the update the death happened in");
 
         auto next = vm.update();
 
         TEST_ASSERT(next == noir_result::yielded, "the next one is ordinary again");
-        TEST_ASSERT(vm.last_error() == noir_error::stack_underflow, "the reason is still on record");
+        TEST_ASSERT(message_has(vm, "popped more than it pushed"),
+            "the account of it is still on record");
         TEST_SUCCESS;
     }
 
@@ -853,9 +855,9 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm(4);
-        TEST_ASSERT(vm.execute(fn0) != noir_result::ok, "a four-byte stack cannot hold a frame");
+        TEST_ASSERT(!vm.execute(fn0), "a four-byte stack cannot hold a frame");
         TEST_ASSERT(vm.session_count() == 0, "nothing was added to the run list");
-        TEST_ASSERT(vm.execute(fn1) != noir_result::ok, "and the next one fails the same way");
+        TEST_ASSERT(!vm.execute(fn1), "and the next one fails the same way");
         TEST_ASSERT(vm.update() == noir_result::ok, "update has nothing to do");
         TEST_SUCCESS;
     }

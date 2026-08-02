@@ -628,7 +628,7 @@ namespace NEONengine
             // get one, in the order they fired. The one refusal left is a script
             // that is already running: it keeps its place in the run list rather
             // than restarting, and the keyframe counts as not fired.
-            if (vm.execute(payload.function_id) != noir_result::ok)
+            if (!vm.execute(payload.function_id))
             {
                 NE_LOG("track %hu could not run script %hu",
                     track_index,

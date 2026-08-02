@@ -660,17 +660,18 @@ session that is Waiting has its counter decremented and is passed over.
 
 | State | Meaning |
 |-------|---------|
-| Running | Actively executing opcodes |
+| Running | Actively executing instructions |
 | Waiting | WAIT timer active (`wait_counter > 0`, decremented each `update()`) |
-| Halted | Finished or errored; the session is removed at the end of the update |
+| Ended | Ran to its end; the session is removed at the end of the update |
+| Died | An error killed it; the session is removed at the end of the update |
 
-A session is always one of these three. "Nothing is running" is a property of the
+A session is always one of these four. "Nothing is running" is a property of the
 run list, not a state: it is `session_count() == 0`.
 
 ### Results and errors
 
-`update()` reports one `noir_result`. An error kills the session that raised it;
-the rest keep running, and the reason is read back through `last_error()`.
+`update()` reports either one `noir_result` or the `noir_error` that killed a
+session. An error kills only the session that raised it; the rest keep running.
 
 | Result | Meaning |
 |--------|---------|
@@ -679,11 +680,15 @@ the rest keep running, and the reason is read back through `last_error()`.
 | Yielded | Sessions remain — call `update()` again next frame |
 | Terminated | A terminal call ran; nothing runs until `reset_execution()` |
 | Deferred | An instruction only: a deferred bridge call ended the walk |
-| Failed | A session died this update; `last_error()` says why |
+| Failed | An instruction only: the session died |
 
-A death outranks the ordinary: an update where a session died reports `Failed`
+A death outranks the ordinary: an update where a session died reports the reason
 even if others are still live. It says so for that update only — the next one is
-`Yielded` again, while `last_error()` keeps the reason on record.
+`Yielded` again.
+
+Every death also writes a line naming the script and the fault, which the engine
+puts on screen. `execute()` turning a request down is not a death: it kills
+nothing, says nothing to the player, and hands the reason back to the caller.
 
 | `noir_error` | Cause |
 |--------------|-------|

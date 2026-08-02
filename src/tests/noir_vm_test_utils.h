@@ -397,11 +397,13 @@ namespace NEONengine
         }
 
         // Run a single-function script to completion (up to max_updates frames)
-        noir_result run_to_completion(noir_vm& vm, u16 func_id, u16 max_updates = 100)
+        mtl::expected<noir_result, noir_error> run_to_completion(
+            noir_vm& vm, u16 func_id, u16 max_updates = 100)
         {
-            auto status = vm.execute(func_id);
-            if (status != noir_result::ok) return status;
+            auto started = vm.execute(func_id);
+            if (!started) return mtl::unexpected(started.error());
 
+            mtl::expected<noir_result, noir_error> status = noir_result::ok;
             for (u16 i = 0; i < max_updates; ++i)
             {
                 status = vm.update();
@@ -411,10 +413,29 @@ namespace NEONengine
         }
     };
 
-    /// True when @p status reports a death and @p vm agrees on the reason.
-    inline bool failed_with(noir_vm const& vm, noir_result status, noir_error reason)
+    /// True when @p status reports a death for @p reason rather than a result.
+    inline bool failed_with(mtl::expected<noir_result, noir_error> const& status, noir_error reason)
     {
-        return status == noir_result::failed && vm.last_error() == reason;
+        return !status.has_value() && status.error() == reason;
+    }
+
+    /// The same, for a call that only says whether it worked.
+    inline bool failed_with(mtl::expected<void, noir_error> const& status, noir_error reason)
+    {
+        return !status.has_value() && status.error() == reason;
+    }
+
+    /// True when the VM's account of the last death mentions @p needle.
+    inline bool message_has(noir_vm const& vm, char const* needle)
+    {
+        for (char const* start = vm.error_message(); *start; ++start)
+        {
+            char const* a = start;
+            char const* b = needle;
+            while (*b && *a == *b) { ++a; ++b; }
+            if (!*b) return true;
+        }
+        return *needle == '\0';
     }
 
 }  // namespace NEONengine

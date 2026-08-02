@@ -291,6 +291,64 @@ TEST_IMPL(test_rvalue_construction)
     TEST_SUCCESS;
 }
 
+// ── expected<void, E> ───────────────────────────────────────────────────────
+//
+// An operation that either worked or says why not. There is no value to hold,
+// so it has to answer the same questions with nothing to answer them from.
+
+enum class void_err { none, refused, broken };
+
+TEST_IMPL(test_expected_void_success)
+{
+    mtl::expected<void, void_err> result;
+    TEST_ASSERT(result.has_value(), "a default-constructed one worked");
+    TEST_ASSERT(result, "and is truthy");
+    TEST_SUCCESS;
+}
+
+TEST_IMPL(test_expected_void_error)
+{
+    mtl::expected<void, void_err> result = mtl::unexpected(void_err::refused);
+    TEST_ASSERT(!result.has_value(), "an unexpected one did not work");
+    TEST_ASSERT(!result, "and is falsy");
+    TEST_ASSERT(result.error() == void_err::refused, "and says which");
+    TEST_SUCCESS;
+}
+
+TEST_IMPL(test_expected_void_error_tag)
+{
+    mtl::expected<void, void_err> result(mtl::expected<void, void_err>::unexpect, void_err::broken);
+    TEST_ASSERT(!result.has_value(), "the tag builds an error too");
+    TEST_ASSERT(result.error() == void_err::broken, "and keeps it");
+    TEST_SUCCESS;
+}
+
+TEST_IMPL(test_expected_void_assignment_and_swap)
+{
+    mtl::expected<void, void_err> ok;
+    mtl::expected<void, void_err> bad = mtl::unexpected(void_err::broken);
+
+    ok.swap(bad);
+    TEST_ASSERT(!ok.has_value() && ok.error() == void_err::broken, "swap moved the error over");
+    TEST_ASSERT(bad.has_value(), "and the success back");
+
+    bad = mtl::unexpected(void_err::refused);
+    TEST_ASSERT(!bad.has_value() && bad.error() == void_err::refused, "assignment overwrote it");
+    TEST_SUCCESS;
+}
+
+TEST_IMPL(test_expected_equals_value)
+{
+    mtl::expected<int, void_err> good(7);
+    mtl::expected<int, void_err> bad = mtl::unexpected(void_err::broken);
+
+    TEST_ASSERT(good == 7, "one holding 7 equals 7");
+    TEST_ASSERT(!(good == 8), "and nothing else");
+    TEST_ASSERT(!(bad == 7), "one holding an error equals no value at all");
+    TEST_ASSERT(bad != 7, "which is what the negation says");
+    TEST_SUCCESS;
+}
+
 TEST_SUITE_BEGIN(mtl_expected)
     TEST(test_expected_value_construction)
     TEST(test_error_construction_tag)
@@ -315,6 +373,11 @@ TEST_SUITE_BEGIN(mtl_expected)
     TEST(test_self_assignment)
     TEST(test_self_swap)
     TEST(test_rvalue_construction)
+    TEST(test_expected_void_success)
+    TEST(test_expected_void_error)
+    TEST(test_expected_void_error_tag)
+    TEST(test_expected_void_assignment_and_swap)
+    TEST(test_expected_equals_value)
 TEST_SUITE_END
 
 #endif // __MTL_EXPECTED_TESTS_H__INCLUDED__

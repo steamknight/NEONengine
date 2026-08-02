@@ -200,8 +200,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::value_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -346,8 +346,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::value_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -483,8 +483,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::value_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -640,8 +640,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::value_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -796,8 +796,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::value_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -985,13 +985,194 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "reserved opcode should error");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "reserved opcode should error");
         TEST_SUCCESS;
     }
 
     // ═════════════════════════════════════════════════════════════════════════════
     // Test suite registration
     // ═════════════════════════════════════════════════════════════════════════════
+
+    // ── VALUE addressing modes ──────────────────────────────────────────────────
+    //
+    // The VALUE opcodes above carry their own index. Any opcode can reach a
+    // VALUE through its mode byte instead, and those four helpers - reading or
+    // writing, with the index inline or in D0 - each check the index themselves.
+    // A death there has to look exactly like a death anywhere else.
+
+    namespace
+    {
+        /// A script that fails at its first instruction, then tries to count.
+        /// values[0] moving is proof the death did not stop it.
+        void emit_then_mark(bytecode_builder& bc)
+        {
+            bc.emit(noir_op::INCV);
+            bc.emit_u16(0);
+            bc.emit(noir_op::RET);
+        }
+
+        /// Puts an out-of-range index in D0, for the VALUE_D0 modes.
+        void emit_oob_in_d0(bytecode_builder& bc)
+        {
+            bc.emit(noir_op::MOV16);
+            bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+            bc.emit_u16(32);
+        }
+    }  // namespace
+
+    TEST_IMPL(test_noir_value_mode_read_imm_oob)
+    {
+        // PUSH reads its source through read_operand().
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::PUSH);
+        bc.emit_mode(0, noir_mode::VALUE_IMM);
+        bc.emit_u16(32);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "reading VALUES[32] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_read_d0_oob)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        emit_oob_in_d0(bc);
+        bc.emit(noir_op::PUSH);
+        bc.emit_mode(0, noir_mode::VALUE_D0);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "reading VALUES[D0] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_write_imm_oob)
+    {
+        // CLR writes its destination through write_operand().
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::VALUE_IMM, 0);
+        bc.emit_u16(32);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "writing VALUES[32] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_write_d0_oob)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        emit_oob_in_d0(bc);
+        bc.emit(noir_op::CLR);
+        bc.emit_mode(noir_mode::VALUE_D0, 0);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "writing VALUES[D0] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_cached_read_imm_oob)
+    {
+        // CMP reads its destination through read_operand_cached() and never
+        // writes back, so only the read can be at fault.
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::VALUE_IMM, noir_mode::IMM8);
+        bc.emit_u16(32);
+        bc.emit(0);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "comparing VALUES[32] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_cached_read_d0_oob)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        emit_oob_in_d0(bc);
+        bc.emit(noir_op::CMP);
+        bc.emit_mode(noir_mode::VALUE_D0, noir_mode::IMM8);
+        bc.emit(0);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "comparing VALUES[D0] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_cached_write_back_oob)
+    {
+        // INC reads its destination and writes it back, so it goes through both
+        // halves of the cached pair.
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::INC);
+        bc.emit_mode(noir_mode::VALUE_IMM, 0);
+        bc.emit_u16(32);
+        emit_then_mark(bc);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::value_oob), "incrementing VALUES[32] is a death");
+        TEST_ASSERT(bc.values[0] == 0, "and the script stopped there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_value_mode_says_which_index)
+    {
+        // The player is shown this, so it has to name the script and the index
+        // rather than say something went wrong.
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::PUSH);
+        bc.emit_mode(0, noir_mode::VALUE_IMM);
+        bc.emit_u16(32);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(message_has(vm, "script 0"), "the message names the script");
+        TEST_ASSERT(message_has(vm, "value 32"), "and the index that was out of range");
+        TEST_SUCCESS;
+    }
 
     TEST_SUITE_BEGIN(noir_vm_value_ops)
     // CMPV
@@ -1037,6 +1218,15 @@ namespace NEONengine
     TEST(test_noir_value_high_index)
     // Invalid
     TEST(test_noir_value_ops_invalid_opcode)
+    // Addressing modes that reach VALUES
+    TEST(test_noir_value_mode_read_imm_oob)
+    TEST(test_noir_value_mode_read_d0_oob)
+    TEST(test_noir_value_mode_write_imm_oob)
+    TEST(test_noir_value_mode_write_d0_oob)
+    TEST(test_noir_value_mode_cached_read_imm_oob)
+    TEST(test_noir_value_mode_cached_read_d0_oob)
+    TEST(test_noir_value_mode_cached_write_back_oob)
+    TEST(test_noir_value_mode_says_which_index)
     TEST_SUITE_END
 
 }  // namespace NEONengine

@@ -950,7 +950,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xA5 is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0xA5 is invalid");
         TEST_SUCCESS;
     }
 
@@ -966,7 +966,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xAF is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0xAF is invalid");
         TEST_SUCCESS;
     }
 
@@ -982,7 +982,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xA8 is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0xA8 is invalid");
         TEST_SUCCESS;
     }
 

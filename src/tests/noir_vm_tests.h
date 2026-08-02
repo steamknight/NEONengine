@@ -47,8 +47,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::halt), "HALT reports err_halt");
-        TEST_ASSERT(vm.last_error() == noir_error::halt, "and records it as the error");
+        TEST_ASSERT(failed_with(status, noir_error::halt), "HALT reports err_halt");
+        TEST_ASSERT(message_has(vm, "HALT"), "and says so in words");
         TEST_SUCCESS;
     }
 
@@ -129,7 +129,7 @@ namespace NEONengine
 
         vm.execute(fn_halt);
         auto first = vm.update();
-        TEST_ASSERT(failed_with(vm, first, noir_error::halt), "the HALT was reported");
+        TEST_ASSERT(failed_with(first, noir_error::halt), "the HALT was reported");
 
         vm.execute(fn_clean);
         auto second = vm.update();
@@ -157,8 +157,8 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
-        auto status = vm.execute(fn);
-        TEST_ASSERT(status == noir_result::ok, "execute should succeed");
+        TEST_ASSERT(vm.execute(fn), "execute should succeed");
+        mtl::expected<noir_result, noir_error> status = noir_result::ok;
 
         // First update: executes WAIT, enters waiting state
         status = vm.update();
@@ -190,8 +190,8 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
-        auto status = vm.execute(fn);
-        TEST_ASSERT(status == noir_result::ok, "execute should succeed");
+        TEST_ASSERT(vm.execute(fn), "execute should succeed");
+        mtl::expected<noir_result, noir_error> status = noir_result::ok;
 
         // First update: executes WAIT(0), enters waiting
         status = vm.update();
@@ -277,7 +277,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_func), "invalid CALL should error");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_func), "invalid CALL should error");
         TEST_SUCCESS;
     }
 
@@ -509,8 +509,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "bad opcode should error");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "state should be halted on error");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "bad opcode should error");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "state should be dead on error");
         TEST_SUCCESS;
     }
 
@@ -525,7 +525,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = vm.execute(99);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_func), "execute bad func_id should error");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_func), "execute bad func_id should error");
         TEST_SUCCESS;
     }
 
@@ -545,8 +545,8 @@ namespace NEONengine
         auto vm = bc.build_vm();
         vm.set_session_budget(2);
 
-        auto status = vm.execute(fn);
-        TEST_ASSERT(status == noir_result::ok, "execute should succeed");
+        TEST_ASSERT(vm.execute(fn), "execute should succeed");
+        mtl::expected<noir_result, noir_error> status = noir_result::ok;
 
         // First update: runs 2 NOPs, budget exhausted → yields
         status = vm.update();
@@ -620,7 +620,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn0) == noir_result::ok, "fn0 starts");
+        TEST_ASSERT(vm.execute(fn0), "fn0 starts");
         vm.update();
         TEST_ASSERT(vm.state() == noir_session_state::waiting, "session parked mid-run");
         TEST_ASSERT(vm.reg_d(0) == 42, "D0 dirty before reset");
@@ -628,7 +628,7 @@ namespace NEONengine
 
         vm.reset_execution();
         TEST_ASSERT(vm.session_count() == 0, "run list emptied by reset");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "and the register window with it");
+        TEST_ASSERT(vm.state() == noir_session_state::ended, "and the register window with it");
         TEST_ASSERT(vm.reg_d(0) == 0 && vm.reg_d(1) == 0 && vm.reg_d(2) == 0 && vm.reg_d(3) == 0,
             "registers cleared by reset");
         TEST_ASSERT(vm.sr() == 0, "status register cleared by reset");

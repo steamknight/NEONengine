@@ -340,7 +340,7 @@ namespace NEONengine
 
             g_pEngine->vm().reset_execution();
             if (sc.on_enter_function_id != data::NO_ID
-                && g_pEngine->vm().execute(sc.on_enter_function_id) == noir_result::ok)
+                && g_pEngine->vm().execute(sc.on_enter_function_id))
             {
                 return true;
             }

@@ -5,6 +5,9 @@
 #include "mtl/utility.h"
 #include "types.h"
 
+#include <stdarg.h>
+#include <stdio.h>
+
 NE_LOG_DOMAIN(Script);
 
 namespace NEONengine
@@ -67,6 +70,7 @@ namespace NEONengine
         , _vm_state(noir_vm_state::ok)
         , _exit_code(0)
         , _last_error(noir_error::none)
+        , _error_message{}
         , _cached_dst_mode(0)
         , _cached_dst_param(0)
     {
@@ -93,14 +97,39 @@ namespace NEONengine
 #endif
     }
 
+    // ─── fail() ─────────────────────────────────────────────────────────────────
+
+    noir_result noir_vm::fail(noir_error reason, char const* fmt, ...) noexcept
+    {
+        _last_error = reason;
+
+        // Named here rather than in forty format strings: every death is a
+        // script's, and the one thing the reader always wants is which.
+        int n = snprintf(_error_message, sizeof(_error_message), "script %u: ", _cur.script_id);
+        if (n < 0 || to<size_t>(n) >= sizeof(_error_message)) n = 0;
+
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(_error_message + n, sizeof(_error_message) - to<size_t>(n), fmt, args);
+        va_end(args);
+
+        // Built whether or not anything is listening: the player is shown this
+        // in every build, and the log is only the second reader.
+        NE_LOG("%s", _error_message);
+
+        _vm_state  = noir_vm_state::failed;
+        _cur.state = noir_session_state::died;
+        return noir_result::failed;
+    }
+
     // ─── execute(func_id) ───────────────────────────────────────────────────────
 
-    noir_result noir_vm::execute(u16 func_id) noexcept
+    mtl::expected<void, noir_error> noir_vm::execute(u16 func_id) noexcept
     {
         if (func_id >= _func_count)
         {
             NE_LOG("invalid func_id %u (count=%u)", func_id, _func_count);
-            return refuse(noir_error::invalid_func);
+            return mtl::unexpected(noir_error::invalid_func);
         }
 
         for (size_t i = 0; i < _sessions.size(); ++i)
@@ -109,7 +138,7 @@ namespace NEONengine
             if (s.script_id == func_id && session_live(s))
             {
                 NE_LOG("script %u is already running; request dropped", func_id);
-                return refuse(noir_error::duplicate_script);
+                return mtl::unexpected(noir_error::duplicate_script);
             }
         }
 
@@ -117,7 +146,7 @@ namespace NEONengine
         if (!ensure_stack_slots(to<u16>(slot + 1)))
         {
             NE_LOG("no stack for script %u; request dropped", func_id);
-            return refuse(noir_error::out_of_memory);
+            return mtl::unexpected(noir_error::out_of_memory);
         }
 
         noir_session started{};
@@ -143,7 +172,7 @@ namespace NEONengine
         push32(to<u32>(_cur.fp));
 
         // A frame that would not fit leaves the session dead; do not revive it.
-        bool const fits = _cur.state != noir_session_state::halted;
+        bool const fits = _cur.state != noir_session_state::died;
         if (fits)
         {
             _cur.fp = _cur.sp;
@@ -153,7 +182,8 @@ namespace NEONengine
         _cur        = outer;
         _stack_base = stack_base_for(_cur.stack_index);
 
-        return fits ? noir_result::ok : noir_result::failed;
+        if (fits) return {};
+        return mtl::unexpected(_last_error);
     }
 
     // ─── Stack slots ────────────────────────────────────────────────────────────
@@ -223,7 +253,7 @@ namespace NEONengine
         // SP starts at the top of the stack (grows downward)
         _cur.sp    = _stack_bytes;
         _cur.fp    = _cur.sp;
-        _cur.state = noir_session_state::halted;
+        _cur.state = noir_session_state::ended;
     }
 
     // ─── reset_execution() ────────────────────────────────────────────────────────
@@ -240,13 +270,14 @@ namespace NEONengine
 
         _exit_code        = 0;
         _last_error       = noir_error::none;
+        _error_message[0] = '\0';
         _cached_dst_mode  = 0;
         _cached_dst_param = 0;
     }
 
     // ─── update() ───────────────────────────────────────────────────────────────
 
-    noir_result noir_vm::update() noexcept
+    mtl::expected<noir_result, noir_error> noir_vm::update() noexcept
     {
         // A terminal call ended the scene these sessions belong to. Resuming one
         // would run it in a scene that is already over, so nothing runs until
@@ -315,7 +346,7 @@ namespace NEONengine
         switch (_vm_state)
         {
             case noir_vm_state::terminated: return noir_result::terminated;
-            case noir_vm_state::failed: return noir_result::failed;
+            case noir_vm_state::failed: return mtl::unexpected(_last_error);
             case noir_vm_state::ok: break;
         }
 
@@ -403,9 +434,7 @@ namespace NEONengine
             case 0xB: return op_game_dialogue(opcode);
             case 0xC: return op_game_menu(opcode);
             case 0xE: return op_debug(opcode);
-            default:
-                NE_LOG("invalid opcode 0x%02X", opcode);
-                return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", opcode);
         }
     }
 
@@ -428,22 +457,21 @@ namespace NEONengine
             case HALT:
                 // Not "finished" - a case the author says cannot happen. It
                 // kills this session and reports, like any other script error.
-                NE_LOG("HALT executed in script %hu", _cur.script_id);
-                return fail(noir_error::halt);
+                return fail(noir_error::halt, "HALT");
 
             case CALL:
             {
                 u16 func_id = read_u16();
                 if (func_id >= _func_count)
                 {
-                    NE_LOG("CALL invalid func_id %u", func_id);
-                    return fail(noir_error::invalid_func);
+                    return fail(
+                        noir_error::invalid_func, "CALL to function %u, which does not exist", func_id);
                 }
                 auto target = to<u16>(_func_toc[func_id]);
                 push32(to<u32>(_cur.pc));
                 push32(to<u32>(_cur.fp));
 
-                if (_cur.state == noir_session_state::halted) return noir_result::failed;
+                if (_cur.state == noir_session_state::died) return noir_result::failed;
 
                 _cur.fp = _cur.sp;
                 _cur.pc = target;
@@ -458,7 +486,7 @@ namespace NEONengine
             case LOCALS:
             {
                 u8 n = read_u8();
-                if (stack_overflow(n)) return fail(noir_error::stack_overflow);
+                if (stack_overflow(n)) return noir_result::failed;
                 _cur.sp -= n;
                 return noir_result::ok;
             }
@@ -466,22 +494,14 @@ namespace NEONengine
             case RET: do_ret(); return noir_result::ok;
 
             case RETZ:
-                if (_cur.sr & Z)
-                {
-                    do_ret();
-                    return noir_result::ok;
-                }
+                if (_cur.sr & Z) do_ret();
                 return noir_result::ok;
 
             case RETC:
-                if (_cur.sr & C)
-                {
-                    do_ret();
-                    return noir_result::ok;
-                }
+                if (_cur.sr & C) do_ret();
                 return noir_result::ok;
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -566,7 +586,7 @@ namespace NEONengine
                 return noir_result::ok;
             }
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -623,8 +643,7 @@ namespace NEONengine
                 u16 b = read_operand(src_mode);
                 if (b == 0)
                 {
-                    NE_LOG("division by zero");
-                    return fail(noir_error::division_zero);
+                    return fail(noir_error::division_zero, "divided by zero");
                 }
                 i16 sa = to<i16>(a);
                 i16 sb = to<i16>(b);
@@ -640,8 +659,7 @@ namespace NEONengine
                 u16 b = read_operand(src_mode);
                 if (b == 0)
                 {
-                    NE_LOG("modulo by zero");
-                    return fail(noir_error::division_zero);
+                    return fail(noir_error::division_zero, "took a modulo by zero");
                 }
                 i16 sa = to<i16>(a);
                 i16 sb = to<i16>(b);
@@ -687,7 +705,7 @@ namespace NEONengine
                 return noir_result::ok;
             }
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -793,7 +811,7 @@ namespace NEONengine
                 return noir_result::ok;
             }
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -820,7 +838,7 @@ namespace NEONengine
                 break;
             case BCS: take = (_cur.sr & C) != 0; break;
             case BCC: take = (_cur.sr & C) == 0; break;
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
 
         if (take)
@@ -841,28 +859,28 @@ namespace NEONengine
             case SETF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, true);
                 return noir_result::ok;
             }
             case CLRF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, false);
                 return noir_result::ok;
             }
             case TOGF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, !get_flag(idx));
                 return noir_result::ok;
             }
             case TSTF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 // Z=1 when flag is clear, Z=0 when flag is set
                 _cur.sr = get_flag(idx) ? 0 : Z;
                 return noir_result::ok;
@@ -873,7 +891,7 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, true);
                 return noir_result::ok;
             }
@@ -881,7 +899,7 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, false);
                 return noir_result::ok;
             }
@@ -889,7 +907,7 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, !get_flag(idx));
                 return noir_result::ok;
             }
@@ -897,7 +915,7 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 _cur.sr = get_flag(idx) ? 0 : Z;
                 return noir_result::ok;
             }
@@ -907,7 +925,7 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 u16 val         = get_flag(idx) ? 1 : 0;
                 _cur.d[reg & 3] = val;
                 set_flags_nz(val);
@@ -917,12 +935,12 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob);
+                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, (_cur.d[reg & 3] & 1) != 0);
                 return noir_result::ok;
             }
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -931,7 +949,8 @@ namespace NEONengine
     noir_result noir_vm::op_value_ops(u8 op) noexcept
     {
         u16 idx = read_u16();
-        if (!validate_value_index(idx)) return fail(noir_error::value_oob);
+        if (!validate_value_index(idx))
+            return fail(noir_error::value_oob, "value %u is out of range", idx);
 
         switch (op)
         {
@@ -976,7 +995,7 @@ namespace NEONengine
                 return noir_result::ok;
             }
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -996,7 +1015,7 @@ namespace NEONengine
 
             case INV_CLEAR: return call(_bridge->inv_clear);
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -1010,7 +1029,7 @@ namespace NEONengine
 
             case ANIM_STOP: return call(_bridge->anim_stop, _cur.d[0]);
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -1030,7 +1049,7 @@ namespace NEONengine
 
             case SET_POINTER: return call(_bridge->set_pointer, _cur.d[0]);
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -1054,7 +1073,7 @@ namespace NEONengine
 
             case PLAY_SFX: return call(_bridge->play_sfx, _cur.d[0]);
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -1080,7 +1099,7 @@ namespace NEONengine
 
             case QUIT_GAME: return call(_bridge->quit_game);
 
-            default: return fail(noir_error::invalid_opcode);
+            default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }
 
@@ -1194,7 +1213,7 @@ namespace NEONengine
         if (return_pc != SENTINEL_PC) return;
 
         _exit_code = _cur.d[0];
-        _cur.state = noir_session_state::halted;
+        _cur.state = noir_session_state::ended;
     }
 
     // ─── Stack operations ───────────────────────────────────────────────────────
@@ -1249,8 +1268,7 @@ namespace NEONengine
     {
         if (_cur.sp < bytes)
         {
-            NE_LOG("script %u overran its %u byte stack", _cur.script_id, _stack_bytes);
-            fail(noir_error::stack_overflow);
+            fail(noir_error::stack_overflow, "ran out of its %u byte stack", _stack_bytes);
             return true;
         }
 
@@ -1265,8 +1283,7 @@ namespace NEONengine
     {
         if (_cur.sp + bytes > _stack_bytes)
         {
-            NE_LOG("script %u popped more than it pushed", _cur.script_id);
-            fail(noir_error::stack_underflow);
+            fail(noir_error::stack_underflow, "popped more than it pushed");
             return true;
         }
         return false;
@@ -1316,8 +1333,7 @@ namespace NEONengine
                 u16 idx = read_u16();
                 if (!validate_value_index(idx))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", idx);
                     return 0;
                 }
                 return _values[idx];
@@ -1327,8 +1343,7 @@ namespace NEONengine
             {
                 if (!validate_value_index(_cur.d[0]))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", _cur.d[0]);
                     return 0;
                 }
                 return _values[_cur.d[0]];
@@ -1361,8 +1376,7 @@ namespace NEONengine
                 u16 idx = read_u16();
                 if (!validate_value_index(idx))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", idx);
                     break;
                 }
                 _values[idx] = value;
@@ -1373,8 +1387,7 @@ namespace NEONengine
             {
                 if (!validate_value_index(_cur.d[0]))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", _cur.d[0]);
                     break;
                 }
                 _values[_cur.d[0]] = value;
@@ -1420,8 +1433,7 @@ namespace NEONengine
                 _cached_dst_param = idx;
                 if (!validate_value_index(idx))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", idx);
                     return 0;
                 }
                 return _values[idx];
@@ -1431,8 +1443,7 @@ namespace NEONengine
             {
                 if (!validate_value_index(_cur.d[0]))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", _cur.d[0]);
                     return 0;
                 }
                 return _values[_cur.d[0]];
@@ -1464,8 +1475,7 @@ namespace NEONengine
             {
                 if (!validate_value_index(_cached_dst_param))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", _cached_dst_param);
                     break;
                 }
                 _values[_cached_dst_param] = value;
@@ -1476,8 +1486,7 @@ namespace NEONengine
             {
                 if (!validate_value_index(_cur.d[0]))
                 {
-                    _last_error = noir_error::value_oob;
-                    _cur.state  = noir_session_state::halted;
+                    fail(noir_error::value_oob, "value %u is out of range", _cur.d[0]);
                     break;
                 }
                 _values[_cur.d[0]] = value;
@@ -1545,16 +1554,12 @@ namespace NEONengine
 
     bool noir_vm::validate_flag_index(u16 index) const noexcept
     {
-        if (index < to<u16>(_flags_size * 8)) return true;
-        NE_LOG("flag index %u out of bounds (max=%u)", index, _flags_size * 8);
-        return false;
+        return index < to<u16>(_flags_size * 8);
     }
 
     bool noir_vm::validate_value_index(u16 index) const noexcept
     {
-        if (index < _values_count) return true;
-        NE_LOG("value index %u out of bounds (max=%u)", index, _values_count);
-        return false;
+        return index < _values_count;
     }
 
     // ─── Debug ──────────────────────────────────────────────────────────────────

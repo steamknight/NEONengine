@@ -95,13 +95,18 @@ through one, so nothing can read that scratch except the opcode that wrote it.
     │ RUNNABLE │────────────▶│ WAITING  │
     │          │◀────────────│   (n)    │
     └──────────┘  n reaches 0└──────────┘
-        │
-        │ RET from the top frame, or an error
-        ▼
-    ┌──────────┐
-    │   DEAD   │  removed at the end of the frame
-    └──────────┘
+       │    │
+       │    └─────────────────────┐
+       │ RET from the top frame   │ an error
+       ▼                          ▼
+    ┌──────────┐            ┌──────────┐
+    │  ENDED   │            │   DIED   │
+    └──────────┘            └──────────┘
+        both are removed at the end of the frame
 ```
+
+The run list treats the two the same. Everyone else does not: only an error
+produces DIED, and only the error funnel can raise one. See [Errors](#errors).
 
 Nothing suspends a session but `WAIT` and the scene choosing not to call the VM
 at all.
@@ -200,7 +205,9 @@ The closing line reports the worst update seen, not the last one.
 Puts a script at the back of the run list. It runs on the next VM update, which
 may be the same frame if the VM has not run yet.
 
-It returns nothing.
+It says whether the request was taken, and if not, why: no such function, no
+memory for a stack, a session already running that script, or a stack too small
+to hold the script's first frame.
 
 If a session for that script is already live, the VM drops the request and logs
 a warning. The player never sees it. Debug builds may show it on screen.
@@ -370,23 +377,30 @@ its entry script from the beginning.
 
 A script error kills one session. The rest keep running.
 
-`update()` says `failed` for the update a session died in — a death outranks
-sessions merely remaining — and `last_error()` says which of the `noir_error`
-reasons it was. The verdict belongs to that one update; the next is ordinary
-again while the reason stays on record.
+`update()` hands back the reason in place of its result for the update a session
+died in — a death outranks sessions merely remaining. The verdict belongs to
+that one update; the next is ordinary again.
 
-The VM logs it and sends it to the bridge, which puts it on screen with the same
-nine-patch box `SAY` uses. It is a modal, so the game holds still until the
-player dismisses it.
+Every death goes through one funnel. It records the reason, writes a line naming
+the script and the fault, and marks the session dead. Nothing else may kill a
+session, which is what stops the three from disagreeing.
 
-This happens in every build. A message naming the fault beats a game that stops
-working for no visible reason.
+The VM logs that line and sends it to the bridge, which puts it on screen with
+the same nine-patch box `SAY` uses. It is a modal, so the game holds still until
+the player dismisses it.
+
+The line is written in every build, whether or not logging is compiled in. A
+message naming the fault beats a game that stops working for no visible reason.
 
 Errors include a bad opcode, a stack overflow from deep `CALL` nesting, a bad
 jump target, and an `execute_now` script that runs past its instruction cap.
 
 A script can raise one itself with `HALT`. It says the author reached a case
 that should never happen, and it kills only the session that ran it.
+
+A request the VM turns down is not one of these. `execute()` refusing a script
+that is already running kills nothing and tells the player nothing; it is handed
+back to whoever asked.
 
 ---
 

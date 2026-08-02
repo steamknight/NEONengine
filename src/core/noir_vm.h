@@ -7,6 +7,7 @@
 
 #include <ace/types.h>
 
+#include "mtl/expected.h"
 #include "mtl/memory.h"
 #include "mtl/utility.h"
 #include "mtl/vector.h"
@@ -18,7 +19,7 @@ namespace NEONengine
     /**
      * @brief Why a session died.
      *
-     * Read through last_error() after a call comes back @c failed.
+     * update() and execute() hand this back in place of their result.
      */
     enum class noir_error : u8
     {
@@ -49,7 +50,7 @@ namespace NEONengine
         yielded,    ///< update(): sessions remain — call it again next frame
         terminated, ///< update(): a terminal call ran; nothing runs until reset_execution()
         deferred,   ///< An instruction: a deferred bridge call ended the walk
-        failed,     ///< A session died; last_error() says why
+        failed,     ///< An instruction: the session died. update() reports the reason instead.
     };
 
     /**
@@ -62,7 +63,7 @@ namespace NEONengine
     enum class noir_vm_state : u8
     {
         ok,          ///< Nothing went wrong this update
-        failed,      ///< A session died this update; last_error() says why
+        failed,      ///< A session died this update
         terminated,  ///< A terminal call ran; nothing runs until reset_execution()
     };
 
@@ -179,9 +180,10 @@ namespace NEONengine
 
     enum class noir_session_state : u8
     {
-        running,  ///< Actively executing opcodes
+        running,  ///< Actively executing instructions
         waiting,  ///< WAIT timer active (wait_counter > 0)
-        halted,   ///< Finished or errored
+        ended,    ///< Ran to its end
+        died,     ///< An error killed it. Only fail() puts a session here.
     };
 
     // ─── noir_session ───────────────────────────────────────────────────────────
@@ -288,9 +290,9 @@ namespace NEONengine
          * function the request is dropped.
          *
          * @param func_id Function index in the TOC (0-based)
-         * @return noir_result::ok on success, or an error status
+         * @return Nothing on success, or why the request was turned down
          */
-        noir_result execute(u16 func_id) noexcept;
+        mtl::expected<void, noir_error> execute(u16 func_id) noexcept;
 
         /**
          * @brief Run one update tick.
@@ -306,10 +308,11 @@ namespace NEONengine
          * reset_execution() lifts that.
          *
          * @return `yielded` while sessions remain, `terminated` while a
-         *         teardown is owed, otherwise how the last session ended; `ok`
-         *         when there was nothing to run.
+         *         teardown is owed, `completed` when the run list emptied, `ok`
+         *         when there was nothing to run — or why a session died, which
+         *         outranks all of them.
          */
-        noir_result update() noexcept;
+        mtl::expected<noir_result, noir_error> update() noexcept;
 
         /**
          * @brief Abandon every session and empty the run list.
@@ -332,10 +335,12 @@ namespace NEONengine
         // ── Accessors ────────────────────────────────────────────────────────
 
         noir_session_state state() const noexcept { return _cur.state; }
-        noir_error last_error() const noexcept { return _last_error; }
         u16 exit_code() const noexcept { return _exit_code; }
         u16 reg_d(u8 i) const noexcept { return _cur.d[i & 3]; }
         u8 sr() const noexcept { return _cur.sr; }
+
+        /// What killed the last session to die, in words. Empty until one does.
+        char const* error_message() const noexcept { return _error_message; }
 
         /// True while a terminal call is waiting for its teardown.
         bool terminated() const noexcept { return _vm_state == noir_vm_state::terminated; }
@@ -436,21 +441,16 @@ namespace NEONengine
         /// Z=0 when true, Z=1 when false. Defined where the SR bits are visible.
         void set_flag_result(bool value) noexcept;
 
-        /// Records why a session died and kills it. Every error path goes here.
-        noir_result fail(noir_error reason) noexcept
-        {
-            _last_error = reason;
-            _vm_state   = noir_vm_state::failed;
-            _cur.state  = noir_session_state::halted;
-            return noir_result::failed;
-        }
-
-        /// Records why a request was turned down. Nothing was running to kill.
-        noir_result refuse(noir_error reason) noexcept
-        {
-            _last_error = reason;
-            return noir_result::failed;
-        }
+        /**
+         * @brief Kills the running session and says why. Every death goes here.
+         *
+         * Records the reason, writes the message where the player will read it,
+         * and logs it. Turning a script down without killing anything is not a
+         * failure and does not belong here: execute() hands its refusals back
+         * to the caller instead.
+         */
+        noir_result fail(noir_error reason, char const* fmt, ...) noexcept
+            __attribute__((format(printf, 3, 4)));
 
         // ── Stack operations ─────────────────────────────────────────────────
 
@@ -462,14 +462,14 @@ namespace NEONengine
 
         /**
          * @brief True if pushing this many bytes would overrun the session's stack.
-         * Kills the session with err_stack_overflow when it would. Records a new
-         * high-water mark when it would not.
+         * Kills the session when it would. Records a new high-water mark when it
+         * would not.
          */
         bool stack_overflow(u16 bytes) noexcept;
 
         /**
          * @brief True if popping this many bytes would underrun the session's stack.
-         * Kills the session with err_stack_underflow when it would.
+         * Kills the session when it would.
          */
         bool stack_underflow(u16 bytes) noexcept;
 
@@ -511,7 +511,8 @@ namespace NEONengine
         /// True while a session can still be given instructions.
         static bool session_live(noir_session const& s) noexcept
         {
-            return s.state != noir_session_state::halted;
+            return s.state == noir_session_state::running
+                || s.state == noir_session_state::waiting;
         }
 
         /// Lowest stack slot no live session holds.
@@ -586,7 +587,12 @@ namespace NEONengine
         // ── Result ───────────────────────────────────────────────────────────
 
         u16 _exit_code;
+
+        /// Why the last session died. Reported through update() and execute().
         noir_error _last_error;
+
+        /// The same thing in words, for the player. Written only by fail().
+        char _error_message[96];
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 

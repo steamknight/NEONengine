@@ -264,6 +264,107 @@ namespace mtl
         constexpr E const& error() const { return _error; }
     };
 
+    /**
+     * @brief An operation that either worked or says why it did not.
+     *
+     * There is no value to hold, so the error sits in a plain member and the
+     * union goes away. E has to be default-constructible; every error enum is.
+     */
+    template<typename E>
+    class expected<void, E>
+    {
+        E _error;
+        bool _has;
+
+        public:  ///////////////////////////////////////////////////////////////////////////////////
+        /**
+         * @brief Tag type for error construction
+         */
+        struct error_tag {};
+        static constexpr error_tag unexpect{};
+
+        /**
+         * @brief Construct a success
+         */
+        constexpr expected() : _error(), _has(true) {}
+
+        /**
+         * @brief Construct with an error
+         */
+        constexpr expected(error_tag, E const& e) : _error(e), _has(false) {}
+
+        /**
+         * @brief Construct from unexpected_t - compatible type conversion
+         */
+        template<typename U>
+        constexpr expected(unexpected_t<U> const& u)
+            : _error(static_cast<E>(u.error))
+            , _has(false)
+        {
+        }
+
+        /**
+         * @brief Construct from unexpected_t (rvalue) - compatible type conversion
+         */
+        template<typename U>
+        constexpr expected(unexpected_t<U>&& u) : _error(static_cast<E>(u.error)), _has(false)
+        {
+        }
+
+        /**
+         * @brief Assignment from unexpected_t
+         */
+        template<typename U>
+        constexpr expected& operator=(unexpected_t<U> const& u)
+        {
+            _error = static_cast<E>(u.error);
+            _has   = false;
+            return *this;
+        }
+
+        /**
+         * @brief Swap contents with another expected
+         */
+        constexpr void swap(expected& o)
+        {
+            mtl::swap(_error, o._error);
+            mtl::swap(_has, o._has);
+        }
+
+        /**
+         * @brief True if the operation worked
+         */
+        constexpr bool has_value() const { return _has; }
+        /**
+         * @brief Explicit bool conversion
+         */
+        constexpr explicit operator bool() const { return _has; }
+        /**
+         * @brief There is no value; provided so generic code compiles
+         */
+        constexpr void value() const {}
+        /**
+         * @brief Get error (unchecked)
+         */
+        constexpr E& error() { return _error; }
+        /**
+         * @brief Get error (const, unchecked)
+         */
+        constexpr E const& error() const { return _error; }
+    };
+
+    /**
+     * @brief True when the operation worked and produced exactly @p v.
+     *
+     * One holding an error is equal to no value at all, so a caller can ask
+     * for the result it wanted without asking whether there is one first.
+     */
+    template<typename T, typename E>
+    constexpr bool operator==(expected<T, E> const& e, T const& v)
+    {
+        return e.has_value() && e.value() == v;
+    }
+
 }  // namespace mtl
 
 #endif  // __MTL__EXPECTED_H__INCLUDED__

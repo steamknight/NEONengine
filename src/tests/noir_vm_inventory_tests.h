@@ -967,7 +967,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x85 reserved");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x85 reserved");
         TEST_SUCCESS;
     }
 
@@ -983,7 +983,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x8F reserved");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x8F reserved");
         TEST_SUCCESS;
     }
 

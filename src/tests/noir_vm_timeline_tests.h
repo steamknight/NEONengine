@@ -405,7 +405,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x92 is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x92 is invalid");
         TEST_ASSERT(vm.exit_code() != 4242, "the session died rather than running on");
         TEST_SUCCESS;
     }
@@ -422,7 +422,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x93 is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x93 is invalid");
         TEST_SUCCESS;
     }
 
@@ -438,7 +438,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x9F is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x9F is invalid");
         TEST_SUCCESS;
     }
 
@@ -454,7 +454,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x95 is invalid");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x95 is invalid");
         TEST_SUCCESS;
     }
 

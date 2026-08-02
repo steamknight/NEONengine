@@ -146,8 +146,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB flag");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB flag");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -281,8 +281,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -379,8 +379,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -542,8 +542,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -621,8 +621,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -811,8 +811,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -904,8 +904,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -1078,8 +1078,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::died, "should be dead");
         TEST_SUCCESS;
     }
 
@@ -1209,7 +1209,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "reserved opcode should error");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "reserved opcode should error");
         TEST_SUCCESS;
     }
 
