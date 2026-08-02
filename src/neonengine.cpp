@@ -16,7 +16,6 @@ namespace NEONengine
     namespace
     {
         constexpr UWORD UI_PALETTE_COLOR_COUNT = 32;    ///< UI colors, palette indices 0..31.
-        constexpr u16 NOIR_STACK_SIZE          = 1024;  ///< Stack of one script session, in bytes.
 
         /**
          * @brief True when @p strings was produced by the same build as the pak.
@@ -138,8 +137,7 @@ namespace NEONengine
             scripts.size(),
             functions.data(),
             to<u16>(functions.size()),
-            &engine_bridge(),
-            NOIR_STACK_SIZE));
+            &engine_bridge()));
 
         NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
             to<ULONG>(scripts.size()),

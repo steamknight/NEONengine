@@ -325,7 +325,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        vm.set_frame_pool(400);
+        vm.set_frame_budget(400);
         g_mock_log.reset();
         vm.execute(fn_fade);
         vm.execute(fn_other);

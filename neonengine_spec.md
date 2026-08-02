@@ -847,13 +847,13 @@ and its execution model in [noir_vm_execution_model.md](noir_vm_execution_model.
 
 - **Register-based** — 4 general-purpose data registers (D0–D3, 16-bit), status register (N/Z/C/V flags), stack/frame/program counter offsets
 - **16-bit word size**, big-endian bytecode
-- **Several scripts at once** — sessions in a run list, each with its own stack and registers, each given a slice of a per-frame instruction pool
+- **Several scripts at once** — sessions in a run list, each with its own stack and registers, each given a slice of a per-frame instruction budget
 - **Addressing modes** packed in a single mode byte — immediates, registers, FP-relative locals, VALUES array (direct and register-indexed)
 - **External game state**: borrowed FLAGS bitfield plus its exact logical flag
   count, and a VALUES array of 16-bit integers; padding bits in the final FLAGS
   byte are never addressable
 - **Engine bridge**: `NoirBridge` struct of function pointers decouples VM from all engine systems (inventory, scenes, dialogue, audio, screen, animations, save/load)
-- **Deferred bridge calls**: the kind is declared with the function in the bridge table. A modal one (SAY, SHOW_DIALOG, SAVE_GAME, FADE_OUT/IN) records a request and drains the frame pool, ending the update; a terminal one (GOTO_SCENE, LOAD_GAME, NEW_GAME, QUIT_GAME) also stops the VM until it is torn down. The scene acts on the request and decides when the VM runs again
+- **Deferred bridge calls**: the kind is declared with the function in the bridge table. A modal one (SAY, SHOW_DIALOG, SAVE_GAME, FADE_OUT/IN) records a request and spends the rest of the frame budget, ending the update; a terminal one (GOTO_SCENE, LOAD_GAME, NEW_GAME, QUIT_GAME) also stops the VM until it is torn down. The scene acts on the request and decides when the VM runs again
 - **Waiting**: `WAIT n` parks one session for n VM updates
 - **~70 opcodes** across 10 categories: script execution, data movement, arithmetic, logic, control flow, flag operations, value operations, game calls (inventory / timeline / scenes / dialogue-audio / menu-settings), and debug
 - **Error handling**: all errors returned as `noir_result` codes — no exceptions. An error kills the session that caused it and leaves the rest running

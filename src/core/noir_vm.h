@@ -14,6 +14,25 @@
 
 namespace NEONengine
 {
+    // ─── Tuning ─────────────────────────────────────────────────────────────────
+    //
+    // The numbers worth changing, together so they can be found.
+
+    /// Stack of one script session, in bytes.
+    constexpr u16 NOIR_STACK_SIZE = 1024;
+
+    /// Instructions one session may run in one frame.
+    constexpr u16 NOIR_SESSION_BUDGET = 10;
+
+    /// Instructions all sessions together may run in one frame. The session
+    /// budget is the smaller of the two by design, so no one script can take
+    /// the frame from the rest.
+    constexpr u16 NOIR_FRAME_BUDGET = 40;
+
+    /// Instructions one execute_now run may spend. It runs outside a frame, so
+    /// the frame budget cannot bound it and it needs a cap of its own.
+    constexpr u16 NOIR_IMMEDIATE_CAP = 2048;
+
     // ─── Results ────────────────────────────────────────────────────────────────
 
     /**
@@ -122,9 +141,10 @@ namespace NEONengine
      * headers. Every function pointer must stay valid as long as the VM does.
      *
      * A deferred call records what the script asked for and returns; the opcode
-     * then drains the frame pool, so no session runs again this update. The
-     * scene acts on the request at the top of the next frame. A terminal one
-     * also stops the VM until the teardown it asked for has happened.
+     * then spends the rest of the frame budget, so no session runs again this
+     * update. The scene acts on the request at the top of the next frame. A
+     * terminal one also stops the VM until the teardown it asked for has
+     * happened.
      *
      * @see noir_vm
      */
@@ -241,7 +261,7 @@ namespace NEONengine
      * @par Sessions
      * Several scripts run at once, each in its own session with its own
      * registers and stack. update() walks the run list handing out slices of
-     * instructions until the frame's pool is spent or nothing can run.
+     * instructions until the frame budget is spent or nothing can run.
      *
      * @see noir_bridge
      * @see noir_opcodes.h
@@ -272,7 +292,7 @@ namespace NEONengine
             u32 const* func_toc,
             u16 func_count,
             noir_bridge const* bridge,
-            u16 stack_size) noexcept;
+            u16 stack_size = NOIR_STACK_SIZE) noexcept;
 
         ~noir_vm() noexcept = default;
 
@@ -300,8 +320,8 @@ namespace NEONengine
          *
          * For the case where the VM is stopped and something must happen
          * anyway - a conversation choice that changes the music. It ignores the
-         * run list, the duplicate check, the session budget and the frame pool,
-         * and runs in the one reserved immediate context.
+         * run list, the duplicate check, the session budget and the frame
+         * budget, and runs in the one reserved immediate context.
          *
          * Only engine code may call it, and only from outside an update: a
          * bridge function reaching it from inside an opcode is re-entry, and
@@ -316,7 +336,7 @@ namespace NEONengine
          * @brief Run one update tick.
          *
          * Walks the run list in passes, giving each session that can run a
-         * slice of instructions, until the frame pool is spent or nothing can
+         * slice of instructions, until the frame budget is spent or nothing can
          * run. Sessions that ended are removed at the end.
          *
          * Call this once per frame. Keep calling while the result is `yielded`.
@@ -351,10 +371,10 @@ namespace NEONengine
 
         // ── Accessors ────────────────────────────────────────────────────────
 
-        noir_session_state state() const noexcept { return _cur.state; }
+        noir_session_state state() const noexcept { return _current_session.state; }
         u16 exit_code() const noexcept { return _exit_code; }
-        u16 reg_d(u8 i) const noexcept { return _cur.d[i & 3]; }
-        u8 sr() const noexcept { return _cur.sr; }
+        u16 reg_d(u8 i) const noexcept { return _current_session.d[i & 3]; }
+        u8 sr() const noexcept { return _current_session.sr; }
 
         /// What killed the last session to die, in words. Empty until one does.
         char const* error_message() const noexcept { return _error_message; }
@@ -375,7 +395,7 @@ namespace NEONengine
          * @brief Set the most all sessions together may run in one frame.
          * @param count Instructions per frame (default: 40)
          */
-        void set_frame_pool(u16 count) noexcept { _frame_pool = count; }
+        void set_frame_budget(u16 count) noexcept { _frame_budget = count; }
 
         /**
          * @brief Set the most instructions one execute_now script may run.
@@ -390,15 +410,16 @@ namespace NEONengine
 
         private:  //////////////////////////////////////////////////////////////////////////////////
         /**
-         * @brief Who is using the register window.
+         * @brief What the VM is running, if anything.
          *
-         * The window holds one session and the VM cannot save a second, so
-         * execute_now needs it free. That covers both of its rules: no call
-         * from inside an update, and no call from inside another.
+         * One session sits in _current_session at a time and the VM cannot save
+         * a second, so execute_now needs this idle. That covers both of its
+         * rules: no call from inside an update, and no call from inside
+         * another.
          */
-        enum class window_owner : u8
+        enum class run_mode : u8
         {
-            nobody,
+            idle,
             update,     ///< update() is walking the run list
             immediate,  ///< execute_now() is running a script
         };
@@ -448,7 +469,7 @@ namespace NEONengine
             // Checked before the call, so nothing records the request. No frame
             // draws until execute_now returns, so the box would never appear
             // and the player could never dismiss it.
-            if (_window_owner == window_owner::immediate)
+            if (_run_mode == run_mode::immediate)
                 return fail(noir_error::immediate_modal, "a modal call under execute_now");
 
             b.fn(args...);
@@ -469,7 +490,7 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call_result(immediate<Sig> const& b, Args... args) noexcept
         {
-            _cur.d[0] = b.fn(args...);
+            _current_session.d[0] = b.fn(args...);
             return noir_result::ok;
         }
 
@@ -625,9 +646,9 @@ namespace NEONengine
         // ── Owned memory ─────────────────────────────────────────────────────
 
         mtl::vector<u8, mtl::MemF::Fast> _stack;
-        u8* _stack_base;   ///< Base of the running session's stack
-        u16 _stack_bytes;  ///< Size of one session's stack
-        u16 _stack_slots;  ///< Stacks the allocation currently holds
+        u8* _stack_base{nullptr};  ///< Base of the running session's stack
+        u16 _stack_bytes;          ///< Size of one session's stack
+        u16 _stack_slots;          ///< Stacks the allocation currently holds
 
         // ── The run list ─────────────────────────────────────────────────────
 
@@ -635,39 +656,46 @@ namespace NEONengine
 
         // ── The running session ──────────────────────────────────────────────
 
-        noir_session _cur;
+        noir_session _current_session{};
 
         // ── Execution state ──────────────────────────────────────────────────
 
-        u16 _call_depth;      ///< Current internal CALL nesting
-        u16 _session_budget;  ///< Instructions per session per frame (default: 10)
-        u16 _frame_pool;      ///< Instructions per frame, all sessions (default: 40)
-        u16 _immediate_cap;   ///< Instructions one execute_now run may spend (default: 2048)
-        u16 _rotation;        ///< Run list position the next update starts at
+        u16 _call_depth{0};  ///< Current internal CALL nesting
 
-        window_owner _window_owner;  ///< Who is using the register window
-        noir_vm_state _vm_state;     ///< How this update ended, or the latch
+        /// Instructions one session may run in one frame.
+        u16 _session_budget{NOIR_SESSION_BUDGET};
+
+        /// Instructions all sessions together may run in one frame.
+        u16 _frame_budget{NOIR_FRAME_BUDGET};
+
+        /// Instructions one execute_now run may spend.
+        u16 _immediate_cap{NOIR_IMMEDIATE_CAP};
+
+        u16 _rotation{0};  ///< Run list position the next update starts at
+
+        run_mode _run_mode{run_mode::idle};              ///< What the VM is running
+        noir_vm_state _vm_state{noir_vm_state::ok};      ///< How this update ended, or the latch
 
         // ── Result ───────────────────────────────────────────────────────────
 
-        u16 _exit_code;
+        u16 _exit_code{0};
 
         /// Why the last session died. update(), execute() and execute_now()
         /// report it.
-        noir_error _last_error;
+        noir_error _last_error{noir_error::none};
 
         /// The same thing in words, for the player. fail() is its only writer.
-        char _error_message[96];
+        char _error_message[96]{};
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 
-        u8 _cached_dst_mode;    ///< Mode of last read_operand_cached() call
-        u16 _cached_dst_param;  ///< Inline param (offset or index) from that call
+        u8 _cached_dst_mode{0};    ///< Mode of last read_operand_cached() call
+        u16 _cached_dst_param{0};  ///< Inline param (offset or index) from that call
 
         // ── Debug stats ──────────────────────────────────────────────────────
 
 #ifdef GAME_DEBUG
-        noir_debug_stats _debug_stats;
+        noir_debug_stats _debug_stats{};
 #endif
     };
 

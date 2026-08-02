@@ -224,7 +224,7 @@ namespace NEONengine
         u16 fn_second = def_marker_func(bc, 0x0B03);
 
         auto vm = bc.build_vm();
-        vm.set_frame_pool(1000);
+        vm.set_frame_budget(1000);
         g_mock_log.reset();
         vm.execute(fn_first);
         vm.execute(fn_second);

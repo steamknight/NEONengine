@@ -57,7 +57,7 @@ NoirScript is a bytecode format and virtual machine for driving game scripts in 
 - Register-based (4 data registers + stack)
 - 16-bit word size, big-endian bytecode
 - Several scripts at once, each a session with its own stack and registers
-- Time-sliced: a per-session instruction budget and a per-frame pool
+- Time-sliced: a per-session instruction budget and a per-frame budget
 - No exceptions — all errors returned as status codes
 - External FLAGS (bitfield) and VALUES (16-bit array) for game state
 
@@ -446,7 +446,7 @@ opcode ends the VM's walk over its run list.
 | Deferred terminal | Records a request; the VM stops until it is torn down | Yes |
 
 A deferred call does not act. It records what the script asked for, returns, and
-drains the frame pool, which ends the walk at once — no session runs again in
+spends the rest of the frame budget, which ends the walk at once — no session runs again in
 that update, the caller included. The session stays runnable with its program
 counter on the opcode after the call, and the scene decides when the VM runs
 again.
@@ -653,7 +653,7 @@ Each frame:
 ```
 
 `update()` gives each session in the run list a slice of instructions, bounded by
-the per-session budget (default: 10) and the per-frame pool (default: 40). A
+the per-session budget (default: 10) and the per-frame budget (default: 40). A
 session that is Waiting has its counter decremented and is passed over.
 
 ### States

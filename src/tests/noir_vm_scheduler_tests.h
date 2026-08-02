@@ -151,7 +151,7 @@ namespace NEONengine
         }
 
         auto vm = bc.build_vm();
-        vm.set_frame_pool(5);
+        vm.set_frame_budget(5);
         vm.execute(fn[0]);
         vm.execute(fn[1]);
 
@@ -175,7 +175,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        vm.set_frame_pool(0);
+        vm.set_frame_budget(0);
         vm.execute(fn);
 
         auto status = vm.update();
@@ -222,7 +222,7 @@ namespace NEONengine
         }
 
         auto vm = bc.build_vm();
-        vm.set_frame_pool(4);
+        vm.set_frame_budget(4);
         for (u16 i = 0; i < 5; ++i) vm.execute(fn[i]);
 
         for (u16 update = 0; update < 20; ++update) vm.update();
@@ -456,7 +456,7 @@ namespace NEONengine
         bc.emit_s16(to<i16>(to<i32>(top) - to<i32>(jmp) - 3));
 
         auto vm = bc.build_vm();
-        vm.set_frame_pool(10);
+        vm.set_frame_budget(10);
         vm.execute(stopper);
         vm.execute(looper);
 

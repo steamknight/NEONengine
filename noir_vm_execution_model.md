@@ -154,17 +154,17 @@ Two limits, both configurable:
 
 - **Session budget — 10 instructions.** The most one session may run in one
   frame.
-- **Frame pool — 40 instructions.** The most all sessions together may run in
-  one frame.
+- **Frame budget — 40 instructions.** The most all sessions together may run
+  in one frame.
 
-A session that stops early hands its unused instructions back to the pool, and
-whichever session comes after it in the walk may spend them.
+A session that stops early hands its unused instructions back to the frame
+budget, and whichever session comes after it in the walk may spend them.
 
 ### The walk
 
 The VM walks the run list once, giving each session that can run the smaller of
-what is left of its own budget and what is left of the pool. It stops early if
-the pool reaches zero.
+what is left of its own budget and what is left of the frame's. It stops early
+if the frame budget reaches zero.
 
 One walk is enough. A session only stops short of its budget by parking itself
 in a `WAIT`, by making a deferred bridge call, or by ending, and none of those
@@ -180,17 +180,17 @@ The position advances only on updates the VM actually runs. A frame the scene
 skips does not count, so the order depends on how many times the VM has run, not
 on how much time has passed.
 
-This prevents scripts from starving if there are more active sessions than there
-is room in the global instruction pool.
+This prevents scripts from starving when there are more live sessions than the
+frame budget has room for.
 
 ### Reporting
 
 Two things can end a walk early:
 
-- A script called a deferred bridge function. The VM drains the pool on purpose.
-  This is normal and the VM says nothing.
-- Demand ran the pool dry. Sessions still wanted instructions and did not get
-  them.
+- A script called a deferred bridge function. The VM spends the rest of the
+  frame budget on purpose. This is normal and the VM says nothing.
+- Demand used the whole frame budget. Sessions still wanted instructions and did
+  not get them.
 
 The VM logs when that saturation starts, every 50 updates while it lasts, and
 when it ends. Each line carries:
@@ -227,7 +227,7 @@ Runs a whole script at once, in the reserved immediate context, and returns
 whatever the script left in D0 as a signed 16-bit value.
 
 It ignores the run list, the duplicate check, the session budget and the frame
-pool. It runs until the script ends or hits its own cap of 2048 instructions.
+budget. It runs until the script ends or hits its own cap of 2048 instructions.
 That cap is configurable.
 
 It exists for the case where the VM is stopped and something must happen anyway:
@@ -280,10 +280,10 @@ treat a call as anything other than what it is.
 ### Deferred requests
 
 A deferred call does not act. It records what the script wants and returns. Then
-it drains the frame pool, which ends the walk at once. No session runs again
-this frame.
+it spends the rest of the frame budget, which ends the walk at once. No session
+runs again this frame.
 
-Draining the pool is what makes speech work in order:
+Spending the frame budget is what makes speech work in order:
 
 ```
 SAY #12
@@ -486,7 +486,7 @@ RET
 
 ```
 frame  N    step 4  session S runs SAY #12
-                    bridge records "say 12", drains the pool
+                    bridge records "say 12", spends the frame budget
                     S is runnable, PC on SAY #13
 frame  N+1  step 0  scene puts the box on screen
             step 2  timeline skipped
@@ -494,7 +494,7 @@ frame  N+1  step 0  scene puts the box on screen
 frame  N+k  step 1  player clicks; box closes
             step 2  timeline runs
             step 4  VM runs; S resumes on SAY #13,
-                    records "say 13", drains the pool
+                    records "say 13", spends the frame budget
 frame  N+k+1        second box on screen
 ```
 
@@ -510,16 +510,17 @@ player picks "So it was you."
 VM still stopped; the script that opened the dialogue has not moved
 ```
 
-### The pool running dry
+### The frame budget running out
 
-Five sessions, budget 10, pool 40.
+Five sessions, session budget 10, frame budget 40.
 
 ```
 A 10   B 10   C 10   D 3 (deferred call)
-pool 7 left, but the walk ends here — D drained it
+7 left in the frame, but the walk ends here — D spent the rest
 ```
 
-Without the request, D would spend its full 10, the pool would hit 40, and E
+Without the request, D would spend its full 10, the frame budget would run out,
+and E
 would still get nothing. E misses out either way, which is why the next update
 begins at B and moves E up the order.
 
