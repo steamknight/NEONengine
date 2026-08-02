@@ -34,6 +34,8 @@ namespace NEONengine
         value_oob,         ///< VALUE index out of range
         flag_oob,          ///< FLAG index out of range
         out_of_memory,     ///< No memory for another session's stack
+        nested_immediate,  ///< execute_now called from inside another
+        runaway,           ///< An execute_now script ran past its instruction cap
         halt,              ///< The script ran HALT: a case its author says cannot happen
     };
 

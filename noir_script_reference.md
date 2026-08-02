@@ -704,6 +704,8 @@ nothing, says nothing to the player, and hands the reason back to the caller.
 | ValueOOB | Value index ≥ values_count |
 | FlagOOB | Flag index ≥ logical `flag_count` |
 | OutOfMemory | No memory for another session's stack |
+| NestedImmediate | `execute_now` called from inside another |
+| Runaway | An `execute_now` script ran past its instruction cap |
 
 ---
 
