@@ -46,7 +46,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 1, "inv_add called once");
         TEST_ASSERT(g_mock_log.inv_added[0] == 42, "inv_add received item_id 42");
         TEST_SUCCESS;
@@ -69,7 +69,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 123, "D0 unchanged after INV_ADD");
         TEST_SUCCESS;
     }
@@ -100,7 +100,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 3, "inv_add called 3 times");
         TEST_ASSERT(g_mock_log.inv_added[0] == 10, "first item 10");
         TEST_ASSERT(g_mock_log.inv_added[1] == 20, "second item 20");
@@ -131,7 +131,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z preserved after INV_ADD");
         TEST_SUCCESS;
     }
@@ -165,7 +165,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 111, "D1 unchanged");
         TEST_ASSERT(vm.reg_d(2) == 222, "D2 unchanged");
         TEST_ASSERT(vm.reg_d(3) == 333, "D3 unchanged");
@@ -188,7 +188,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 1, "called once");
         TEST_ASSERT(g_mock_log.inv_added[0] == 0, "item_id 0 passed correctly");
         TEST_SUCCESS;
@@ -211,7 +211,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_added[0] == 0xFFFF, "max item_id passed correctly");
         TEST_SUCCESS;
     }
@@ -235,7 +235,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_remove_count == 1, "inv_remove called once");
         TEST_ASSERT(g_mock_log.inv_removed[0] == 7, "inv_remove received item_id 7");
         TEST_SUCCESS;
@@ -257,7 +257,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 55, "D0 unchanged after INV_REMOVE");
         TEST_SUCCESS;
     }
@@ -287,7 +287,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z preserved after INV_REMOVE");
         TEST_SUCCESS;
     }
@@ -312,7 +312,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_remove_count == 2, "inv_remove called twice");
         TEST_ASSERT(g_mock_log.inv_removed[0] == 100, "first remove 100");
         TEST_ASSERT(g_mock_log.inv_removed[1] == 200, "second remove 200");
@@ -339,7 +339,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_has_query == 5, "queried item_id 5");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z=0 when has item");
         TEST_SUCCESS;
@@ -363,7 +363,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = false;
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_has_query == 99, "queried item_id 99");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z=1 when item not found");
         TEST_SUCCESS;
@@ -387,7 +387,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 77, "D0 unchanged after INV_HAS");
         TEST_SUCCESS;
     }
@@ -416,7 +416,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N cleared by INV_HAS");
         TEST_ASSERT((vm.sr() & noir_sr::C) == 0, "C cleared by INV_HAS");
         TEST_ASSERT((vm.sr() & noir_sr::V) == 0, "V cleared by INV_HAS");
@@ -454,7 +454,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = false;  // not found → Z=1
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "BEQ taken: item not found");
         TEST_SUCCESS;
     }
@@ -489,7 +489,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;  // found → Z=0
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "BNE taken: item found");
         TEST_SUCCESS;
     }
@@ -523,7 +523,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 200, "D1 unchanged");
         TEST_ASSERT(vm.reg_d(2) == 300, "D2 unchanged");
         TEST_ASSERT(vm.reg_d(3) == 400, "D3 unchanged");
@@ -546,7 +546,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 5;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 5, "D0 = inv_count result (5)");
         TEST_SUCCESS;
     }
@@ -565,7 +565,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 0;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "D0 = 0 (empty inventory)");
         TEST_SUCCESS;
     }
@@ -584,7 +584,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 1000;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1000, "D0 = 1000");
         TEST_SUCCESS;
     }
@@ -607,7 +607,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 3;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 3, "D0 overwritten with count (3)");
         TEST_SUCCESS;
     }
@@ -638,7 +638,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 7;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 7, "D0 = count");
         TEST_ASSERT(vm.reg_d(1) == 111, "D1 unchanged");
         TEST_ASSERT(vm.reg_d(2) == 222, "D2 unchanged");
@@ -669,7 +669,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 3;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z preserved after INV_COUNT");
         TEST_SUCCESS;
     }
@@ -693,7 +693,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 3;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N=1 (3 < 5)");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z=0 (3 != 5)");
         TEST_SUCCESS;
@@ -713,7 +713,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_cleared, "inv_clear called");
         TEST_SUCCESS;
     }
@@ -747,7 +747,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 10, "D0 unchanged");
         TEST_ASSERT(vm.reg_d(1) == 20, "D1 unchanged");
         TEST_ASSERT(vm.reg_d(2) == 30, "D2 unchanged");
@@ -777,7 +777,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N preserved after INV_CLEAR");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C preserved after INV_CLEAR");
         TEST_SUCCESS;
@@ -806,7 +806,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 1, "add was called");
         TEST_ASSERT(g_mock_log.inv_added[0] == 42, "added item 42");
         TEST_ASSERT(g_mock_log.inv_has_query == 42, "has queried item 42");
@@ -833,7 +833,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 1, "add called once");
         TEST_ASSERT(g_mock_log.inv_remove_count == 1, "remove called once");
         TEST_ASSERT(g_mock_log.inv_added[0] == 10, "added item 10");
@@ -865,7 +865,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 2;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 2, "add called twice");
         TEST_ASSERT(vm.exit_code() == 2, "D0 = count (2)");
         TEST_SUCCESS;
@@ -887,7 +887,7 @@ namespace NEONengine
         g_mock_log.inv_count_result = 0;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_cleared, "clear was called");
         TEST_ASSERT(vm.exit_code() == 0, "D0 = 0 after clear + count");
         TEST_SUCCESS;
@@ -918,7 +918,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = false;  // don't have it → Z=1
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 1, "item added (didn't have it)");
         TEST_ASSERT(g_mock_log.inv_added[0] == 50, "added correct item");
         TEST_SUCCESS;
@@ -948,7 +948,7 @@ namespace NEONengine
         g_mock_log.inv_has_result = true;  // already have it → Z=0
         auto status               = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 0, "item NOT added (already had it)");
         TEST_SUCCESS;
     }
@@ -967,7 +967,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0x85 reserved");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x85 reserved");
         TEST_SUCCESS;
     }
 
@@ -983,7 +983,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0x8F reserved");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x8F reserved");
         TEST_SUCCESS;
     }
 

@@ -40,7 +40,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 300, "100 + 200 = 300");
         TEST_SUCCESS;
     }
@@ -67,7 +67,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x1234, "0x1000 + 0x0234 = 0x1234");
         TEST_SUCCESS;
     }
@@ -90,7 +90,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "0 + 0 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N should be clear");
@@ -117,7 +117,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x8000, "0x7FFF + 1 = 0x8000");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V should be set (signed overflow)");
@@ -143,7 +143,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x0000, "0xFFFF + 1 wraps to 0");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C should be set (unsigned overflow)");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
@@ -169,7 +169,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 30, "10 + 20 = 30");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N clear");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z clear");
@@ -209,7 +209,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 75, "local 50 + 25 = 75");
         TEST_SUCCESS;
     }
@@ -234,7 +234,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 300, "500 - 200 = 300");
         TEST_SUCCESS;
     }
@@ -258,7 +258,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "42 - 42 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_SUCCESS;
@@ -283,7 +283,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xFFFE, "3 - 5 = 0xFFFE (unsigned)");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C should be set (borrow)");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set (negative)");
@@ -309,7 +309,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x7FFF, "0x8000 - 1 = 0x7FFF");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V should be set (signed overflow)");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N should be clear");
@@ -337,7 +337,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 750, "1000 - 250 = 750");
         TEST_SUCCESS;
     }
@@ -363,7 +363,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "7 * 6 = 42");
         TEST_SUCCESS;
     }
@@ -387,7 +387,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "x * 0 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_SUCCESS;
@@ -412,7 +412,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == to<u16>(-30), "10 * -3 = -30");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_SUCCESS;
@@ -437,7 +437,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "256*256 truncated to 0");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V should be set (truncated)");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
@@ -465,7 +465,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 300, "15 * 20 = 300");
         TEST_SUCCESS;
     }
@@ -491,7 +491,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 7, "42 / 6 = 7");
         TEST_SUCCESS;
     }
@@ -515,7 +515,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == to<u16>(-3), "-30 / 10 = -3");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_SUCCESS;
@@ -540,7 +540,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 3, "7 / 2 = 3 (truncated)");
         TEST_SUCCESS;
     }
@@ -563,8 +563,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_division_zero, "div by zero should error");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::division_zero), "div by zero should error");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -586,7 +586,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "0 / 5 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_SUCCESS;
@@ -613,7 +613,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 2, "17 % 5 = 2");
         TEST_SUCCESS;
     }
@@ -637,7 +637,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "20 % 5 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_SUCCESS;
@@ -662,7 +662,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == to<u16>(-1), "-7 % 3 = -1");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_SUCCESS;
@@ -686,8 +686,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_division_zero, "mod by zero should error");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::division_zero), "mod by zero should error");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -712,7 +712,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "CMP should not modify D0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set (equal)");
         TEST_ASSERT((vm.sr() & noir_sr::C) == 0, "C should be clear");
@@ -738,7 +738,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 3, "CMP should not modify D0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z should be clear");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C should be set (borrow)");
@@ -765,7 +765,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 10, "CMP should not modify D0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z clear");
         TEST_ASSERT((vm.sr() & noir_sr::C) == 0, "C clear (no borrow)");
@@ -795,7 +795,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 100, "D0 must be unchanged after CMP");
         TEST_ASSERT(vm.reg_d(1) == 50, "D1 must be unchanged after CMP");
         TEST_SUCCESS;
@@ -821,7 +821,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == to<u16>(-42), "NEG 42 = -42");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_SUCCESS;
@@ -845,7 +845,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "NEG(-42) = 42");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N should be clear");
         TEST_SUCCESS;
@@ -868,7 +868,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "NEG 0 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_SUCCESS;
@@ -892,7 +892,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x8000, "NEG 0x8000 wraps to 0x8000");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V should be set (overflow)");
@@ -919,7 +919,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "INC 41 = 42");
         TEST_SUCCESS;
     }
@@ -942,7 +942,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "INC 0xFFFF wraps to 0");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C should be set (overflow)");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
@@ -967,7 +967,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x8000, "INC 0x7FFF = 0x8000");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V should be set (signed overflow)");
@@ -1004,7 +1004,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 100, "INC local 99 = 100");
         TEST_SUCCESS;
     }
@@ -1029,7 +1029,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "DEC 43 = 42");
         TEST_SUCCESS;
     }
@@ -1052,7 +1052,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "DEC 1 = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z should be set");
         TEST_SUCCESS;
@@ -1075,7 +1075,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xFFFF, "DEC 0 wraps to 0xFFFF");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C should be set (borrow)");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N should be set");
@@ -1100,7 +1100,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x7FFF, "DEC 0x8000 = 0x7FFF");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V should be set (signed overflow)");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N should be clear");
@@ -1122,7 +1122,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "reserved opcode should error");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "reserved opcode should error");
         TEST_SUCCESS;
     }
 
@@ -1156,7 +1156,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 60, "value[2]: 50 + 10 = 60");
         TEST_SUCCESS;
     }

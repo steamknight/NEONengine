@@ -20,14 +20,14 @@ namespace NEONengine
     // DBG_LOGS  (0xE1): u8 len + inline bytes → bridge->debug_print(str, len)
     // DBG_REG   (0xE2): Dump D0–D3, SR, SP, FP, PC to log
     // DBG_STK   (0xE3): Dump top 16 bytes of stack to log
-    // DBG_STAT  (0xE4): Dump debug stats (max_stack, max_call, max_reentry)
+    // DBG_STAT  (0xE4): Dump debug stats (max_stack, max_call)
     // DBG_FLAG  (0xE5): D0=index → log flag[D0], or D0=0xFFFF → log all flags
     // DBG_VAL   (0xE6): D0=index → log value[D0], or D0=0xFFFF → log all values
     // 0xE7–0xEF: Unknown — treated as NOP
     //
     // SR:        All debug opcodes leave SR unchanged.
     // Registers: All debug opcodes preserve D0–D3.
-    // Status:    All return noir_status::ok.
+    // Status:    All return noir_result::ok.
     // ═════════════════════════════════════════════════════════════════════════════
 
     // ── DBG_LOG ─────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_LOG completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_LOG completes");
         TEST_SUCCESS;
     }
 
@@ -77,7 +77,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 100, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 200, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 300, "D2 preserved");
@@ -101,7 +101,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z flag preserved");
         TEST_SUCCESS;
     }
@@ -123,7 +123,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(g_mock_log.debug_log_called, "debug_log bridge called");
         TEST_ASSERT(g_mock_log.debug_log_string_id == 77, "string_id == 77");
         TEST_SUCCESS;
@@ -144,7 +144,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(g_mock_log.debug_log_called, "debug_log bridge called");
         TEST_ASSERT(g_mock_log.debug_log_string_id == 0, "string_id == 0");
         TEST_SUCCESS;
@@ -176,7 +176,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 999, "D0 == 999 (PC advanced past inline data)");
         TEST_SUCCESS;
     }
@@ -198,7 +198,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 555, "D0 == 555 (PC correct with zero-len)");
         TEST_SUCCESS;
     }
@@ -227,7 +227,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 22, "D1 preserved");
         TEST_SUCCESS;
@@ -257,7 +257,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -288,7 +288,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 1234, "D0 == 1234 (PC advanced past both)");
         TEST_SUCCESS;
     }
@@ -313,7 +313,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(g_mock_log.debug_print_called, "debug_print bridge called");
         TEST_ASSERT(g_mock_log.debug_print_len == 5, "len == 5");
         TEST_ASSERT(g_mock_log.debug_print_buf[0] == 'H', "buf[0] == 'H'");
@@ -336,7 +336,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_REG completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_REG completes");
         TEST_SUCCESS;
     }
 
@@ -365,7 +365,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 0x1234, "D0 == 0x1234");
         TEST_ASSERT(vm.reg_d(1) == 0x5678, "D1 == 0x5678");
         TEST_ASSERT(vm.reg_d(2) == 0x9ABC, "D2 == 0x9ABC");
@@ -392,7 +392,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z preserved after DBG_REG");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N clear preserved after DBG_REG");
         TEST_SUCCESS;
@@ -412,7 +412,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_STK completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_STK completes");
         TEST_SUCCESS;
     }
 
@@ -440,7 +440,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 111, "D0 preserved");
         TEST_SUCCESS;
     }
@@ -472,7 +472,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 0x5678, "top of stack == 0x5678");
         TEST_ASSERT(vm.reg_d(1) == 0x1234, "second on stack == 0x1234");
         TEST_SUCCESS;
@@ -490,7 +490,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed on empty stack");
+        TEST_ASSERT(status == noir_result::completed, "completed on empty stack");
         TEST_SUCCESS;
     }
 
@@ -508,7 +508,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_STAT completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_STAT completes");
         TEST_SUCCESS;
     }
 
@@ -530,7 +530,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 0x7FFF, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 42, "D1 preserved");
         TEST_SUCCESS;
@@ -554,7 +554,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_FLAG single completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_FLAG single completes");
         TEST_SUCCESS;
     }
 
@@ -574,7 +574,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_FLAG all completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_FLAG all completes");
         TEST_SUCCESS;
     }
 
@@ -594,7 +594,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 10, "D0 preserved (flag index)");
         TEST_SUCCESS;
     }
@@ -618,7 +618,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z from CMP preserved");
         TEST_SUCCESS;
     }
@@ -640,7 +640,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_FLAG OOB completes (no error)");
+        TEST_ASSERT(status == noir_result::completed, "DBG_FLAG OOB completes (no error)");
         TEST_SUCCESS;
     }
 
@@ -663,7 +663,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_SUCCESS;
     }
 
@@ -685,7 +685,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_VAL single completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_VAL single completes");
         TEST_SUCCESS;
     }
 
@@ -705,7 +705,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_VAL all completes");
+        TEST_ASSERT(status == noir_result::completed, "DBG_VAL all completes");
         TEST_SUCCESS;
     }
 
@@ -725,7 +725,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 5, "D0 preserved (value index)");
         TEST_SUCCESS;
     }
@@ -747,7 +747,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "DBG_VAL OOB completes (no error)");
+        TEST_ASSERT(status == noir_result::completed, "DBG_VAL OOB completes (no error)");
         TEST_SUCCESS;
     }
 
@@ -774,7 +774,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_SUCCESS;
     }
 
@@ -797,7 +797,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         // After 0x7FFF + 0x7FFF = 0xFFFE → N=1, V=1 (signed overflow)
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_ASSERT((vm.sr() & noir_sr::V) != 0, "V flag preserved");
@@ -822,7 +822,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "unknown 0xE7 treated as NOP");
+        TEST_ASSERT(status == noir_result::completed, "unknown 0xE7 treated as NOP");
         TEST_ASSERT(vm.reg_d(0) == 42, "D0 preserved");
         TEST_SUCCESS;
     }
@@ -839,7 +839,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "unknown 0xEF treated as NOP");
+        TEST_ASSERT(status == noir_result::completed, "unknown 0xEF treated as NOP");
         TEST_SUCCESS;
     }
 
@@ -878,7 +878,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "all debug opcodes complete");
+        TEST_ASSERT(status == noir_result::completed, "all debug opcodes complete");
         TEST_ASSERT(vm.reg_d(0) == 7777, "D0 == 7777 after all debug opcodes");
         TEST_SUCCESS;
     }
@@ -918,7 +918,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         // (10 + 20) * 2 = 60
         TEST_ASSERT(vm.reg_d(0) == 60, "D0 == 60 ((10+20)*2)");
         TEST_SUCCESS;
@@ -967,7 +967,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "completed");
+        TEST_ASSERT(status == noir_result::completed, "completed");
         TEST_ASSERT(vm.reg_d(0) == 42, "BEQ taken (Z=1 preserved past DBG_REG)");
         TEST_SUCCESS;
     }

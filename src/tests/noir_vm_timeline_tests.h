@@ -16,8 +16,8 @@ namespace NEONengine
     // All timeline opcodes are 1-byte (opcode only). Arguments passed in D0.
     // Bridge function pointers are called.
     //
-    // ANIM_PLAY (0x90): D0=anim_id → bridge->anim_play(D0)     — non-blocking
-    // ANIM_STOP (0x91): D0=anim_id → bridge->anim_stop(D0)     — non-blocking
+    // ANIM_PLAY (0x90): D0=anim_id → bridge->anim_play(D0)     — immediate
+    // ANIM_STOP (0x91): D0=anim_id → bridge->anim_stop(D0)     — immediate
     // 0x92–0x9F: Reserved → err_invalid_opcode
     //
     // SR: All timeline opcodes leave SR unchanged.
@@ -42,7 +42,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.anim_play_id == 7, "anim_play received anim_id 7");
         TEST_SUCCESS;
     }
@@ -63,7 +63,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "D0 unchanged after ANIM_PLAY");
         TEST_SUCCESS;
     }
@@ -96,7 +96,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 10, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 20, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 30, "D2 preserved");
@@ -130,7 +130,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         // N flag should still be set from CMP
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
@@ -158,7 +158,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
+        TEST_ASSERT(status == noir_result::completed, "should complete in one update");
         TEST_ASSERT(vm.exit_code() == 999, "execution continued past ANIM_PLAY");
         TEST_SUCCESS;
     }
@@ -178,7 +178,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.anim_play_id == 0, "anim_play received anim_id 0");
         TEST_SUCCESS;
     }
@@ -199,7 +199,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.anim_play_id == 0xFFFF, "anim_play received max id");
         TEST_SUCCESS;
     }
@@ -222,7 +222,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.anim_stop_id == 3, "anim_stop received anim_id 3");
         TEST_SUCCESS;
     }
@@ -243,7 +243,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 55, "D0 unchanged after ANIM_STOP");
         TEST_SUCCESS;
     }
@@ -276,7 +276,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 100, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 200, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 300, "D2 preserved");
@@ -307,7 +307,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -333,13 +333,13 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
+        TEST_ASSERT(status == noir_result::completed, "should complete in one update");
         TEST_ASSERT(vm.exit_code() == 777, "execution continued past ANIM_STOP");
         TEST_SUCCESS;
     }
     TEST_IMPL(test_noir_anim_play_stop_sequence)
     {
-        // Play then stop — both non-blocking, both bridge calls logged
+        // Play then stop — both immediate, both bridge calls logged
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -355,14 +355,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.anim_play_id == 15, "play called with 15");
         TEST_ASSERT(g_mock_log.anim_stop_id == 15, "stop called with 15");
         TEST_SUCCESS;
     }
     TEST_IMPL(test_noir_anim_play_different_ids)
     {
-        // Play two different animations (both non-blocking, second overwrites log)
+        // Play two different animations (both immediate, second overwrites log)
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -381,7 +381,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         // Last play overwrites
         TEST_ASSERT(g_mock_log.anim_play_id == 200, "second anim_play logged");
         TEST_SUCCESS;
@@ -405,7 +405,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0x92 is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x92 is invalid");
         TEST_ASSERT(vm.exit_code() != 4242, "the session died rather than running on");
         TEST_SUCCESS;
     }
@@ -422,7 +422,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0x93 is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x93 is invalid");
         TEST_SUCCESS;
     }
 
@@ -438,7 +438,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0x9F is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x9F is invalid");
         TEST_SUCCESS;
     }
 
@@ -454,7 +454,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0x95 is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0x95 is invalid");
         TEST_SUCCESS;
     }
 

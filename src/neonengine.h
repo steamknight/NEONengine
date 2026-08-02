@@ -1,8 +1,6 @@
 #ifndef __NEONENGINE_H__INCLUDED__
 #define __NEONENGINE_H__INCLUDED__
 
-#include "types.h"
-
 #include <ace/managers/state.h>
 #include <ace/managers/system.h>
 
@@ -17,6 +15,7 @@
 #include "core/screen.h"
 #include "core/string_table.h"
 #include "core/text_render.h"
+#include "types.h"
 
 namespace NEONengine
 {
@@ -33,7 +32,6 @@ namespace NEONengine
         show_dialog,  ///< a = dialogue id
         fade_out,     ///< a = frames
         fade_in,      ///< a = frames
-        save_game,    ///< a = slot
     };
 
     /** @brief One recorded modal request, with the opcode's D0 and D1. */
@@ -44,8 +42,34 @@ namespace NEONengine
         u16 b{ 0 };
     };
 
+    /**
+     * @brief A request to change which game is being played.
+     *
+     * Separate from a modal because it says what the scene must do, not what it
+     * must draw. Most of these come from a deferred terminal call, which stops
+     * the VM until the teardown they ask for has happened; @c save_game comes
+     * from a modal one, and the session that asked for it lives on.
+     */
+    enum class system_kind : u8
+    {
+        none,
+        load_scene,  ///< a = scene id — GOTO_SCENE, or a hotspot with a target
+        new_game,    ///< NEW_GAME
+        load_game,   ///< a = slot — LOAD_GAME
+        save_game,   ///< a = slot — SAVE_GAME
+        quit_game,   ///< QUIT_GAME
+    };
+
+    /** @brief One recorded system request, with the opcode's D0. */
+    struct system_request
+    {
+        system_kind kind{ system_kind::none };
+        u16 a{ 0 };
+    };
+
     class engine;
     using engine_ptr = mtl::unique_ptr<engine>;
+
     class engine
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
@@ -84,21 +108,33 @@ namespace NEONengine
          */
         bool set_language(language lang);
 
-        /** @brief Post a scene change requested by a script (GOTO_SCENE). */
-        void request_scene(u16 scene_id) noexcept
+        /**
+         * @brief Post a system request - a scene change, a save, a new game.
+         *
+         * One slot is enough. Every call that records one either stops the VM
+         * outright or drains the frame pool, so nothing runs to record a second
+         * before the scene has answered this one.
+         */
+        void request_system(system_kind kind, u16 a = 0) noexcept
         {
-            _pending_scene     = scene_id;
-            _has_pending_scene = true;
+            _pending_system = system_request{ kind, a };
         }
 
-        /** @brief True when a script has requested a scene change. */
-        bool has_pending_scene() const noexcept { return _has_pending_scene; }
-
-        /** @brief Consume the pending scene request, clearing it. */
-        u16 take_pending_scene() noexcept
+        /** @brief True when something has asked for a system change. */
+        bool has_pending_system() const noexcept
         {
-            _has_pending_scene = false;
-            return _pending_scene;
+            return _pending_system.kind != system_kind::none;
+        }
+
+        /** @brief What the pending system request asks for, or @c none. */
+        system_kind pending_system_kind() const noexcept { return _pending_system.kind; }
+
+        /** @brief Consume the pending system request, clearing it. */
+        system_request take_pending_system() noexcept
+        {
+            system_request const taken = _pending_system;
+            _pending_system            = system_request{};
+            return taken;
         }
 
         /**
@@ -137,10 +173,7 @@ namespace NEONengine
         }
 
         /** @brief True when a script has requested a modal. */
-        bool has_pending_modal() const noexcept
-        {
-            return _pending_modal.kind != modal_kind::none;
-        }
+        bool has_pending_modal() const noexcept { return _pending_modal.kind != modal_kind::none; }
 
         /** @brief Consume the pending modal request, clearing it. */
         modal_request take_pending_modal() noexcept
@@ -157,20 +190,27 @@ namespace NEONengine
         static result initialize();
 
         private:  //////////////////////////////////////////////////////////////////////////////////
-        game_data_ptr _pGameData{ nullptr };  ///< The one loaded .neon, owned for the process lifetime.
-        ace::font_ptr _pUiFont{ nullptr };    ///< The UI font, loaded from the pak via UIST; the engine's font.
+        game_data_ptr _pGameData{
+            nullptr
+        };  ///< The one loaded .neon, owned for the process lifetime.
+        ace::font_ptr _pUiFont{
+            nullptr
+        };  ///< The UI font, loaded from the pak via UIST; the engine's font.
         text_renderer_ptr _pTextRenderer{ nullptr };
-        string_table_ptr _pStrings{ nullptr };  ///< The active language's strings, swapped by set_language.
+        string_table_ptr _pStrings{
+            nullptr
+        };  ///< The active language's strings, swapped by set_language.
 
-        noir_vm_ptr _vm{ nullptr };     ///< The one persistent script VM, over the buffers below.
-        mtl::vector<u8> _flags;    ///< Runtime game flags, seeded from FLGS (mutable, savable).
-        mtl::vector<u16> _values;  ///< Runtime game values, seeded from VALS (mutable, savable).
-        u16 _pending_scene{ 0 };   ///< Scene requested by a script, awaiting a transition.
-        bool _has_pending_scene{ false };
-        language _pending_language{ language::EN };  ///< Language requested by a script, awaiting a swap.
+        noir_vm_ptr _vm{ nullptr };  ///< The one persistent script VM, over the buffers below.
+        mtl::vector<u8> _flags;      ///< Runtime game flags, seeded from FLGS (mutable, savable).
+        mtl::vector<u16> _values;    ///< Runtime game values, seeded from VALS (mutable, savable).
+        language _pending_language{
+            language::EN
+        };  ///< Language requested by a script, awaiting a swap.
         bool _has_pending_language{ false };
         modal_request _pending_modal{};  ///< Modal requested by a script, awaiting the next frame.
-        u16 _current_scene{ 0 };   ///< Scene the runtime is presenting.
+        system_request _pending_system{};  ///< Scene change, save or new game, awaiting the next frame.
+        u16 _current_scene{ 0 };           ///< Scene the runtime is presenting.
     };
 
     extern engine_ptr g_pEngine;

@@ -13,32 +13,59 @@
 
 namespace NEONengine
 {
-    // ─── Status codes ───────────────────────────────────────────────────────────
+    // ─── Results ────────────────────────────────────────────────────────────────
 
     /**
-     * @brief Status codes returned by update() and execute().
+     * @brief Why a session died.
      *
-     * An error kills the session that raised it. The rest keep running.
+     * Read through last_error() after a call comes back @c failed.
      */
-    enum class noir_status : u8
+    enum class noir_error : u8
     {
-        ok,         ///< Execution proceeded normally
-        yielded,    ///< Sessions remain — call update() again next frame
-        completed,  ///< The run list emptied
-        deferred,   ///< A deferred bridge call drained the pool and ended the walk
-
-        // Errors (the session dies)
-        err_invalid_opcode,   ///< Unknown opcode byte encountered
-        err_invalid_func,     ///< Function ID out of range
-        err_duplicate_script, ///< A live session is already running that script
-        err_stack_underflow,  ///< Popped more than pushed
-        err_stack_overflow,   ///< Pushed past the end of the session's stack
-        err_division_zero,    ///< Division or modulo by zero
-        err_invalid_address,  ///< PC or address out of bytecode bounds
-        err_value_oob,        ///< VALUE index out of range
-        err_flag_oob,         ///< FLAG index out of range
-        err_halt,             ///< The script ran HALT: a case its author says cannot happen
+        none,
+        invalid_opcode,    ///< Unknown opcode byte encountered
+        invalid_func,      ///< Function ID out of range
+        duplicate_script,  ///< A live session is already running that script
+        stack_underflow,   ///< Popped more than pushed
+        stack_overflow,    ///< Pushed past the end of the session's stack
+        division_zero,     ///< Division or modulo by zero
+        invalid_address,   ///< PC or address out of bytecode bounds
+        value_oob,         ///< VALUE index out of range
+        flag_oob,          ///< FLAG index out of range
+        out_of_memory,     ///< No memory for another session's stack
+        halt,              ///< The script ran HALT: a case its author says cannot happen
     };
+
+    /**
+     * @brief What a call came back with.
+     *
+     * Three callers share this: an instruction, update() and execute(). An
+     * error kills the session that raised it; the rest keep running.
+     */
+    enum class noir_result : u8
+    {
+        ok,         ///< Nothing to report
+        completed,  ///< update(): the run list emptied
+        yielded,    ///< update(): sessions remain — call it again next frame
+        terminated, ///< update(): a terminal call ran; nothing runs until reset_execution()
+        deferred,   ///< An instruction: a deferred bridge call ended the walk
+        failed,     ///< A session died; last_error() says why
+    };
+
+    /**
+     * @brief What the VM as a whole has to say about itself.
+     *
+     * A session has its own state; this is the machine's. It survives one
+     * update at most, except @c terminated, which is a latch only
+     * reset_execution() lifts.
+     */
+    enum class noir_vm_state : u8
+    {
+        ok,          ///< Nothing went wrong this update
+        failed,      ///< A session died this update; last_error() says why
+        terminated,  ///< A terminal call ran; nothing runs until reset_execution()
+    };
+
 
     // ─── Debug statistics ───────────────────────────────────────────────────────
 
@@ -60,71 +87,97 @@ namespace NEONengine
     // ─── Engine bridge ──────────────────────────────────────────────────────────
 
     /**
+     * @brief What a bridge call does to the walk.
+     *
+     * The kind is a property of the function, so it is declared with the
+     * function and nowhere else. noir_vm::call() reads it and returns the
+     * matching result, which is what stops a new deferred call being wired up
+     * as though it were immediate.
+     */
+    template<typename Sig>
+    struct immediate  ///< Acts inside the opcode and returns
+    {
+        Sig* fn;
+    };
+
+    template<typename Sig>
+    struct deferred_modal  ///< Records a request; the scene shows it and holds the VM
+    {
+        Sig* fn;
+    };
+
+    template<typename Sig>
+    struct deferred_terminal  ///< Records a request; the scene tears the VM down
+    {
+        Sig* fn;
+    };
+
+    /**
      * @brief Function pointer table bridging the VM to engine systems.
      *
      * The VM calls engine systems through this struct, keeping the VM fully
      * decoupled from engine headers. All function pointers must be valid for
      * the lifetime of the VM.
      *
-     * Each function is one of three kinds. A deferred one records what the
-     * script asked for and returns; the opcode then drains the frame pool, so
-     * no session runs again this update. The scene acts on the request at the
-     * top of the next frame.
+     * A deferred call records what the script asked for and returns; the opcode
+     * then drains the frame pool, so no session runs again this update. The
+     * scene acts on the request at the top of the next frame. A terminal one
+     * also stops the VM until the teardown it asked for has happened.
      *
      * @see noir_vm
      */
     struct noir_bridge
     {
         // Inventory
-        void (*inv_add)(u16 item_id);
-        void (*inv_remove)(u16 item_id);
-        bool (*inv_has)(u16 item_id);  ///< true = has item
-        u16 (*inv_count)();
-        void (*inv_clear)();
+        immediate<void(u16 item_id)> inv_add;
+        immediate<void(u16 item_id)> inv_remove;
+        immediate<bool(u16 item_id)> inv_has;  ///< true = has item
+        immediate<u16()> inv_count;
+        immediate<void()> inv_clear;
 
         // Scenes
-        void (*goto_scene)(u16 scene_id);  ///< deferred terminal
-        u16 (*get_scene)();
-        void (*hotspot_on)(u16 id);
-        void (*hotspot_off)(u16 id);
-        void (*set_pointer)(u16 type);
+        deferred_terminal<void(u16 scene_id)> goto_scene;
+        immediate<u16()> get_scene;
+        immediate<void(u16 id)> hotspot_on;
+        immediate<void(u16 id)> hotspot_off;
+        immediate<void(u16 type)> set_pointer;
 
         // Dialogue / Text
-        void (*say)(u16 string_id, u16 speaker_id);  ///< deferred modal
-        void (*show_dialog)(u16 dialogue_id);        ///< deferred modal
-        void (*show_text)(u16 string_id, u16 x, u16 y);
-        void (*clear_text)();
+        deferred_modal<void(u16 string_id, u16 speaker_id)> say;
+        deferred_modal<void(u16 dialogue_id)> show_dialog;
+        immediate<void(u16 string_id, u16 x, u16 y)> show_text;
+        immediate<void()> clear_text;
 
         // Audio
-        void (*play_music)(u16 music_id);
-        void (*stop_music)();
-        void (*play_sfx)(u16 sfx_id);
+        immediate<void(u16 music_id)> play_music;
+        immediate<void()> stop_music;
+        immediate<void(u16 sfx_id)> play_sfx;
 
         // Screen
-        void (*fade_out)(u16 duration_frames);  ///< deferred modal
-        void (*fade_in)(u16 duration_frames);   ///< deferred modal
-        void (*screen_clear)(u16 color_index);
+        deferred_modal<void(u16 duration_frames)> fade_out;
+        deferred_modal<void(u16 duration_frames)> fade_in;
+        immediate<void(u16 color_index)> screen_clear;
 
         // Animation
-        void (*anim_play)(u16 anim_id);
-        void (*anim_stop)(u16 anim_id);
+        immediate<void(u16 anim_id)> anim_play;
+        immediate<void(u16 anim_id)> anim_stop;
 
         // System
-        void (*set_lang)(u16 lang_id);
-        void (*save_game)(u16 slot);  ///< deferred modal
-        void (*load_game)(u16 slot);
-        void (*new_game)();
-        void (*quit_game)();
+        immediate<void(u16 lang_id)> set_lang;
+        deferred_modal<void(u16 slot)> save_game;
+        deferred_terminal<void(u16 slot)> load_game;
+        deferred_terminal<void()> new_game;
+        deferred_terminal<void()> quit_game;
 
 #ifdef GAME_DEBUG
-        void (*debug_log)(u16 string_id);              ///< Log string table entry
-        void (*debug_print)(char const* str, u8 len);  ///< Log raw string
+        immediate<void(u16 string_id)> debug_log;              ///< Log string table entry
+        immediate<void(char const* str, u8 len)> debug_print;  ///< Log raw string
 #endif
     };
 
-    // ─── VM states ──────────────────────────────────────────────────────────────
+    // ─── Session state ──────────────────────────────────────────────────────────
 
-    enum class noir_state : u8
+    enum class noir_session_state : u8
     {
         running,  ///< Actively executing opcodes
         waiting,  ///< WAIT timer active (wait_counter > 0)
@@ -153,7 +206,7 @@ namespace NEONengine
         u16 script_id;          ///< TOC index this session entered through
         u16 stack_index;        ///< Which stack this session owns
         u8 sr;                  ///< Status register (NZCV----)
-        noir_state state;
+        noir_session_state state;
     };
 
     static_assert(sizeof(noir_session) == 24, "noir_session must stay 24 bytes with no padding");
@@ -235,9 +288,9 @@ namespace NEONengine
          * function the request is dropped.
          *
          * @param func_id Function index in the TOC (0-based)
-         * @return noir_status::ok on success, or an error status
+         * @return noir_result::ok on success, or an error status
          */
-        noir_status execute(u16 func_id) noexcept;
+        noir_result execute(u16 func_id) noexcept;
 
         /**
          * @brief Run one update tick.
@@ -246,12 +299,17 @@ namespace NEONengine
          * slice of instructions, until the frame pool is spent or nothing can
          * run. Sessions that ended are removed at the end.
          *
-         * Call this once per frame. Keep calling while status is `yielded`.
+         * Call this once per frame. Keep calling while the result is `yielded`.
          *
-         * @return `yielded` while sessions remain, otherwise how the last one
-         *         ended; `ok` when there was nothing to run.
+         * Does nothing once a terminal call has run: the scene it was running
+         * in is over, so resuming a session in it would be wrong. Only
+         * reset_execution() lifts that.
+         *
+         * @return `yielded` while sessions remain, `terminated` while a
+         *         teardown is owed, otherwise how the last session ended; `ok`
+         *         when there was nothing to run.
          */
-        noir_status update() noexcept;
+        noir_result update() noexcept;
 
         /**
          * @brief Abandon every session and empty the run list.
@@ -265,16 +323,22 @@ namespace NEONengine
          * Used when control transfers away from the running scripts - a scene
          * change, say - and the current call chains must be discarded rather
          * than resumed. Game state in FLAGS/VALUES is untouched.
+         *
+         * This is the teardown a terminal call asks for, and the only thing
+         * that lets the VM run again after one.
          */
         void reset_execution() noexcept;
 
         // ── Accessors ────────────────────────────────────────────────────────
 
-        noir_state state() const noexcept { return _cur.state; }
-        noir_status last_error() const noexcept { return _last_error; }
+        noir_session_state state() const noexcept { return _cur.state; }
+        noir_error last_error() const noexcept { return _last_error; }
         u16 exit_code() const noexcept { return _exit_code; }
         u16 reg_d(u8 i) const noexcept { return _cur.d[i & 3]; }
         u8 sr() const noexcept { return _cur.sr; }
+
+        /// True while a terminal call is waiting for its teardown.
+        bool terminated() const noexcept { return _vm_state == noir_vm_state::terminated; }
 
         /// Sessions in the run list, live or waiting to be removed.
         u16 session_count() const noexcept { return to<u16>(_sessions.size()); }
@@ -297,25 +361,96 @@ namespace NEONengine
 #endif
 
         private:  //////////////////////////////////////////////////////////////////////////////////
-        // ── Opcode dispatch ──────────────────────────────────────────────────
+        // ── Instruction dispatch ─────────────────────────────────────────────
+        // An opcode is the byte; an instruction is one executed step. This
+        // charges the step, whatever the step turns out to do.
 
-        noir_status execute_one_opcode() noexcept;
+        noir_result execute_instruction() noexcept;
 
         // ── Opcode category handlers ─────────────────────────────────────────
 
-        noir_status op_script_exec(u8 op) noexcept;
-        noir_status op_data_move(u8 op) noexcept;
-        noir_status op_arithmetic(u8 op) noexcept;
-        noir_status op_logic(u8 op) noexcept;
-        noir_status op_control_flow(u8 op) noexcept;
-        noir_status op_flag_ops(u8 op) noexcept;
-        noir_status op_value_ops(u8 op) noexcept;
-        noir_status op_game_inventory(u8 op) noexcept;
-        noir_status op_game_timeline(u8 op) noexcept;
-        noir_status op_game_scenes(u8 op) noexcept;
-        noir_status op_game_dialogue(u8 op) noexcept;
-        noir_status op_game_menu(u8 op) noexcept;
-        noir_status op_debug(u8 op) noexcept;
+        noir_result op_script_exec(u8 op) noexcept;
+        noir_result op_data_move(u8 op) noexcept;
+        noir_result op_arithmetic(u8 op) noexcept;
+        noir_result op_logic(u8 op) noexcept;
+        noir_result op_control_flow(u8 op) noexcept;
+        noir_result op_flag_ops(u8 op) noexcept;
+        noir_result op_value_ops(u8 op) noexcept;
+        noir_result op_game_inventory(u8 op) noexcept;
+        noir_result op_game_timeline(u8 op) noexcept;
+        noir_result op_game_scenes(u8 op) noexcept;
+        noir_result op_game_dialogue(u8 op) noexcept;
+        noir_result op_game_menu(u8 op) noexcept;
+        noir_result op_debug(u8 op) noexcept;
+
+        // ── Bridge calls ─────────────────────────────────────────────────────
+        // One overload per kind, so the kind declared in noir_bridge decides
+        // what the opcode returns and no call site can disagree with it.
+        // call_result and call_flag have no deferred overload: a call that does
+        // not act cannot answer.
+        //
+        // Inlined on purpose. Left to itself the compiler gives each
+        // instantiation a body of its own, which puts a second call in front of
+        // every bridge call and costs more than it saves.
+
+        template<typename Sig, typename... Args>
+        [[gnu::always_inline]] noir_result call(immediate<Sig> const& b, Args... args) noexcept
+        {
+            b.fn(args...);
+            return noir_result::ok;
+        }
+
+        template<typename Sig, typename... Args>
+        [[gnu::always_inline]] noir_result call(deferred_modal<Sig> const& b, Args... args) noexcept
+        {
+            b.fn(args...);
+            return noir_result::deferred;
+        }
+
+        template<typename Sig, typename... Args>
+        [[gnu::always_inline]] noir_result call(deferred_terminal<Sig> const& b, Args... args) noexcept
+        {
+            // Latched before the call, not after: a bridge function that tears
+            // the VM down on the spot must be able to clear it again.
+            _vm_state = noir_vm_state::terminated;
+            b.fn(args...);
+            return noir_result::deferred;
+        }
+
+        /// Immediate call whose answer lands in D0.
+        template<typename Sig, typename... Args>
+        [[gnu::always_inline]] noir_result call_result(immediate<Sig> const& b, Args... args) noexcept
+        {
+            _cur.d[0] = b.fn(args...);
+            return noir_result::ok;
+        }
+
+        /// Immediate call whose answer lands in Z, for the branch that follows.
+        template<typename Sig, typename... Args>
+        [[gnu::always_inline]] noir_result call_flag(immediate<Sig> const& b, Args... args) noexcept
+        {
+            set_flag_result(b.fn(args...));
+            return noir_result::ok;
+        }
+
+        /// Z=0 when true, Z=1 when false. Defined where the SR bits are visible.
+        void set_flag_result(bool value) noexcept;
+
+        /// Records why a session died and kills it. Every error path goes here.
+        noir_result fail(noir_error reason) noexcept
+        {
+            _last_error = reason;
+            _vm_state   = noir_vm_state::failed;
+            _cur.state  = noir_session_state::halted;
+            return noir_result::failed;
+        }
+
+        /// Records why a request was turned down. Nothing was running to kill.
+        noir_result refuse(noir_error reason) noexcept
+        {
+            _last_error = reason;
+            return noir_result::failed;
+        }
 
         // ── Stack operations ─────────────────────────────────────────────────
 
@@ -376,7 +511,7 @@ namespace NEONengine
         /// True while a session can still be given instructions.
         static bool session_live(noir_session const& s) noexcept
         {
-            return s.state != noir_state::halted;
+            return s.state != noir_session_state::halted;
         }
 
         /// Lowest stack slot no live session holds.
@@ -394,8 +529,12 @@ namespace NEONengine
         /// Hands every session its budget for this update and ages the waits.
         void begin_update_budgets() noexcept;
 
-        /// Runs the loaded session until its slice or its state runs out.
-        void run_slice() noexcept;
+        /**
+         * @brief Runs the loaded session until its slice or its state runs out.
+         * @return `deferred` when a deferred call ended it, `failed` when the
+         *         session died, otherwise `ok`.
+         */
+        noir_result run_slice() noexcept;
 
         /// Drops ended sessions, keeping the order of the rest.
         void remove_dead_sessions() noexcept;
@@ -437,18 +576,17 @@ namespace NEONengine
 
         // ── Execution state ──────────────────────────────────────────────────
 
-        u16 _call_depth;       ///< Current internal CALL nesting
-        u16 _session_budget;   ///< Instructions per session per frame (default: 10)
-        u16 _frame_pool;       ///< Instructions per frame, all sessions (default: 40)
-        u16 _rotation;         ///< Run list position the next update starts at
-        bool _run_list_dropped;  ///< reset_execution() ran inside an update
-        bool _walk_ended;        ///< A deferred call drained the pool this update
-        bool _error_this_update; ///< A session died on an error this update
+        u16 _call_depth;      ///< Current internal CALL nesting
+        u16 _session_budget;  ///< Instructions per session per frame (default: 10)
+        u16 _frame_pool;      ///< Instructions per frame, all sessions (default: 40)
+        u16 _rotation;        ///< Run list position the next update starts at
+
+        noir_vm_state _vm_state;  ///< What this update - or the latch - has to say
 
         // ── Result ───────────────────────────────────────────────────────────
 
         u16 _exit_code;
-        noir_status _last_error;
+        noir_error _last_error;
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 

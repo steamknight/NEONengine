@@ -99,7 +99,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::yielded, "the session did not reach its RET");
+        TEST_ASSERT(status == noir_result::yielded, "the session did not reach its RET");
         TEST_ASSERT(vm.reg_d(3) != 4321, "nor the opcode straight after the call");
         TEST_ASSERT(vm.session_count() == 1, "and it is still in the run list");
         TEST_SUCCESS;
@@ -126,7 +126,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.say_count == 1, "the line went out once");
 
         auto status = vm.update();
-        TEST_ASSERT(status == noir_status::completed, "the rest of the script ran");
+        TEST_ASSERT(status == noir_result::completed, "the rest of the script ran");
         TEST_ASSERT(vm.reg_d(2) == 1234, "starting at the opcode after the call");
         TEST_ASSERT(g_mock_log.say_count == 1, "and the line did not go out twice");
         TEST_SUCCESS;
@@ -297,7 +297,7 @@ namespace NEONengine
 
         TEST_ASSERT(g_mock_log.play_sfx_id == 6, "every immediate call ran");
         TEST_ASSERT(def_marked(0x0B05), "and the session behind it ran too");
-        TEST_ASSERT(status == noir_status::completed, "both finished in one update");
+        TEST_ASSERT(status == noir_result::completed, "both finished in one update");
         TEST_SUCCESS;
     }
 
@@ -367,7 +367,7 @@ namespace NEONengine
         auto status = vm.update();
         TEST_ASSERT(vm.reg_d(2) == 0x0F00, "the callee finished");
         TEST_ASSERT(vm.reg_d(3) == 0x0BAD, "and the caller carried on after it");
-        TEST_ASSERT(status == noir_status::completed, "the script ran out");
+        TEST_ASSERT(status == noir_result::completed, "the script ran out");
         TEST_SUCCESS;
     }
 
@@ -442,6 +442,172 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Terminal calls stop the VM ───────────────────────────────────────────────
+
+    TEST_IMPL(test_terminal_call_holds_every_session)
+    {
+        // A modal only ends the walk; a terminal one ends the VM. Three sessions,
+        // so the rotation cannot hand the markers a turn ahead of the caller and
+        // pass the test by accident.
+        bytecode_builder bc;
+
+        u16 fn_goto = bc.begin_func();
+        def_mov_d0(bc, 7);
+        bc.emit(noir_op::GOTO_SCENE);
+        bc.emit(noir_op::RET);
+
+        u16 fn_a = def_marker_func(bc, 0x0B20);
+        u16 fn_b = def_marker_func_b(bc, 0x0B21);
+
+        auto vm = bc.build_vm();
+        g_mock_log.reset();
+        vm.execute(fn_goto);
+        vm.execute(fn_a);
+        vm.execute(fn_b);
+
+        for (u16 i = 0; i < 6; ++i) vm.update();
+
+        TEST_ASSERT(!def_marked(0x0B20), "no session ran after the terminal call");
+        TEST_ASSERT(!def_marked_b(0x0B21), "not one of them");
+        TEST_ASSERT(vm.session_count() == 3, "and none were cleaned up");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_terminal_call_freezes_a_waiting_session)
+    {
+        // Waiting is the one thing that moves without a session running. It has
+        // to stop too, or a WAIT would age out during a scene load and the
+        // session would come back due rather than discarded.
+        bytecode_builder bc;
+
+        u16 fn_wait = bc.begin_func();
+        bc.emit(noir_op::WAIT);
+        bc.emit_u16(3);
+        def_mov_d0(bc, 0x0B22);
+        bc.emit(noir_op::HOTSPOT_ON);
+        bc.emit(noir_op::RET);
+
+        u16 fn_goto = bc.begin_func();
+        def_mov_d0(bc, 7);
+        bc.emit(noir_op::GOTO_SCENE);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        g_mock_log.reset();
+        vm.execute(fn_wait);
+        vm.execute(fn_goto);
+
+        for (u16 i = 0; i < 10; ++i) vm.update();
+
+        TEST_ASSERT(!def_marked(0x0B22), "the wait did not age out while the VM was stopped");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_every_terminal_opcode_stops_the_vm)
+    {
+        // Named one at a time, a newly-terminal opcode would go untested and a
+        // no-longer-terminal one would go unnoticed.
+        u8 const terminal[] = {
+            noir_op::GOTO_SCENE,
+            noir_op::LOAD_GAME,
+            noir_op::NEW_GAME,
+            noir_op::QUIT_GAME,
+        };
+
+        for (u8 i = 0; i < sizeof(terminal) / sizeof(terminal[0]); ++i)
+        {
+            bytecode_builder bc;
+
+            u16 fn_call = bc.begin_func();
+            def_mov_d0(bc, 1);
+            bc.emit(terminal[i]);
+            bc.emit(noir_op::RET);
+
+            u16 fn_marker = def_marker_func(bc, 0x0B23);
+
+            auto vm = bc.build_vm();
+            g_mock_log.reset();
+            vm.execute(fn_call);
+            vm.execute(fn_marker);
+
+            vm.update();
+            auto status = vm.update();
+
+            TEST_ASSERT(status == noir_result::terminated, "a terminal opcode did not stop the VM");
+            TEST_ASSERT(!def_marked(0x0B23), "and nothing ran while it was stopped");
+        }
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_modal_calls_do_not_stop_the_vm)
+    {
+        // The other half of the pair. Were terminal and modal still the same
+        // thing, a conversation would stop the VM for good on its first line.
+        u8 const modal[] = {
+            noir_op::SAY,
+            noir_op::SHOW_DIALOG,
+            noir_op::SAVE_GAME,
+            noir_op::FADE_OUT,
+            noir_op::FADE_IN,
+        };
+
+        for (u8 i = 0; i < sizeof(modal) / sizeof(modal[0]); ++i)
+        {
+            bytecode_builder bc;
+
+            u16 fn = bc.begin_func();
+            def_mov_d0(bc, 1);
+            bc.emit(modal[i]);
+            def_mov_d0(bc, 0x0B24);
+            bc.emit(noir_op::HOTSPOT_ON);
+            bc.emit(noir_op::RET);
+
+            auto vm = bc.build_vm();
+            g_mock_log.reset();
+            vm.execute(fn);
+
+            vm.update();
+            TEST_ASSERT(!vm.terminated(), "a modal call stopped the VM");
+
+            vm.update();
+            TEST_ASSERT(def_marked(0x0B24), "and the session did not carry on");
+        }
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_terminal_latch_outlives_new_sessions)
+    {
+        // Only the teardown lifts it. Starting a script is not a teardown, and
+        // a session queued behind one must wait for the reset like the rest.
+        bytecode_builder bc;
+
+        u16 fn_goto = bc.begin_func();
+        def_mov_d0(bc, 7);
+        bc.emit(noir_op::GOTO_SCENE);
+        bc.emit(noir_op::RET);
+
+        u16 fn_marker = def_marker_func(bc, 0x0B25);
+        u16 fn_late   = def_marker_func_b(bc, 0x0B26);
+
+        auto vm = bc.build_vm();
+        g_mock_log.reset();
+        vm.execute(fn_goto);
+        vm.execute(fn_marker);
+
+        vm.update();
+
+        vm.execute(fn_late);
+        auto status = vm.update();
+
+        TEST_ASSERT(status == noir_result::terminated, "still stopped");
+        TEST_ASSERT(!def_marked_b(0x0B26), "and the session started after it did not run");
+
+        vm.reset_execution();
+
+        TEST_ASSERT(vm.session_count() == 0, "the teardown discarded it along with the rest");
+        TEST_SUCCESS;
+    }
+
     // ── Suite registration ───────────────────────────────────────────────────────
 
     constexpr char const* noir_vm_deferred_name = "noir_vm_deferred";
@@ -459,6 +625,11 @@ namespace NEONengine
         { "deferring inside a CALL", test_deferred_inside_call_returns_to_the_right_place },
         { "registers survive the park", test_deferred_leaves_registers_and_flags_alone },
         { "a waiting session still ages", test_deferred_does_not_disturb_a_waiting_session },
+        { "terminal holds every session", test_terminal_call_holds_every_session },
+        { "terminal freezes a waiting session", test_terminal_call_freezes_a_waiting_session },
+        { "every terminal opcode stops the VM", test_every_terminal_opcode_stops_the_vm },
+        { "modal calls do not stop the VM", test_modal_calls_do_not_stop_the_vm },
+        { "the latch outlives new sessions", test_terminal_latch_outlives_new_sessions },
     };
 
 }  // namespace NEONengine

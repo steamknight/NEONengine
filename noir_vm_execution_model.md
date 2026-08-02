@@ -239,16 +239,18 @@ Rules:
 ## Bridge functions
 
 Every bridge function falls into one of three kinds. The kind decides three
-separate things, so it is one property, not three lists.
+separate things, so it is one property, not three lists. It is declared with the
+function in the bridge table, and the VM reads it from there: an opcode cannot
+treat a call as anything other than what it is.
 
 | Kind | What it does | Ends the walk | Allowed under `execute_now` |
 | --- | --- | --- | --- |
 | **Immediate** | Acts inside the opcode and returns | No | Yes |
 | **Deferred modal** | Records a request; the scene shows it and holds the VM | Yes | No |
-| **Deferred terminal** | Records a request; the scene tears down | Yes | Yes |
+| **Deferred terminal** | Records a request; the VM stops until it is torn down | Yes | Yes |
 
 `PLAY_MUSIC` is immediate. `SAY`, `SHOW_DIALOG` and `SAVE` are deferred modal.
-`GOTO_SCENE` is deferred terminal.
+`GOTO_SCENE`, `LOAD_GAME`, `NEW_GAME` and `QUIT_GAME` are deferred terminal.
 
 ### Deferred requests
 
@@ -273,6 +275,20 @@ conversation choice can leave the room: the request is recorded during the
 dialogue's update, and the scene tears down at the top of the next frame, with
 nothing on the call stack that is about to be destroyed.
 
+### Terminal requests
+
+A terminal call goes further than ending the walk: it stops the VM. Everything
+in the run list belongs to a scene that is over, so nothing runs again — not
+even a `WAIT` ageing towards its end — until the teardown it asked for has
+happened. `reset_execution()` is that teardown, and the only thing that lifts
+it.
+
+Without this the VM would trust whoever answers the request to always answer it.
+A scene that fails to load, or a request overwritten before anyone reads it,
+would leave the session resuming on the opcode after `GOTO_SCENE`, in the scene
+it believed it had left. Whatever a script writes after a terminal call is dead
+either way: the next scene's own entry script sets that scene up.
+
 ---
 
 ## The frame
@@ -281,8 +297,9 @@ The scene decides what runs. The VM does not know whether anything is on screen.
 
 ```
 0.  Act on requests recorded last frame
-      scene change  → destroy everything, load the new scene
-      modal         → put it on screen
+      system  → load the scene, save, start a new game, quit
+      teardown the VM if a terminal call is still owed one
+      modal   → put it on screen
 1.  Update modals
 2.  Update the timeline     skipped if a modal is up
                             or a scene change is waiting
@@ -290,6 +307,17 @@ The scene decides what runs. The VM does not know whether anything is on screen.
 4.  Update the VM           skipped if a modal is up
                             or a scene change is waiting
 ```
+
+A system request and a modal request are different things. A modal says what to
+put on screen; a system request says which game to play. `SAVE` records a system
+request from a modal call, because saving is not a scene change but the session
+that asked for it lives on.
+
+The teardown in step 0 is unconditional and belongs to the VM, not to any one
+request. A terminal call stops the VM and is owed a `reset_execution()`; if
+acting on its request did not deliver one - the scene failed to load, or nothing
+implements that request yet - this is where it arrives. Without it a request
+nobody answers would stop scripting for the rest of the session.
 
 Modals update before the timeline so that a modal closing in step 1 lets both
 the timeline and the VM run in the same frame. They stop together and start
@@ -326,8 +354,12 @@ scene and goes with it. Nothing carries over and nothing resumes.
 The stacks stay allocated. The scene resets the live session count and
 reuses them.
 
-The VM does not run in the frame a scene change is waiting, so no session gets
-one more slice in a scene that is already gone.
+The VM stops the moment the request is recorded and stays stopped until
+`reset_execution()` is called, so no session gets one more slice in a scene that
+is already gone — and none of them can quietly resume if the scene change is
+dropped or the load fails. A scene that turns a load down owes the VM that
+teardown anyway: the script asked to leave, and its sessions are over either
+way.
 
 Save games do not store VM state. Loading a save starts the scene fresh and runs
 its entry script from the beginning.
@@ -337,6 +369,11 @@ its entry script from the beginning.
 ## Errors
 
 A script error kills one session. The rest keep running.
+
+`update()` says `failed` for the update a session died in — a death outranks
+sessions merely remaining — and `last_error()` says which of the `noir_error`
+reasons it was. The verdict belongs to that one update; the next is ordinary
+again while the reason stays on record.
 
 The VM logs it and sends it to the bridge, which puts it on screen with the same
 nine-patch box `SAY` uses. It is a modal, so the game holds still until the

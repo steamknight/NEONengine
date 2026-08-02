@@ -111,7 +111,7 @@ namespace NEONengine
             }
             if (hotspot.goto_scene_id != data::NO_ID)
             {
-                g_pEngine->request_scene(hotspot.goto_scene_id);
+                g_pEngine->request_system(system_kind::load_scene, hotspot.goto_scene_id);
             }
         }
     }  // namespace

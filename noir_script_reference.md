@@ -443,7 +443,7 @@ opcode ends the VM's walk over its run list.
 |------|--------------|---------------|
 | Immediate | Acts inside the opcode and returns | No |
 | Deferred modal | Records a request; the scene shows it and holds the VM | Yes |
-| Deferred terminal | Records a request; the scene tears down | Yes |
+| Deferred terminal | Records a request; the VM stops until it is torn down | Yes |
 
 A deferred call does not act. It records what the script asked for, returns, and
 drains the frame pool, which ends the walk at once — no session runs again in
@@ -453,6 +453,14 @@ again.
 
 This is what makes two `SAY`s in a row show two boxes rather than one: the
 session stops after the first with its program counter on the second.
+
+A terminal call goes further. Everything running belongs to a scene that is
+over, so nothing runs again — not even a `WAIT` ageing — until the teardown it
+asked for has happened. Whatever a script writes after `GOTO_SCENE` is dead:
+the next scene's own entry script sets that scene up.
+
+The kind is declared with the function in the bridge table, and the VM reads it
+from there, so an opcode cannot treat a call as anything other than what it is.
 
 See [noir_vm_execution_model.md](noir_vm_execution_model.md) for the frame the
 scene runs them in.
@@ -513,9 +521,9 @@ SHOW_DIALOG does not return a value. Dialogue tree logic is handled by the engin
 | 0xC2 | SCREEN_CLR | D0=color | `screen_clear(d[0])` | Immediate | Clear screen |
 | 0xC3 | SET_LANG | D0=lang_id | `set_lang(d[0])` | Immediate | Set language |
 | 0xC4 | SAVE_GAME | D0=slot | `save_game(d[0])` | Deferred modal | Save game |
-| 0xC5 | LOAD_GAME | D0=slot | `load_game(d[0])` | Immediate | Load game |
-| 0xC6 | NEW_GAME | — | `new_game()` | No | Start new game |
-| 0xC7 | QUIT_GAME | — | `quit_game()` | No | Quit to OS |
+| 0xC5 | LOAD_GAME | D0=slot | `load_game(d[0])` | Deferred terminal | Load game |
+| 0xC6 | NEW_GAME | — | `new_game()` | Deferred terminal | Start new game |
+| 0xC7 | QUIT_GAME | — | `quit_game()` | Deferred terminal | Quit to OS |
 | 0xC8–0xCF | — | — | — | — | Reserved |
 
 ---
@@ -659,27 +667,38 @@ session that is Waiting has its counter decremented and is passed over.
 A session is always one of these three. "Nothing is running" is a property of the
 run list, not a state: it is `session_count() == 0`.
 
-### Error Handling
+### Results and errors
 
-All errors are returned as `noir_status` codes from `update()`. An error kills the
-session that raised it; the rest keep running.
+`update()` reports one `noir_result`. An error kills the session that raised it;
+the rest keep running, and the reason is read back through `last_error()`.
 
-| Status | Cause |
-|--------|-------|
+| Result | Meaning |
+|--------|---------|
 | Ok | Nothing to run |
-| Yielded | Sessions remain — call `update()` again next frame |
 | Completed | The run list emptied |
-| Deferred | A deferred bridge call drained the pool and ended the walk |
+| Yielded | Sessions remain — call `update()` again next frame |
+| Terminated | A terminal call ran; nothing runs until `reset_execution()` |
+| Deferred | An instruction only: a deferred bridge call ended the walk |
+| Failed | A session died this update; `last_error()` says why |
+
+A death outranks the ordinary: an update where a session died reports `Failed`
+even if others are still live. It says so for that update only — the next one is
+`Yielded` again, while `last_error()` keeps the reason on record.
+
+| `noir_error` | Cause |
+|--------------|-------|
+| None | Nothing has gone wrong |
 | Halt | The script ran `HALT` |
 | InvalidOpcode | Unknown opcode byte |
-| InvalidFuncId | func_id ≥ func_count |
+| InvalidFunc | func_id ≥ func_count |
 | DuplicateScript | A live session is already running that script |
 | StackOverflow | Pushed past the end of the session's stack |
 | StackUnderflow | Pop from empty stack |
-| DivisionByZero | DIV or MOD with src = 0 |
+| DivisionZero | DIV or MOD with src = 0 |
 | InvalidAddress | PC out of bytecode bounds |
-| ValueIndexOOB | Value index ≥ values_count |
-| FlagIndexOOB | Flag index ≥ logical `flag_count` |
+| ValueOOB | Value index ≥ values_count |
+| FlagOOB | Flag index ≥ logical `flag_count` |
+| OutOfMemory | No memory for another session's stack |
 
 ---
 
@@ -688,51 +707,51 @@ session that raised it; the rest keep running.
 The VM communicates with the engine through `NoirBridge` — a struct of function pointers. The bridge is borrowed (must outlive the VM).
 
 ```cpp
-struct NoirBridge {
+struct noir_bridge {
     // Inventory
-    void (*inv_add)(u16 item_id);
-    void (*inv_remove)(u16 item_id);
-    bool (*inv_has)(u16 item_id);
-    u16  (*inv_count)();
-    void (*inv_clear)();
+    immediate<void(u16 item_id)> inv_add;
+    immediate<void(u16 item_id)> inv_remove;
+    immediate<bool(u16 item_id)> inv_has;
+    immediate<u16()> inv_count;
+    immediate<void()> inv_clear;
 
     // Scenes
-    void (*goto_scene)(u16 scene_id);        // deferred terminal
-    u16  (*get_scene)();
-    void (*hotspot_on)(u16 interaction_id);
-    void (*hotspot_off)(u16 interaction_id);
-    void (*set_pointer)(u16 pointer_type);
+    deferred_terminal<void(u16 scene_id)> goto_scene;
+    immediate<u16()> get_scene;
+    immediate<void(u16 interaction_id)> hotspot_on;
+    immediate<void(u16 interaction_id)> hotspot_off;
+    immediate<void(u16 pointer_type)> set_pointer;
 
     // Dialogue / Text
-    void (*say)(u16 string_id, u16 speaker_id);  // deferred modal
-    void (*show_dialog)(u16 dialogue_id);          // deferred modal
-    void (*show_text)(u16 string_id, u16 x, u16 y);
-    void (*clear_text)();
+    deferred_modal<void(u16 string_id, u16 speaker_id)> say;
+    deferred_modal<void(u16 dialogue_id)> show_dialog;
+    immediate<void(u16 string_id, u16 x, u16 y)> show_text;
+    immediate<void()> clear_text;
 
     // Audio
-    void (*play_music)(u16 music_id);
-    void (*stop_music)();
-    void (*play_sfx)(u16 sfx_id);
+    immediate<void(u16 music_id)> play_music;
+    immediate<void()> stop_music;
+    immediate<void(u16 sfx_id)> play_sfx;
 
     // Screen
-    void (*fade_out)(u16 duration_frames);   // deferred modal
-    void (*fade_in)(u16 duration_frames);    // deferred modal
-    void (*screen_clear)(u16 color_index);
+    deferred_modal<void(u16 duration_frames)> fade_out;
+    deferred_modal<void(u16 duration_frames)> fade_in;
+    immediate<void(u16 color_index)> screen_clear;
 
     // Animation
-    void (*anim_play)(u16 anim_id);
-    void (*anim_stop)(u16 anim_id);
+    immediate<void(u16 anim_id)> anim_play;
+    immediate<void(u16 anim_id)> anim_stop;
 
     // System
-    void (*set_lang)(u16 lang_id);
-    void (*save_game)(u16 slot);             // deferred modal
-    void (*load_game)(u16 slot);
-    void (*new_game)();
-    void (*quit_game)();
+    immediate<void(u16 lang_id)> set_lang;
+    deferred_modal<void(u16 slot)> save_game;
+    deferred_terminal<void(u16 slot)> load_game;
+    deferred_terminal<void()> new_game;
+    deferred_terminal<void()> quit_game;
 
 #ifdef GAME_DEBUG
-    void (*debug_log)(u16 string_id);
-    void (*debug_print)(char const* str, u8 len);
+    immediate<void(u16 string_id)> debug_log;
+    immediate<void(char const* str, u8 len)> debug_print;
 #endif
 };
 ```
@@ -833,11 +852,20 @@ add:
 
 ### Scene Transition with Dialogue
 
+A scene change is the last thing a script does. `GOTO_SCENE` is terminal, so
+anything written after it never runs — the arriving scene's own entry script
+opens the room.
+
 ```asm
+; leaving.nnasm — the script that leaves
     MOV D0, #30
     FADE_OUT                ; deferred — fade to black over 30 frames
     MOV D0, #SCENE_OFFICE
-    GOTO_SCENE              ; deferred — the scene loads next frame
+    GOTO_SCENE              ; terminal — nothing below this line runs
+```
+
+```asm
+; office_enter.nnasm — the office's entry script
     MOV D0, #30
     FADE_IN                 ; deferred — fade in
     MOV D0, #STR_WELCOME

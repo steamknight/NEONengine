@@ -56,7 +56,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "flag 0 should be set → D0=1");
         TEST_SUCCESS;
     }
@@ -79,7 +79,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "flag 127 should be set");
         TEST_SUCCESS;
     }
@@ -124,7 +124,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 1, "flag 0 should be set");
         TEST_ASSERT(vm.reg_d(1) == 1, "flag 5 should be set");
         TEST_ASSERT(vm.reg_d(2) == 1, "flag 10 should be set");
@@ -146,8 +146,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB flag");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB flag");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -172,7 +172,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "flag 42 still set after double SETF");
         TEST_SUCCESS;
     }
@@ -200,7 +200,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "flag 7 should be cleared");
         TEST_SUCCESS;
     }
@@ -223,7 +223,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "flag 3 still clear");
         TEST_SUCCESS;
     }
@@ -261,7 +261,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 1, "flag 7 still set");
         TEST_ASSERT(vm.reg_d(1) == 0, "flag 8 cleared");
         TEST_ASSERT(vm.reg_d(2) == 1, "flag 9 still set");
@@ -281,8 +281,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -309,7 +309,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "toggling set flag → clear");
         TEST_SUCCESS;
     }
@@ -332,7 +332,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "toggling clear flag → set");
         TEST_SUCCESS;
     }
@@ -361,7 +361,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "double toggle restores original");
         TEST_SUCCESS;
     }
@@ -379,8 +379,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -403,7 +403,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z=0 when flag is set");
         TEST_SUCCESS;
     }
@@ -422,7 +422,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z=1 when flag is clear");
         TEST_SUCCESS;
     }
@@ -449,7 +449,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "flag unchanged after TSTF");
         TEST_SUCCESS;
     }
@@ -488,7 +488,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "TSTF+BNE: flag set → branch taken");
         TEST_SUCCESS;
     }
@@ -524,7 +524,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "TSTF+BEQ: flag clear → branch taken");
         TEST_SUCCESS;
     }
@@ -542,8 +542,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -571,7 +571,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 1, "flag[D0=10] should be set");
         TEST_SUCCESS;
     }
@@ -598,7 +598,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "flag[D1=25] should be set");
         TEST_SUCCESS;
     }
@@ -621,8 +621,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -653,7 +653,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 0, "flag[D0=15] should be cleared");
         TEST_SUCCESS;
     }
@@ -682,7 +682,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 1, "flag[D0=30] toggled clear→set");
         TEST_SUCCESS;
     }
@@ -712,7 +712,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "flag[D2=50] toggled set→clear");
         TEST_SUCCESS;
     }
@@ -740,7 +740,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z=0 when flag is set");
         TEST_SUCCESS;
     }
@@ -763,7 +763,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z=1 when flag is clear");
         TEST_SUCCESS;
     }
@@ -789,7 +789,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z=0 when flag[D3=100] is set");
         TEST_SUCCESS;
     }
@@ -811,8 +811,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -836,7 +836,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "D0 = flag[5] = 1");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z clear (val=1)");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N always clear for 0/1");
@@ -858,7 +858,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "D0 = flag[5] = 0");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z set (val=0)");
         TEST_ASSERT((vm.sr() & noir_sr::N) == 0, "N always clear for 0/1");
@@ -883,7 +883,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(2) == 1, "D2 = flag[80] = 1");
         // D0 should be unaffected (0)
         TEST_ASSERT(vm.reg_d(0) == 0, "D0 not modified by LDFR D2");
@@ -904,8 +904,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -928,7 +928,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "LDFR overwrites D0 with 0");
         TEST_SUCCESS;
     }
@@ -958,7 +958,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 1, "flag[70] = D0 bit 0 = 1");
         TEST_SUCCESS;
     }
@@ -989,7 +989,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 0, "flag[70] = D0 bit 0 = 0 (D0=2)");
         TEST_SUCCESS;
     }
@@ -1030,7 +1030,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0, "0xFFFE bit 0 = 0 → flag 75 clear");
         TEST_ASSERT(vm.reg_d(1) == 1, "0xFF01 bit 0 = 1 → flag 76 set");
         TEST_SUCCESS;
@@ -1059,7 +1059,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 1, "flag[90] = D3 bit 0 = 1");
         TEST_SUCCESS;
     }
@@ -1078,8 +1078,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_flag_oob, "should error on OOB");
-        TEST_ASSERT(vm.state() == noir_state::halted, "should be halted");
+        TEST_ASSERT(failed_with(vm, status, noir_error::flag_oob), "should error on OOB");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "should be halted");
         TEST_SUCCESS;
     }
 
@@ -1113,7 +1113,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z unchanged after STFR");
         TEST_SUCCESS;
     }
@@ -1146,7 +1146,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 1, "flag 7 set (byte 0, bit 7)");
         TEST_ASSERT(vm.reg_d(1) == 1, "flag 8 set (byte 1, bit 0)");
         TEST_SUCCESS;
@@ -1186,7 +1186,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0, "flag 3 cleared");
         TEST_ASSERT(vm.reg_d(1) == 1, "flag 4 still set");
         TEST_ASSERT(vm.reg_d(2) == 1, "flag 2 still set");
@@ -1209,7 +1209,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "reserved opcode should error");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "reserved opcode should error");
         TEST_SUCCESS;
     }
 

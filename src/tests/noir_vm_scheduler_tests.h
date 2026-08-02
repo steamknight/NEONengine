@@ -84,8 +84,8 @@ namespace NEONengine
         u16 fn1 = emit_local_roundtrip(bc, 0x2222, 1, 1);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn0) == noir_status::ok, "first session starts");
-        TEST_ASSERT(vm.execute(fn1) == noir_status::ok, "second session starts");
+        TEST_ASSERT(vm.execute(fn0) == noir_result::ok, "first session starts");
+        TEST_ASSERT(vm.execute(fn1) == noir_result::ok, "second session starts");
         TEST_ASSERT(vm.session_count() == 2, "both are in the run list");
 
         u16 updates = run_until_empty(vm);
@@ -110,14 +110,14 @@ namespace NEONengine
         auto vm = bc.build_vm();
 
         for (u16 i = 0; i < 4; ++i)
-            TEST_ASSERT(vm.execute(fn[i]) == noir_status::ok, "first four start");
+            TEST_ASSERT(vm.execute(fn[i]) == noir_result::ok, "first four start");
 
         // Let them write their locals and park.
         vm.update();
 
         // These two force the allocation to grow twice over.
-        TEST_ASSERT(vm.execute(fn[4]) == noir_status::ok, "fifth session starts");
-        TEST_ASSERT(vm.execute(fn[5]) == noir_status::ok, "sixth session starts");
+        TEST_ASSERT(vm.execute(fn[4]) == noir_result::ok, "fifth session starts");
+        TEST_ASSERT(vm.execute(fn[5]) == noir_result::ok, "sixth session starts");
         TEST_ASSERT(vm.session_count() == 6, "six sessions live");
 
         u16 updates = run_until_empty(vm);
@@ -178,7 +178,7 @@ namespace NEONengine
         vm.execute(fn);
 
         auto status = vm.update();
-        TEST_ASSERT(status == noir_status::yielded, "nothing ran, session still live");
+        TEST_ASSERT(status == noir_result::yielded, "nothing ran, session still live");
         TEST_ASSERT(vm.session_count() == 1, "session untouched");
         TEST_SUCCESS;
     }
@@ -195,7 +195,7 @@ namespace NEONengine
         vm.execute(fn);
 
         auto status = vm.update();
-        TEST_ASSERT(status == noir_status::yielded, "nothing ran, session still live");
+        TEST_ASSERT(status == noir_result::yielded, "nothing ran, session still live");
         TEST_ASSERT(vm.session_count() == 1, "session untouched");
         TEST_SUCCESS;
     }
@@ -244,13 +244,13 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn) == noir_status::ok, "first request starts a session");
-        TEST_ASSERT(vm.execute(fn) == noir_status::err_duplicate_script, "second is dropped");
+        TEST_ASSERT(vm.execute(fn) == noir_result::ok, "first request starts a session");
+        TEST_ASSERT(failed_with(vm, vm.execute(fn), noir_error::duplicate_script), "second is dropped");
         TEST_ASSERT(vm.session_count() == 1, "only one session exists");
 
         // Still refused once it is parked in a WAIT rather than running.
         vm.update();
-        TEST_ASSERT(vm.execute(fn) == noir_status::err_duplicate_script, "a waiting one counts");
+        TEST_ASSERT(failed_with(vm, vm.execute(fn), noir_error::duplicate_script), "a waiting one counts");
 
         u16 updates = run_until_empty(vm);
         TEST_ASSERT(updates < 200, "session ended");
@@ -269,11 +269,11 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.execute(fn) == noir_status::ok, "first run starts");
+        TEST_ASSERT(vm.execute(fn) == noir_result::ok, "first run starts");
         run_until_empty(vm);
         TEST_ASSERT(vm.session_count() == 0, "run list emptied");
 
-        TEST_ASSERT(vm.execute(fn) == noir_status::ok, "the same script may start again");
+        TEST_ASSERT(vm.execute(fn) == noir_result::ok, "the same script may start again");
         run_until_empty(vm);
         TEST_ASSERT(bc.values[0] == 2, "it ran both times");
         TEST_SUCCESS;
@@ -475,21 +475,15 @@ namespace NEONengine
 
     namespace
     {
-        noir_vm* s_sched_vm       = nullptr;
-        u16 s_sched_spawn_id      = 0;
-        u16 s_sched_spawn_count   = 0;
-        bool s_sched_reset_on_add = false;
+        noir_vm* s_sched_vm     = nullptr;
+        u16 s_sched_spawn_id    = 0;
+        u16 s_sched_spawn_count = 0;
 
+        /// Immediate, and only ever appends: starting a script is always legal.
         void sched_inv_add(u16 id)
         {
             g_mock_log.inv_added[g_mock_log.inv_add_count++] = id;
             if (!s_sched_vm) return;
-
-            if (s_sched_reset_on_add)
-            {
-                s_sched_reset_on_add = false;
-                s_sched_vm->reset_execution();
-            }
 
             if (s_sched_spawn_count > 0)
             {
@@ -498,10 +492,19 @@ namespace NEONengine
             }
         }
 
+        /// Terminal, and tears the VM down where it stands - the one bridge
+        /// call allowed to, and the shape a real NEW_GAME would take.
+        void sched_new_game()
+        {
+            g_mock_log.new_game_called = true;
+            if (s_sched_vm) s_sched_vm->reset_execution();
+        }
+
         noir_bridge make_sched_bridge()
         {
-            noir_bridge b   = g_mock_bridge;
-            b.inv_add = sched_inv_add;
+            noir_bridge b = g_mock_bridge;
+            b.inv_add     = { sched_inv_add };
+            b.new_game    = { sched_new_game };
             return b;
         }
 
@@ -509,10 +512,9 @@ namespace NEONengine
 
         void sched_bridge_reset(noir_vm* vm)
         {
-            s_sched_vm           = vm;
-            s_sched_spawn_id     = 0;
-            s_sched_spawn_count  = 0;
-            s_sched_reset_on_add = false;
+            s_sched_vm          = vm;
+            s_sched_spawn_id    = 0;
+            s_sched_spawn_count = 0;
         }
     }  // namespace
 
@@ -632,12 +634,13 @@ namespace NEONengine
 
     TEST_IMPL(test_sched_reset_from_opcode_drops_everything)
     {
-        // A scene change tears the run list down. If it happens inside an
-        // opcode the update is walking a list that no longer exists.
+        // A terminal call is allowed to tear the VM down where it stands, and a
+        // real NEW_GAME eventually will. The update is then walking a list that
+        // no longer exists, and has to leave the VM usable.
         bytecode_builder bc;
 
         u16 resetter = bc.begin_func();
-        bc.emit(noir_op::INV_ADD);
+        bc.emit(noir_op::NEW_GAME);
         bc.emit(noir_op::INCV);  // must never run: the session is gone
         bc.emit_u16(0);
         bc.emit(noir_op::RET);
@@ -646,61 +649,22 @@ namespace NEONengine
 
         auto vm = bc.build_vm(256, &g_sched_bridge);
         sched_bridge_reset(&vm);
-        s_sched_reset_on_add = true;
 
         vm.execute(resetter);
         vm.execute(other);
 
         auto status = vm.update();
-        TEST_ASSERT(status == noir_status::completed, "the update ended cleanly");
+        TEST_ASSERT(status == noir_result::completed, "the update ended cleanly");
+        TEST_ASSERT(!vm.terminated(), "the teardown it asked for already happened");
         TEST_ASSERT(vm.session_count() == 0, "every session was dropped");
-        TEST_ASSERT(vm.state() == noir_state::halted, "including the one that was running");
-        TEST_ASSERT(bc.values[0] == 0, "the opcode after the reset never ran");
+        TEST_ASSERT(vm.state() == noir_session_state::halted, "including the one that was running");
+        TEST_ASSERT(bc.values[0] == 0, "the instruction after the reset never ran");
 
         // The VM has to be usable afterwards.
         vm.execute(other);
         u16 updates = run_until_empty(vm);
         TEST_ASSERT(updates < 200, "a fresh session runs after the reset");
         TEST_ASSERT(bc.values[1] == 0x6161, "and it runs correctly");
-
-        sched_bridge_reset(nullptr);
-        TEST_SUCCESS;
-    }
-
-    TEST_IMPL(test_sched_reset_then_spawn_from_opcode)
-    {
-        // A scene change tears the run list down and the new scene starts its
-        // entry script, both from inside one opcode. The update is still
-        // holding an index into the list it just dropped, and writing the
-        // register window back through it would land on the new session.
-        bytecode_builder bc;
-
-        u16 resetter = bc.begin_func();
-        bc.emit(noir_op::INV_ADD);
-        bc.emit(noir_op::INCV);  // must never run: the session is gone
-        bc.emit_u16(0);
-        bc.emit(noir_op::RET);
-
-        u16 spawned = bc.begin_func();
-        bc.emit(noir_op::INCV);
-        bc.emit_u16(1);
-        bc.emit(noir_op::RET);
-
-        auto vm = bc.build_vm(256, &g_sched_bridge);
-        sched_bridge_reset(&vm);
-        s_sched_reset_on_add = true;
-        s_sched_spawn_id     = spawned;
-        s_sched_spawn_count  = 1;
-
-        vm.execute(resetter);
-        vm.update();
-
-        TEST_ASSERT(bc.values[0] == 0, "the opcode after the reset never ran");
-        TEST_ASSERT(vm.session_count() == 1, "the script started during the reset survived");
-
-        u16 updates = run_until_empty(vm);
-        TEST_ASSERT(updates < 200, "it ended");
-        TEST_ASSERT(bc.values[1] == 1, "and it actually ran");
 
         sched_bridge_reset(nullptr);
         TEST_SUCCESS;
@@ -726,10 +690,10 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm(16);
-        TEST_ASSERT(vm.execute(greedy) == noir_status::ok, "the frame itself fits");
+        TEST_ASSERT(vm.execute(greedy) == noir_result::ok, "the frame itself fits");
 
         vm.update();
-        TEST_ASSERT(vm.last_error() == noir_status::err_stack_overflow, "overflow was reported");
+        TEST_ASSERT(vm.last_error() == noir_error::stack_overflow, "overflow was reported");
         TEST_ASSERT(bc.values[0] == 0, "the script stopped at the failed push");
         TEST_ASSERT(vm.session_count() == 0, "and the session was removed");
         TEST_SUCCESS;
@@ -752,10 +716,10 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm(256);
-        TEST_ASSERT(vm.execute(hungry) == noir_status::ok, "it starts");
+        TEST_ASSERT(vm.execute(hungry) == noir_result::ok, "it starts");
 
         vm.update();
-        TEST_ASSERT(vm.last_error() == noir_status::err_stack_underflow, "underflow was reported");
+        TEST_ASSERT(vm.last_error() == noir_error::stack_underflow, "underflow was reported");
         TEST_ASSERT(bc.values[0] == 0, "the script stopped at the failed pop");
         TEST_ASSERT(vm.session_count() == 0, "and the session was removed");
         TEST_SUCCESS;
@@ -787,9 +751,74 @@ namespace NEONengine
 
         u16 updates = run_until_empty(vm);
         TEST_ASSERT(updates < 200, "the run list drained");
-        TEST_ASSERT(vm.last_error() == noir_status::err_stack_underflow, "the doomed one died");
+        TEST_ASSERT(vm.last_error() == noir_error::stack_underflow, "the doomed one died");
         TEST_ASSERT(bc.values[1] == 0, "and it died where it ran out");
         TEST_ASSERT(bc.values[0] == 0x2B2B, "the neighbour finished its work untouched");
+        TEST_SUCCESS;
+    }
+
+    // ── A death outranks the ordinary ───────────────────────────────────────────
+
+    TEST_IMPL(test_sched_failure_outranks_yielded)
+    {
+        // Sessions remaining is the ordinary case and worth saying only when
+        // nothing worse happened. A session dying is not ordinary, so the
+        // update reports that instead - even though the survivor is still live.
+        bytecode_builder bc;
+
+        u16 survivor = bc.begin_func();
+        for (u16 i = 0; i < 40; ++i) bc.emit(noir_op::NOP);
+        bc.emit(noir_op::RET);
+
+        // The entry frame is eight bytes, so it takes five pops to run out.
+        u16 doomed = bc.begin_func();
+        for (u16 i = 0; i < 5; ++i)
+        {
+            bc.emit(noir_op::POP);
+            bc.emit_mode(noir_mode::REG_D0, 0);
+        }
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(survivor);
+        vm.execute(doomed);
+
+        auto status = vm.update();
+
+        TEST_ASSERT(failed_with(vm, status, noir_error::stack_underflow), "the death is reported");
+        TEST_ASSERT(vm.session_count() == 1, "though a session is still live");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_sched_failure_does_not_outlive_its_update)
+    {
+        // The verdict belongs to one update. A death in this one must not be
+        // handed back by the next, which is the trap a sticky error code sets.
+        bytecode_builder bc;
+
+        u16 survivor = bc.begin_func();
+        for (u16 i = 0; i < 40; ++i) bc.emit(noir_op::NOP);
+        bc.emit(noir_op::RET);
+
+        // The entry frame is eight bytes, so it takes five pops to run out.
+        u16 doomed = bc.begin_func();
+        for (u16 i = 0; i < 5; ++i)
+        {
+            bc.emit(noir_op::POP);
+            bc.emit_mode(noir_mode::REG_D0, 0);
+        }
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(survivor);
+        vm.execute(doomed);
+
+        TEST_ASSERT(vm.update() == noir_result::failed, "the update the death happened in");
+
+        auto next = vm.update();
+
+        TEST_ASSERT(next == noir_result::yielded, "the next one is ordinary again");
+        TEST_ASSERT(vm.last_error() == noir_error::stack_underflow, "the reason is still on record");
         TEST_SUCCESS;
     }
 
@@ -802,7 +831,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
-        TEST_ASSERT(vm.update() == noir_status::ok, "an empty run list is not an error");
+        TEST_ASSERT(vm.update() == noir_result::ok, "an empty run list is not an error");
         TEST_ASSERT(vm.session_count() == 0, "and it stays empty");
         TEST_SUCCESS;
     }
@@ -824,10 +853,10 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm(4);
-        TEST_ASSERT(vm.execute(fn0) != noir_status::ok, "a four-byte stack cannot hold a frame");
+        TEST_ASSERT(vm.execute(fn0) != noir_result::ok, "a four-byte stack cannot hold a frame");
         TEST_ASSERT(vm.session_count() == 0, "nothing was added to the run list");
-        TEST_ASSERT(vm.execute(fn1) != noir_status::ok, "and the next one fails the same way");
-        TEST_ASSERT(vm.update() == noir_status::ok, "update has nothing to do");
+        TEST_ASSERT(vm.execute(fn1) != noir_result::ok, "and the next one fails the same way");
+        TEST_ASSERT(vm.update() == noir_result::ok, "update has nothing to do");
         TEST_SUCCESS;
     }
 
@@ -851,10 +880,11 @@ namespace NEONengine
     TEST(test_sched_spawn_from_opcode_keeps_caller_intact)
     TEST(test_sched_spawn_from_opcode_may_grow_the_stacks)
     TEST(test_sched_reset_from_opcode_drops_everything)
-    TEST(test_sched_reset_then_spawn_from_opcode)
     TEST(test_sched_stack_overflow_kills_the_session)
     TEST(test_sched_stack_underflow_kills_the_session)
     TEST(test_sched_stack_death_spares_the_neighbours)
+    TEST(test_sched_failure_outranks_yielded)
+    TEST(test_sched_failure_does_not_outlive_its_update)
     TEST(test_sched_update_with_empty_run_list)
     TEST(test_sched_session_that_cannot_be_framed_is_not_listed)
     TEST_SUITE_END

@@ -280,43 +280,43 @@ namespace NEONengine
     // ─── Pre-built mock bridge instance ─────────────────────────────────────────
 
     static noir_bridge const g_mock_bridge = {
-        .inv_add    = mock_inv_add,
-        .inv_remove = mock_inv_remove,
-        .inv_has    = mock_inv_has,
-        .inv_count  = mock_inv_count,
-        .inv_clear  = mock_inv_clear,
+        .inv_add    = {mock_inv_add},
+        .inv_remove = {mock_inv_remove},
+        .inv_has    = {mock_inv_has},
+        .inv_count  = {mock_inv_count},
+        .inv_clear  = {mock_inv_clear},
 
-        .goto_scene  = mock_goto_scene,
-        .get_scene   = mock_get_scene,
-        .hotspot_on  = mock_hotspot_on,
-        .hotspot_off = mock_hotspot_off,
-        .set_pointer = mock_set_pointer,
+        .goto_scene  = {mock_goto_scene},
+        .get_scene   = {mock_get_scene},
+        .hotspot_on  = {mock_hotspot_on},
+        .hotspot_off = {mock_hotspot_off},
+        .set_pointer = {mock_set_pointer},
 
-        .say         = mock_say,
-        .show_dialog = mock_show_dialog,
-        .show_text   = mock_show_text,
-        .clear_text  = mock_clear_text,
+        .say         = {mock_say},
+        .show_dialog = {mock_show_dialog},
+        .show_text   = {mock_show_text},
+        .clear_text  = {mock_clear_text},
 
-        .play_music = mock_play_music,
-        .stop_music = mock_stop_music,
-        .play_sfx   = mock_play_sfx,
+        .play_music = {mock_play_music},
+        .stop_music = {mock_stop_music},
+        .play_sfx   = {mock_play_sfx},
 
-        .fade_out     = mock_fade_out,
-        .fade_in      = mock_fade_in,
-        .screen_clear = mock_screen_clear,
+        .fade_out     = {mock_fade_out},
+        .fade_in      = {mock_fade_in},
+        .screen_clear = {mock_screen_clear},
 
-        .anim_play = mock_anim_play,
-        .anim_stop = mock_anim_stop,
+        .anim_play = {mock_anim_play},
+        .anim_stop = {mock_anim_stop},
 
-        .set_lang  = mock_set_lang,
-        .save_game = mock_save_game,
-        .load_game = mock_load_game,
-        .new_game  = mock_new_game,
-        .quit_game = mock_quit_game,
+        .set_lang  = {mock_set_lang},
+        .save_game = {mock_save_game},
+        .load_game = {mock_load_game},
+        .new_game  = {mock_new_game},
+        .quit_game = {mock_quit_game},
 
 #ifdef GAME_DEBUG
-        .debug_log   = mock_debug_log,
-        .debug_print = mock_debug_print,
+        .debug_log   = {mock_debug_log},
+        .debug_print = {mock_debug_print},
 #endif
     };
 
@@ -397,19 +397,25 @@ namespace NEONengine
         }
 
         // Run a single-function script to completion (up to max_updates frames)
-        noir_status run_to_completion(noir_vm& vm, u16 func_id, u16 max_updates = 100)
+        noir_result run_to_completion(noir_vm& vm, u16 func_id, u16 max_updates = 100)
         {
             auto status = vm.execute(func_id);
-            if (status != noir_status::ok) return status;
+            if (status != noir_result::ok) return status;
 
             for (u16 i = 0; i < max_updates; ++i)
             {
                 status = vm.update();
-                if (status != noir_status::yielded) return status;
+                if (status != noir_result::yielded) return status;
             }
             return status;
         }
     };
+
+    /// True when @p status reports a death and @p vm agrees on the reason.
+    inline bool failed_with(noir_vm const& vm, noir_result status, noir_error reason)
+    {
+        return status == noir_result::failed && vm.last_error() == reason;
+    }
 
 }  // namespace NEONengine
 

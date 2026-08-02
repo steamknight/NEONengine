@@ -209,7 +209,7 @@ namespace NEONengine
             // Captions and text regions were both built from the table that just
             // went away. A pending scene is about to rebuild them anyway, so this
             // only pays for a language change that stays in the current scene.
-            if (!g_pEngine->has_pending_scene())
+            if (g_pEngine->pending_system_kind() != system_kind::load_scene)
             {
                 mtl::system_use_guard guard;  // OS on for pak/disk access
                 scene_bobs_reload_captions();
@@ -273,7 +273,10 @@ namespace NEONengine
          *
          * @return Whether an entry script is now running. When it is, nothing
          *         has brought the palette up yet: the script's own FADE_IN does
-         *         that on its first slice.
+         *         that on its first slice. A bad scene id also returns false,
+         *         with nothing loaded and the VM left as it was - sceneProcess
+         *         tears it down, because a script that asked to leave is over
+         *         either way.
          */
         bool load_scene(u16 scene_id)
         {
@@ -337,7 +340,7 @@ namespace NEONengine
 
             g_pEngine->vm().reset_execution();
             if (sc.on_enter_function_id != data::NO_ID
-                && g_pEngine->vm().execute(sc.on_enter_function_id) == noir_status::ok)
+                && g_pEngine->vm().execute(sc.on_enter_function_id) == noir_result::ok)
             {
                 return true;
             }
@@ -395,11 +398,36 @@ namespace NEONengine
                     NE_LOG("SHOW_DIALOG %hu: no dialogue box yet", request.a);
                     return;
 
-                case modal_kind::save_game:
+                case modal_kind::none: return;
+            }
+        }
+
+        /**
+         * @brief Act on a system request - a scene change, a save, a new game.
+         *
+         * A kind the engine cannot do yet is logged and dropped. The VM is
+         * stopped behind most of these, and sceneProcess tears it down for
+         * whichever of them did not do it here.
+         */
+        void apply_system_request(system_request const& request)
+        {
+            switch (request.kind)
+            {
+                case system_kind::load_scene: load_scene(request.a); return;
+
+                case system_kind::save_game:
                     NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.a);
                     return;
 
-                case modal_kind::none: return;
+                case system_kind::load_game:
+                    NE_LOG("LOAD_GAME slot %hu: no save format yet", request.a);
+                    return;
+
+                case system_kind::new_game: NE_LOG("NEW_GAME: nothing to start yet"); return;
+
+                case system_kind::quit_game: NE_LOG("QUIT_GAME: no way out yet"); return;
+
+                case system_kind::none: return;
             }
         }
     }  // namespace
@@ -438,7 +466,8 @@ namespace NEONengine
         // Treating the whole span as one event keeps the pointer on WAIT instead
         // of flicking back to its normal role in that gap.
         bool const transitioning = g_pEngine->has_pending_language()
-            || g_pEngine->has_pending_scene() || screenIsFadingOut(g_mainScreen);
+            || g_pEngine->pending_system_kind() == system_kind::load_scene
+            || screenIsFadingOut(g_mainScreen);
 
         // Cheap and idempotent: the frame's own mousePointerUpdate() and
         // screenProcess() publish it, so the fade needs nothing special.
@@ -453,11 +482,17 @@ namespace NEONengine
             show_wait_pointer();
             apply_pending_language();
         }
-        if (g_pEngine->has_pending_scene())
+        if (g_pEngine->has_pending_system())
         {
             show_wait_pointer();
-            load_scene(g_pEngine->take_pending_scene());
+            apply_system_request(g_pEngine->take_pending_system());
         }
+
+        // A terminal call is owed a teardown. If answering its request did not
+        // deliver one - the scene failed to load, or nothing implements it yet -
+        // it is delivered here, or the VM would never run again.
+        if (g_pEngine->vm().terminated()) g_pEngine->vm().reset_execution();
+
         if (g_pEngine->has_pending_modal()) start_pending_modal();
 
         // A language change owes the backdrop a repaint, which costs a full
@@ -496,7 +531,10 @@ namespace NEONengine
         // its first slice now instead of next frame, and so whatever it moves is
         // drawn below. A hotspot can leave the scene without a script; when one
         // has, this scene is already over and nothing here should touch it.
-        if (!holding && !g_pEngine->has_pending_scene()) g_pEngine->vm().update();
+        if (!holding && g_pEngine->pending_system_kind() != system_kind::load_scene)
+        {
+            g_pEngine->vm().update();
+        }
 
         mousePointerUpdate();
         scene_bobs_update();
@@ -507,6 +545,8 @@ namespace NEONengine
     {
         s_backdropStale = false;
         s_modal         = modal_request{};
+        g_pEngine->take_pending_modal();
+        g_pEngine->take_pending_system();
         scene_hotspots_clear();
         scene_timeline_clear();
         mousePointerDestroy();

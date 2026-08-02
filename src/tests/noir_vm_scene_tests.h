@@ -17,10 +17,10 @@ namespace NEONengine
     // Bridge function pointers are called.
     //
     // GOTO_SCENE  (0xA0): D0=scene_id → bridge->goto_scene(D0)  — deferred terminal
-    // GET_SCENE   (0xA1): bridge->get_scene() → D0              — non-blocking
-    // HOTSPOT_ON  (0xA2): D0=id → bridge->hotspot_on(D0)        — non-blocking
-    // HOTSPOT_OFF (0xA3): D0=id → bridge->hotspot_off(D0)       — non-blocking
-    // SET_POINTER (0xA4): D0=type → bridge->set_pointer(D0)     — non-blocking
+    // GET_SCENE   (0xA1): bridge->get_scene() → D0              — immediate
+    // HOTSPOT_ON  (0xA2): D0=id → bridge->hotspot_on(D0)        — immediate
+    // HOTSPOT_OFF (0xA3): D0=id → bridge->hotspot_off(D0)       — immediate
+    // SET_POINTER (0xA4): D0=type → bridge->set_pointer(D0)     — immediate
     // 0xA5–0xAF: Reserved → err_invalid_opcode
     //
     // SR: All scene opcodes leave SR unchanged.
@@ -31,7 +31,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_goto_scene_basic)
     {
-        // GOTO_SCENE with D0=5 → bridge->goto_scene(5)
+        // GOTO_SCENE with D0=5 -> bridge->goto_scene(5)
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -43,6 +43,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn);
         vm.update();
 
@@ -51,9 +52,11 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_goto_scene_parks_the_session)
+    TEST_IMPL(test_noir_goto_scene_stops_the_vm)
     {
-        // GOTO_SCENE is deferred: the walk ends on it, before the RET
+        // GOTO_SCENE is deferred terminal. The update it lands in says so, and
+        // says it in preference to reporting that sessions remain - which they
+        // do, because the teardown has not happened yet.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -68,16 +71,16 @@ namespace NEONengine
         vm.execute(fn);
         auto status = vm.update();
 
-        TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::terminated, "the update reports the teardown it is owed");
+        TEST_ASSERT(vm.terminated(), "and the VM says so afterwards");
+        TEST_ASSERT(vm.session_count() == 1, "the session is parked, not gone");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_goto_scene_parks_before_the_next_opcode)
+    TEST_IMPL(test_noir_goto_scene_does_not_run_what_follows)
     {
-        // GOTO_SCENE is deferred terminal: the scene tears down at the top of
-        // the next frame, so the opcodes behind it must not run in this one.
-        // The PC parks on the next opcode rather than stepping over it.
+        // The scene this session belongs to is over. Its remaining opcodes must
+        // never run - not in this update, and not in any update after it.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -97,133 +100,48 @@ namespace NEONengine
 
         vm.update();
         TEST_ASSERT(vm.reg_d(3) != 31337, "the opcode after GOTO_SCENE did not run");
-        TEST_ASSERT(vm.session_count() == 1, "the session is parked, not gone");
 
-        vm.update();
-        TEST_ASSERT(vm.reg_d(3) == 31337, "and it is exactly where the next update starts");
+        for (u16 i = 0; i < 8; ++i) vm.update();
+        TEST_ASSERT(vm.reg_d(3) != 31337, "and no later update let it through");
+        TEST_ASSERT(vm.session_count() == 1, "nothing was cleaned up either");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_goto_scene_resumes_after_unblock)
+    TEST_IMPL(test_noir_goto_scene_stays_stopped_until_reset)
     {
-        // The session resumes on the next update with no help from the engine
+        // Only reset_execution() lifts it, and it takes the sessions with it.
+        // Anything less would resume a script in a scene that no longer exists.
         bytecode_builder bc;
-        u16 fn = bc.begin_func();
 
+        u16 fn = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(10);
-
         bc.emit(noir_op::GOTO_SCENE);
+        bc.emit(noir_op::RET);
 
-        // Code after unblock
+        u16 fn_after = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(888);
-
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
+        TEST_ASSERT(vm.update() == noir_result::terminated, "still stopped");
 
+        vm.reset_execution();
+
+        TEST_ASSERT(!vm.terminated(), "the teardown lifted it");
+        TEST_ASSERT(vm.session_count() == 0, "and took the parked session with it");
+
+        vm.execute(fn_after);
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
-        TEST_ASSERT(vm.exit_code() == 888, "code after GOTO_SCENE executed");
-        TEST_SUCCESS;
-    }
-
-    TEST_IMPL(test_noir_goto_scene_preserves_d0)
-    {
-        // D0 should be preserved across the park
-        bytecode_builder bc;
-        u16 fn = bc.begin_func();
-
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(42);
-
-        bc.emit(noir_op::GOTO_SCENE);
-        bc.emit(noir_op::RET);
-
-        auto vm = bc.build_vm();
-        vm.execute(fn);
-        vm.update();
-
-        vm.update();
-
-        TEST_ASSERT(vm.exit_code() == 42, "D0 preserved across GOTO_SCENE block");
-        TEST_SUCCESS;
-    }
-
-    TEST_IMPL(test_noir_goto_scene_preserves_all_regs)
-    {
-        // All data registers preserved across GOTO_SCENE
-        bytecode_builder bc;
-        u16 fn = bc.begin_func();
-
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(11);
-
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
-        bc.emit_u16(22);
-
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D2, noir_mode::IMM16);
-        bc.emit_u16(33);
-
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
-        bc.emit_u16(44);
-
-        bc.emit(noir_op::GOTO_SCENE);
-        bc.emit(noir_op::RET);
-
-        auto vm = bc.build_vm();
-        vm.execute(fn);
-        vm.update();
-
-        vm.update();
-
-        TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
-        TEST_ASSERT(vm.reg_d(1) == 22, "D1 preserved");
-        TEST_ASSERT(vm.reg_d(2) == 33, "D2 preserved");
-        TEST_ASSERT(vm.reg_d(3) == 44, "D3 preserved");
-        TEST_SUCCESS;
-    }
-
-    TEST_IMPL(test_noir_goto_scene_preserves_sr)
-    {
-        // SR preserved across GOTO_SCENE
-        bytecode_builder bc;
-        u16 fn = bc.begin_func();
-
-        bc.emit(noir_op::CLR);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D0);
-
-        bc.emit(noir_op::CMP);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(1);  // 0 - 1 = -1, sets N
-
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(5);
-
-        bc.emit(noir_op::GOTO_SCENE);
-        bc.emit(noir_op::RET);
-
-        auto vm = bc.build_vm();
-        vm.execute(fn);
-        vm.update();
-
-        vm.update();
-
-        TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
+        TEST_ASSERT(status == noir_result::completed, "the VM runs again");
+        TEST_ASSERT(vm.exit_code() == 888, "and it was the new script that ran");
         TEST_SUCCESS;
     }
 
@@ -240,6 +158,8 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
+        g_mock_log.goto_scene_id = 0xFFFF;  // reset() leaves 0, which the call also writes
         vm.execute(fn);
         vm.update();
 
@@ -262,6 +182,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn);
         vm.update();
 
@@ -272,10 +193,11 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_goto_scene_inside_call)
     {
-        // GOTO_SCENE inside a called function blocks, then returns correctly
+        // Depth makes no difference: the call stack under the session is about
+        // to be discarded, so the RET waiting for it never runs either.
         bytecode_builder bc;
 
-        // fn0: main — calls fn1
+        // fn0: main - calls fn1
         u16 fn0 = bc.begin_func();
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -302,6 +224,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn0);
         vm.update();
 
@@ -310,8 +233,8 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
-        TEST_ASSERT(vm.exit_code() == 77, "D0=77 returned from fn1");
+        TEST_ASSERT(status == noir_result::terminated, "still stopped, call frame and all");
+        TEST_ASSERT(vm.exit_code() != 77, "fn1 never reached its own RET");
         TEST_SUCCESS;
     }
 
@@ -330,7 +253,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 42;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "D0 = bridge result 42");
         TEST_SUCCESS;
     }
@@ -352,7 +275,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 7;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 7, "D0 overwritten to 7");
         TEST_SUCCESS;
     }
@@ -382,7 +305,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 5;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 100, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 200, "D2 preserved");
         TEST_ASSERT(vm.reg_d(3) == 300, "D3 preserved");
@@ -409,14 +332,14 @@ namespace NEONengine
         g_mock_log.get_scene_result = 3;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_get_scene_does_not_block)
     {
-        // GET_SCENE is non-blocking
+        // GET_SCENE is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -432,7 +355,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 1;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
+        TEST_ASSERT(status == noir_result::completed, "should complete in one update");
         TEST_ASSERT(vm.reg_d(1) == 777, "execution continued past GET_SCENE");
         TEST_SUCCESS;
     }
@@ -450,7 +373,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 0;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0, "D0 = 0");
         TEST_SUCCESS;
     }
@@ -468,7 +391,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 0xFFFF;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xFFFF, "D0 = 0xFFFF");
         TEST_SUCCESS;
     }
@@ -506,7 +429,7 @@ namespace NEONengine
         g_mock_log.get_scene_result = 5;
         auto status                 = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 555, "branch taken when scene == 5");
         TEST_SUCCESS;
     }
@@ -529,7 +452,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.hotspot_on_id == 7, "hotspot_on received id 7");
         TEST_SUCCESS;
     }
@@ -550,7 +473,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 99, "D0 unchanged");
         TEST_SUCCESS;
     }
@@ -583,7 +506,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 10, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 20, "D2 preserved");
         TEST_ASSERT(vm.reg_d(3) == 30, "D3 preserved");
@@ -613,14 +536,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_hotspot_on_does_not_block)
     {
-        // HOTSPOT_ON is non-blocking
+        // HOTSPOT_ON is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -639,8 +562,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 444, "code continued past HOTSPOT_ON");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 444, "the session carried on past HOTSPOT_ON");
         TEST_SUCCESS;
     }
 
@@ -662,7 +585,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.hotspot_off_id == 4, "hotspot_off received id 4");
         TEST_SUCCESS;
     }
@@ -683,7 +606,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 66, "D0 unchanged");
         TEST_SUCCESS;
     }
@@ -716,7 +639,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 111, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 222, "D2 preserved");
         TEST_ASSERT(vm.reg_d(3) == 333, "D3 preserved");
@@ -746,14 +669,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_hotspot_off_does_not_block)
     {
-        // HOTSPOT_OFF is non-blocking
+        // HOTSPOT_OFF is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -772,8 +695,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 333, "code continued past HOTSPOT_OFF");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 333, "the session carried on past HOTSPOT_OFF");
         TEST_SUCCESS;
     }
 
@@ -795,7 +718,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.set_pointer_type == 2, "set_pointer received type 2");
         TEST_SUCCESS;
     }
@@ -816,7 +739,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 88, "D0 unchanged");
         TEST_SUCCESS;
     }
@@ -849,7 +772,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 50, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 60, "D2 preserved");
         TEST_ASSERT(vm.reg_d(3) == 70, "D3 preserved");
@@ -879,14 +802,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_set_pointer_does_not_block)
     {
-        // SET_POINTER is non-blocking
+        // SET_POINTER is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -905,8 +828,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 222, "code continued past SET_POINTER");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 222, "the session carried on past SET_POINTER");
         TEST_SUCCESS;
     }
 
@@ -929,61 +852,30 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.hotspot_on_id == 9, "hotspot_on received id 9");
         TEST_ASSERT(g_mock_log.hotspot_off_id == 9, "hotspot_off received id 9");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_goto_scene_then_get_scene)
+    TEST_IMPL(test_noir_goto_scene_abandons_the_setup_behind_it)
     {
-        // After GOTO_SCENE completes, GET_SCENE should work
+        // The shape a script must not be written in. Everything after the scene
+        // change belongs to the scene being left, so none of it runs: the new
+        // scene's own entry script is what sets its pointer and its hotspots.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
-        bc.emit(noir_op::MOV16);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(15);
-
-        bc.emit(noir_op::GOTO_SCENE);
-
-        // After unblock, get the current scene
-        bc.emit(noir_op::GET_SCENE);
-        bc.emit(noir_op::RET);
-
-        auto vm                     = bc.build_vm();
-        g_mock_log.get_scene_result = 15;
-        vm.execute(fn);
-        vm.update();
-
-        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
-
-        auto status = vm.update();
-
-        TEST_ASSERT(status == noir_status::completed, "completes");
-        TEST_ASSERT(vm.exit_code() == 15, "GET_SCENE returned new scene id");
-        TEST_SUCCESS;
-    }
-
-    TEST_IMPL(test_noir_goto_scene_set_pointer_hotspot)
-    {
-        // Full scene setup pattern: GOTO_SCENE → SET_POINTER → HOTSPOT_ON
-        bytecode_builder bc;
-        u16 fn = bc.begin_func();
-
-        // GOTO_SCENE 3
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(3);
         bc.emit(noir_op::GOTO_SCENE);
 
-        // After scene loads: SET_POINTER 1
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(1);
         bc.emit(noir_op::SET_POINTER);
 
-        // HOTSPOT_ON 5
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(5);
@@ -992,17 +884,16 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         auto vm = bc.build_vm();
+        g_mock_log.reset();
         vm.execute(fn);
         vm.update();
 
-        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
         TEST_ASSERT(g_mock_log.goto_scene_id == 3, "goto_scene(3)");
 
-        auto status = vm.update();
+        for (u16 i = 0; i < 4; ++i) vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes");
-        TEST_ASSERT(g_mock_log.set_pointer_type == 1, "set_pointer(1)");
-        TEST_ASSERT(g_mock_log.hotspot_on_id == 5, "hotspot_on(5)");
+        TEST_ASSERT(g_mock_log.set_pointer_type != 1, "the pointer was never set");
+        TEST_ASSERT(g_mock_log.hotspot_on_id != 5, "nor the hotspot enabled");
         TEST_SUCCESS;
     }
 
@@ -1036,15 +927,12 @@ namespace NEONengine
         auto vm                     = bc.build_vm();
         g_mock_log.get_scene_result = 3;
         vm.execute(fn);
-        vm.update();
+        auto status = vm.update();
 
         // Current scene was 3, not 5, so should branch to GOTO_SCENE
         TEST_ASSERT(g_mock_log.goto_scene_called, "goto_scene called");
         TEST_ASSERT(g_mock_log.goto_scene_id == 5, "goto_scene(5)");
-        TEST_ASSERT(vm.session_count() == 1, "parked at GOTO_SCENE");
-
-        auto status = vm.update();
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(status == noir_result::terminated, "and the VM stopped on it");
         TEST_SUCCESS;
     }
 
@@ -1062,7 +950,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xA5 is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xA5 is invalid");
         TEST_SUCCESS;
     }
 
@@ -1078,7 +966,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xAF is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xAF is invalid");
         TEST_SUCCESS;
     }
 
@@ -1094,7 +982,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xA8 is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xA8 is invalid");
         TEST_SUCCESS;
     }
 
@@ -1107,12 +995,9 @@ namespace NEONengine
     Test noir_vm_scene_tests[] = {
         // GOTO_SCENE
         { "goto_scene basic", test_noir_goto_scene_basic },
-        { "goto_scene parks the session", test_noir_goto_scene_parks_the_session },
-        { "goto_scene parks before next opcode", test_noir_goto_scene_parks_before_the_next_opcode },
-        { "goto_scene resumes", test_noir_goto_scene_resumes_after_unblock },
-        { "goto_scene preserves D0", test_noir_goto_scene_preserves_d0 },
-        { "goto_scene preserves regs", test_noir_goto_scene_preserves_all_regs },
-        { "goto_scene preserves SR", test_noir_goto_scene_preserves_sr },
+        { "goto_scene stops the VM", test_noir_goto_scene_stops_the_vm },
+        { "goto_scene abandons what follows", test_noir_goto_scene_does_not_run_what_follows },
+        { "goto_scene stays stopped until reset", test_noir_goto_scene_stays_stopped_until_reset },
         { "goto_scene zero id", test_noir_goto_scene_zero_id },
         { "goto_scene max id", test_noir_goto_scene_max_id },
         { "goto_scene inside CALL", test_noir_goto_scene_inside_call },
@@ -1150,8 +1035,7 @@ namespace NEONengine
 
         // Combined patterns
         { "hotspot on then off", test_noir_hotspot_on_then_off },
-        { "goto then get scene", test_noir_goto_scene_then_get_scene },
-        { "scene setup pattern", test_noir_goto_scene_set_pointer_hotspot },
+        { "goto abandons the setup behind it", test_noir_goto_scene_abandons_the_setup_behind_it },
         { "get scene conditional goto", test_noir_get_scene_conditional_goto },
 
         // Invalid opcodes

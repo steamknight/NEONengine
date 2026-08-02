@@ -18,11 +18,11 @@ namespace NEONengine
     //
     // SAY         (0xB0): D0=string_id, D1=speaker_id → bridge->say(D0,D1) — deferred modal
     // SHOW_DIALOG (0xB1): D0=dialogue_id → bridge->show_dialog(D0)         — deferred modal
-    // SHOW_TEXT   (0xB2): D0=string_id, D1=x, D2=y → bridge->show_text     — non-blocking
-    // CLEAR_TEXT  (0xB3): bridge->clear_text()                              — non-blocking
-    // PLAY_MUSIC  (0xB4): D0=music_id → bridge->play_music(D0)             — non-blocking
-    // STOP_MUSIC  (0xB5): bridge->stop_music()                              — non-blocking
-    // PLAY_SFX    (0xB6): D0=sfx_id → bridge->play_sfx(D0)                 — non-blocking
+    // SHOW_TEXT   (0xB2): D0=string_id, D1=x, D2=y → bridge->show_text     — immediate
+    // CLEAR_TEXT  (0xB3): bridge->clear_text()                              — immediate
+    // PLAY_MUSIC  (0xB4): D0=music_id → bridge->play_music(D0)             — immediate
+    // STOP_MUSIC  (0xB5): bridge->stop_music()                              — immediate
+    // PLAY_SFX    (0xB6): D0=sfx_id → bridge->play_sfx(D0)                 — immediate
     // 0xB7–0xBF: Reserved → err_invalid_opcode
     //
     // SR: All dialogue/audio opcodes leave SR unchanged.
@@ -80,7 +80,7 @@ namespace NEONengine
         auto status = vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
@@ -115,11 +115,11 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.say_string_id == 13, "the second line waited a whole update");
 
         auto last = vm.update();
-        TEST_ASSERT(last == noir_status::completed, "then the script ran out");
+        TEST_ASSERT(last == noir_result::completed, "then the script ran out");
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_say_resumes_after_unblock)
+    TEST_IMPL(test_noir_say_resumes_next_update)
     {
         // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
@@ -135,7 +135,7 @@ namespace NEONengine
 
         bc.emit(noir_op::SAY);
 
-        // Code after unblock
+        // Runs in the update after the SAY
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(999);
@@ -150,7 +150,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(status == noir_result::completed, "completes on the next update");
         TEST_ASSERT(vm.exit_code() == 999, "code after SAY executed");
         TEST_SUCCESS;
     }
@@ -309,7 +309,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_say_inside_call)
     {
-        // SAY inside a called function blocks, then returns correctly
+        // SAY inside a called function defers, then returns correctly
         bytecode_builder bc;
 
         // fn0: main — calls fn1
@@ -348,7 +348,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(status == noir_result::completed, "completes on the next update");
         TEST_ASSERT(vm.exit_code() == 77, "D0=77 returned from fn1");
         TEST_SUCCESS;
     }
@@ -395,7 +395,7 @@ namespace NEONengine
         auto status = vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_status::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::yielded, "sessions remain, so the update yields");
         TEST_SUCCESS;
     }
 
@@ -437,7 +437,7 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_noir_show_dialog_resumes_after_unblock)
+    TEST_IMPL(test_noir_show_dialog_resumes_next_update)
     {
         // The session resumes on the next update with no help from the engine
         bytecode_builder bc;
@@ -463,7 +463,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(status == noir_result::completed, "completes on the next update");
         TEST_ASSERT(vm.exit_code() == 888, "code after SHOW_DIALOG executed");
         TEST_SUCCESS;
     }
@@ -605,7 +605,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.show_text_id == 100, "show_text received string 100");
         TEST_ASSERT(g_mock_log.show_text_x == 50, "show_text received x 50");
         TEST_ASSERT(g_mock_log.show_text_y == 75, "show_text received y 75");
@@ -614,7 +614,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_show_text_does_not_block)
     {
-        // SHOW_TEXT is non-blocking
+        // SHOW_TEXT is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -641,7 +641,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete without blocking");
+        TEST_ASSERT(status == noir_result::completed, "should complete in one update");
         TEST_ASSERT(vm.exit_code() == 555, "execution continued past SHOW_TEXT");
         TEST_SUCCESS;
     }
@@ -674,7 +674,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 1, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 2, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 3, "D2 preserved");
@@ -713,7 +713,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -740,7 +740,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.show_text_id == 42, "show_text string 42");
         TEST_ASSERT(g_mock_log.show_text_x == 0, "show_text x=0");
         TEST_ASSERT(g_mock_log.show_text_y == 0, "show_text y=0");
@@ -761,14 +761,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.clear_text_called, "clear_text bridge called");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_clear_text_does_not_block)
     {
-        // CLEAR_TEXT is non-blocking
+        // CLEAR_TEXT is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -783,8 +783,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 444, "code continued past CLEAR_TEXT");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 444, "the session carried on past CLEAR_TEXT");
         TEST_SUCCESS;
     }
 
@@ -816,7 +816,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 10, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 20, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 30, "D2 preserved");
@@ -843,7 +843,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -866,14 +866,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.play_music_id == 3, "play_music received id 3");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_play_music_does_not_block)
     {
-        // PLAY_MUSIC is non-blocking
+        // PLAY_MUSIC is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -892,8 +892,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 777, "code continued past PLAY_MUSIC");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 777, "the session carried on past PLAY_MUSIC");
         TEST_SUCCESS;
     }
 
@@ -913,7 +913,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 42, "D0 preserved");
         TEST_SUCCESS;
     }
@@ -946,7 +946,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 100, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 200, "D2 preserved");
         TEST_ASSERT(vm.reg_d(3) == 300, "D3 preserved");
@@ -976,7 +976,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -996,7 +996,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.play_music_id == 0, "play_music received id 0");
         TEST_SUCCESS;
     }
@@ -1015,14 +1015,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.stop_music_called, "stop_music bridge called");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_stop_music_does_not_block)
     {
-        // STOP_MUSIC is non-blocking
+        // STOP_MUSIC is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -1037,8 +1037,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 333, "code continued past STOP_MUSIC");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 333, "the session carried on past STOP_MUSIC");
         TEST_SUCCESS;
     }
 
@@ -1070,7 +1070,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 10, "D0 preserved");
         TEST_ASSERT(vm.reg_d(1) == 20, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 30, "D2 preserved");
@@ -1097,7 +1097,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -1120,14 +1120,14 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.play_sfx_id == 8, "play_sfx received id 8");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_play_sfx_does_not_block)
     {
-        // PLAY_SFX is non-blocking
+        // PLAY_SFX is immediate
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -1146,8 +1146,8 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
-        TEST_ASSERT(vm.exit_code() == 222, "code continued past PLAY_SFX");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 222, "the session carried on past PLAY_SFX");
         TEST_SUCCESS;
     }
 
@@ -1167,7 +1167,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 55, "D0 preserved");
         TEST_SUCCESS;
     }
@@ -1200,7 +1200,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(1) == 111, "D1 preserved");
         TEST_ASSERT(vm.reg_d(2) == 222, "D2 preserved");
         TEST_ASSERT(vm.reg_d(3) == 333, "D3 preserved");
@@ -1230,7 +1230,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
         TEST_SUCCESS;
     }
@@ -1250,7 +1250,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.play_sfx_id == 0, "play_sfx received id 0");
         TEST_SUCCESS;
     }
@@ -1282,7 +1282,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.show_text_id == 50, "show_text received string 50");
         TEST_ASSERT(g_mock_log.clear_text_called, "clear_text called after show_text");
         TEST_SUCCESS;
@@ -1310,7 +1310,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.play_music_id == 7, "play_music(7)");
         TEST_ASSERT(g_mock_log.play_sfx_id == 15, "play_sfx(15)");
         TEST_SUCCESS;
@@ -1333,7 +1333,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.play_music_id == 4, "play_music(4)");
         TEST_ASSERT(g_mock_log.stop_music_called, "stop_music called");
         TEST_SUCCESS;
@@ -1341,7 +1341,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_say_then_show_text)
     {
-        // SAY blocks, after unblock SHOW_TEXT executes
+        // SAY defers; SHOW_TEXT runs in the update after it
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -1355,7 +1355,7 @@ namespace NEONengine
 
         bc.emit(noir_op::SAY);
 
-        // After unblock: show text at (30, 40)
+        // Next update: show text at (30, 40)
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(99);
@@ -1380,7 +1380,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after unblock");
+        TEST_ASSERT(status == noir_result::completed, "completes on the next update");
         TEST_ASSERT(g_mock_log.show_text_id == 99, "show_text string 99");
         TEST_ASSERT(g_mock_log.show_text_x == 30, "show_text x=30");
         TEST_ASSERT(g_mock_log.show_text_y == 40, "show_text y=40");
@@ -1403,7 +1403,7 @@ namespace NEONengine
 
         bc.emit(noir_op::SAY);
 
-        // After SAY unblocks, load dialog id and SHOW_DIALOG
+        // After the SAY's update, load dialog id and SHOW_DIALOG
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
         bc.emit_u16(50);
@@ -1423,17 +1423,17 @@ namespace NEONengine
         TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
-        // Unblock SAY — should then block on SHOW_DIALOG
+        // Second update — should then defer on SHOW_DIALOG
         vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at SHOW_DIALOG");
         TEST_ASSERT(g_mock_log.show_dialog_called, "show_dialog called");
         TEST_ASSERT(g_mock_log.show_dialog_id == 50, "show_dialog(50)");
 
-        // Unblock SHOW_DIALOG — should complete
+        // Third update — should complete
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after both unblocked");
+        TEST_ASSERT(status == noir_result::completed, "completes once both have had their update");
         TEST_ASSERT(vm.exit_code() == 666, "final D0=666");
         TEST_SUCCESS;
     }
@@ -1486,16 +1486,16 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
-        // Should be blocked on SAY
+        // Should be parked on the opcode after SAY
         TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
         TEST_ASSERT(g_mock_log.play_music_id == 3, "play_music(3) called before SAY");
         TEST_ASSERT(g_mock_log.play_sfx_id == 12, "play_sfx(12) called before SAY");
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
-        // Unblock SAY — rest should run to completion
+        // Next update — rest should run to completion
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_status::completed, "completes after SAY unblocked");
+        TEST_ASSERT(status == noir_result::completed, "completes in the update after the SAY");
         TEST_ASSERT(g_mock_log.show_text_id == 200, "show_text(200)");
         TEST_ASSERT(g_mock_log.clear_text_called, "clear_text called");
         TEST_ASSERT(g_mock_log.stop_music_called, "stop_music called");
@@ -1516,7 +1516,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xB7 is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xB7 is invalid");
         TEST_SUCCESS;
     }
 
@@ -1532,7 +1532,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xBF is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xBF is invalid");
         TEST_SUCCESS;
     }
 
@@ -1548,7 +1548,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "0xBA is invalid");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "0xBA is invalid");
         TEST_SUCCESS;
     }
 
@@ -1563,7 +1563,7 @@ namespace NEONengine
         { "say basic", test_noir_say_basic },
         { "say parks the session", test_noir_say_parks_the_session },
         { "say: one line per update", test_noir_say_one_line_per_update },
-        { "say resumes", test_noir_say_resumes_after_unblock },
+        { "say resumes", test_noir_say_resumes_next_update },
         { "say preserves D0,D1", test_noir_say_preserves_d0_d1 },
         { "say preserves all regs", test_noir_say_preserves_all_regs },
         { "say preserves SR", test_noir_say_preserves_sr },
@@ -1575,7 +1575,7 @@ namespace NEONengine
         { "show_dialog basic", test_noir_show_dialog_basic },
         { "show_dialog parks the session", test_noir_show_dialog_parks_the_session },
         { "show_dialog ends the walk", test_noir_show_dialog_ends_the_walk_for_everyone },
-        { "show_dialog resumes", test_noir_show_dialog_resumes_after_unblock },
+        { "show_dialog resumes", test_noir_show_dialog_resumes_next_update },
         { "show_dialog preserves regs", test_noir_show_dialog_preserves_all_regs },
         { "show_dialog preserves SR", test_noir_show_dialog_preserves_sr },
         { "show_dialog zero id", test_noir_show_dialog_zero_id },

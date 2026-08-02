@@ -30,7 +30,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xBEEF, "D0 should be 0xBEEF");
         TEST_SUCCESS;
     }
@@ -50,7 +50,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x00AB, "D0 should be 0x00AB (zero-extended)");
         TEST_SUCCESS;
     }
@@ -72,7 +72,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x1234, "D0 should be 0x1234 from D1");
         TEST_ASSERT(vm.reg_d(1) == 0x1234, "D1 should still be 0x1234");
         TEST_SUCCESS;
@@ -105,7 +105,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0x1111, "D0 should be 0x1111");
         TEST_ASSERT(vm.reg_d(1) == 0x2222, "D1 should be 0x2222");
         TEST_ASSERT(vm.reg_d(2) == 0x3333, "D2 should be 0x3333");
@@ -138,7 +138,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xCAFE, "local round-trip should yield 0xCAFE");
         TEST_SUCCESS;
     }
@@ -179,7 +179,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0xAAAA, "local[0] should be 0xAAAA");
         TEST_ASSERT(vm.reg_d(1) == 0xBBBB, "local[1] should be 0xBBBB");
         TEST_SUCCESS;
@@ -214,7 +214,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x5678, "local should hold D1's value");
         TEST_SUCCESS;
     }
@@ -241,7 +241,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xDEAD, "value[3] round-trip should yield 0xDEAD");
         TEST_SUCCESS;
     }
@@ -281,7 +281,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x9999, "value[D0] round-trip should yield 0x9999");
         TEST_SUCCESS;
     }
@@ -308,7 +308,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x0042, "MOV8 should zero high byte, low = 0x42");
         TEST_SUCCESS;
     }
@@ -332,7 +332,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x00CD, "MOV8 should take only low byte of src");
         TEST_SUCCESS;
     }
@@ -362,7 +362,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         // MOV8 writes 0x007F to local (zeroes high), reads back low byte = 0x7F
         TEST_ASSERT(vm.exit_code() == 0x007F, "MOV8 local round-trip should yield 0x007F");
         TEST_SUCCESS;
@@ -392,7 +392,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0xBBBB, "D0 should have D1's old value");
         TEST_ASSERT(vm.reg_d(1) == 0xAAAA, "D1 should have D0's old value");
         TEST_SUCCESS;
@@ -420,7 +420,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x1234, "XCHG same reg should be no-op");
         TEST_SUCCESS;
     }
@@ -447,7 +447,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(2) == 0x2222, "D2 should have D3's old value");
         TEST_ASSERT(vm.reg_d(3) == 0x1111, "D3 should have D2's old value");
         TEST_SUCCESS;
@@ -487,7 +487,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0xFACE, "POP should retrieve pushed value");
         TEST_SUCCESS;
     }
@@ -512,7 +512,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x5555, "POP should yield pushed imm16");
         TEST_SUCCESS;
     }
@@ -552,7 +552,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(2) == 0x2222, "first POP should be 0x2222 (LIFO)");
         TEST_ASSERT(vm.reg_d(3) == 0x1111, "second POP should be 0x1111 (LIFO)");
         TEST_SUCCESS;
@@ -587,7 +587,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x7777, "PUSH local → POP should round-trip");
         TEST_SUCCESS;
     }
@@ -622,7 +622,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0x3333, "first TOP should be 0x3333");
         TEST_ASSERT(vm.reg_d(1) == 0x3333, "second TOP should still be 0x3333");
         TEST_ASSERT(vm.reg_d(2) == 0x3333, "POP should also be 0x3333");
@@ -658,7 +658,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0x4444, "DUP copy should be 0x4444");
         TEST_ASSERT(vm.reg_d(1) == 0x4444, "DUP original should be 0x4444");
         TEST_SUCCESS;
@@ -700,7 +700,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 0x2222, "dup of top");
         TEST_ASSERT(vm.reg_d(1) == 0x2222, "original top");
         TEST_ASSERT(vm.reg_d(2) == 0x1111, "deeper value untouched");
@@ -727,7 +727,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x0000, "CLR should zero the register");
         TEST_SUCCESS;
     }
@@ -754,7 +754,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::completed, "should complete");
+        TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.exit_code() == 0x0000, "D0 should be cleared");
         TEST_ASSERT(vm.reg_d(1) == 0xBBBB, "D1 should be untouched");
         TEST_SUCCESS;
@@ -773,7 +773,7 @@ namespace NEONengine
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(status == noir_status::err_invalid_opcode, "reserved opcode should error");
+        TEST_ASSERT(failed_with(vm, status, noir_error::invalid_opcode), "reserved opcode should error");
         TEST_SUCCESS;
     }
 
