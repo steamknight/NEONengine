@@ -438,6 +438,14 @@ namespace NEONengine
         return *needle == '\0';
     }
 
+    /// True when that account is @p expected and nothing besides.
+    inline bool message_is(noir_vm const& vm, char const* expected)
+    {
+        char const* a = vm.error_message();
+        while (*a && *a == *expected) { ++a; ++expected; }
+        return *a == *expected;
+    }
+
 }  // namespace NEONengine
 
 #endif  // ACE_TEST_RUNNER

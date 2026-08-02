@@ -412,11 +412,15 @@ namespace NEONengine
         // deferring, or killing the session - costs the same one.
         --_cur.instructions_left;
 
+        // Read before it is counted: the histogram indexes the bytecode, so
+        // counting first would be the one read that walks off the end of it.
+        u8 const opcode = read_u8();
+        if (_cur.state == noir_session_state::died) return noir_result::failed;
+
 #ifdef GAME_DEBUG
-        ++_debug_stats.opcode_histogram[_bytecode[_cur.pc]];
+        ++_debug_stats.opcode_histogram[opcode];
 #endif
 
-        u8 opcode   = read_u8();
         u8 category = opcode >> 4;
 
         switch (category)
@@ -1293,11 +1297,21 @@ namespace NEONengine
 
     u8 noir_vm::read_u8() noexcept
     {
+        if (to<u32>(_cur.pc) >= _bytecode_size)
+        {
+            fail(noir_error::invalid_address, "ran past the end of the bytecode at %u", _cur.pc);
+            return 0;
+        }
         return _bytecode[_cur.pc++];
     }
 
     u16 noir_vm::read_u16() noexcept
     {
+        if (to<u32>(_cur.pc) + 2 > _bytecode_size)
+        {
+            fail(noir_error::invalid_address, "ran past the end of the bytecode at %u", _cur.pc);
+            return 0;
+        }
         u16 hi = _bytecode[_cur.pc++];
         u16 lo = _bytecode[_cur.pc++];
         return to<u16>((hi << 8) | lo);
@@ -1306,6 +1320,36 @@ namespace NEONengine
     i16 noir_vm::read_s16() noexcept
     {
         return to<i16>(read_u16());
+    }
+
+    // ─── Locals ─────────────────────────────────────────────────────────────────
+
+    u8* noir_vm::local_at(i8 offset) noexcept
+    {
+        // Signed on purpose: a negative offset must not wrap back into range.
+        i32 const at = to<i32>(_cur.fp) + offset;
+
+        // The two ends of a stack already have names, so a local that leaves
+        // through one takes the name of that end.
+        if (at < 0)
+        {
+            fail(noir_error::stack_overflow,
+                "local %d falls below its %u byte stack",
+                offset,
+                _stack_bytes);
+            return nullptr;
+        }
+
+        if (at + 2 > to<i32>(_stack_bytes))
+        {
+            fail(noir_error::stack_underflow,
+                "local %d reaches past its %u byte stack",
+                offset,
+                _stack_bytes);
+            return nullptr;
+        }
+
+        return stack_at(to<u16>(at));
     }
 
     // ─── Mode byte helpers ──────────────────────────────────────────────────────
@@ -1324,7 +1368,8 @@ namespace NEONengine
             case LOCAL:
             {
                 i8 offset = to<i8>(read_u8());
-                u8* addr  = stack_at(_cur.fp) + offset;
+                u8* addr  = local_at(offset);
+                if (!addr) return 0;
                 return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
@@ -1365,7 +1410,8 @@ namespace NEONengine
             case LOCAL:
             {
                 i8 offset = to<i8>(read_u8());
-                u8* addr  = stack_at(_cur.fp) + offset;
+                u8* addr  = local_at(offset);
+                if (!addr) break;
                 addr[0]   = to<u8>(value >> 8);
                 addr[1]   = to<u8>(value & 0xFF);
                 break;
@@ -1423,7 +1469,8 @@ namespace NEONengine
             {
                 i8 offset         = to<i8>(read_u8());
                 _cached_dst_param = to<u16>(to<u8>(offset));
-                u8* addr          = stack_at(_cur.fp) + offset;
+                u8* addr          = local_at(offset);
+                if (!addr) return 0;
                 return to<u16>((to<u16>(addr[0]) << 8) | addr[1]);
             }
 
@@ -1465,7 +1512,8 @@ namespace NEONengine
             case LOCAL:
             {
                 i8 offset = to<i8>(to<u8>(_cached_dst_param));
-                u8* addr  = stack_at(_cur.fp) + offset;
+                u8* addr  = local_at(offset);
+                if (!addr) break;
                 addr[0]   = to<u8>(value >> 8);
                 addr[1]   = to<u8>(value & 0xFF);
                 break;

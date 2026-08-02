@@ -1164,6 +1164,81 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Bytecode bounds ─────────────────────────────────────────────────────────
+    //
+    // The PC is a 16 bit offset into a borrowed buffer, and a branch can put any
+    // value in it. There is no memory protection on the target, so a read past
+    // the end returns whatever lies next in RAM and the VM would run it.
+
+    TEST_IMPL(test_noir_pc_runs_off_the_end)
+    {
+        // A function with no RET at the end of the blob. The message has to name
+        // the byte it stopped at: a guard that is one out still reports a death,
+        // just one instruction too late and one byte too far.
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+        bc.emit(noir_op::NOP);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::invalid_address), "falling off the end is a death");
+        TEST_ASSERT(message_is(vm, "script 0: ran past the end of the bytecode at 1"),
+            "and it stopped at the first byte that is not there");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_jmp_past_the_end)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::JMP);
+        bc.emit_s16(1000);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::invalid_address), "a jump past the end is caught");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_jmp_before_the_start)
+    {
+        // The PC is unsigned, so a jump back past zero wraps to a huge offset
+        // rather than going negative. It has to be caught all the same.
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::JMP);
+        bc.emit_s16(-1000);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::invalid_address), "a jump before the start is caught");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_operand_straddles_the_end)
+    {
+        // The opcode is inside the blob and its operand is not, which the check
+        // on the opcode read alone would let through.
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::SETF);
+        bc.emit(0);  // half of the u16 index; the other half is off the end
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::invalid_address), "a half-read operand is a death");
+        TEST_SUCCESS;
+    }
+
     // ═════════════════════════════════════════════════════════════════════════════
     // Test suite registration
     // ═════════════════════════════════════════════════════════════════════════════
@@ -1215,6 +1290,11 @@ namespace NEONengine
     TEST(test_noir_branch_after_add_flags)
     // Invalid
     TEST(test_noir_control_flow_invalid_opcode)
+    // Bytecode bounds
+    TEST(test_noir_pc_runs_off_the_end)
+    TEST(test_noir_jmp_past_the_end)
+    TEST(test_noir_jmp_before_the_start)
+    TEST(test_noir_operand_straddles_the_end)
     TEST_SUITE_END
 
 }  // namespace NEONengine

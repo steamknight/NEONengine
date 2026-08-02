@@ -697,8 +697,8 @@ nothing, says nothing to the player, and hands the reason back to the caller.
 | InvalidOpcode | Unknown opcode byte |
 | InvalidFunc | func_id ≥ func_count |
 | DuplicateScript | A live session is already running that script |
-| StackOverflow | Pushed past the end of the session's stack |
-| StackUnderflow | Pop from empty stack |
+| StackOverflow | Pushed past the far end of the session's stack, or a LOCAL below it |
+| StackUnderflow | Popped more than was pushed, or a LOCAL above the stack |
 | DivisionZero | DIV or MOD with src = 0 |
 | InvalidAddress | PC out of bytecode bounds |
 | ValueOOB | Value index ≥ values_count |

@@ -121,6 +121,11 @@ the scene resets the live count and keeps the memory.
 
 A session that runs out of stack dies. See [Errors](#errors).
 
+A session reaches only its own. The stacks lie end to end, so an address off
+either end of one would land in a neighbour's; the VM kills the session instead.
+That covers `LOCAL`, whose signed offset from the frame pointer can name an
+address outside the stack it belongs to.
+
 The VM records the most stack any one session has ever used. See
 [Debug stats](#debug-stats).
 
@@ -393,7 +398,8 @@ The line is written in every build, whether or not logging is compiled in. A
 message naming the fault beats a game that stops working for no visible reason.
 
 Errors include a bad opcode, a stack overflow from deep `CALL` nesting, a bad
-jump target, and an `execute_now` script that runs past its instruction cap.
+jump target, a `LOCAL` naming an address outside the session's own stack, and an
+`execute_now` script that runs past its instruction cap.
 
 A script can raise one itself with `HALT`. It says the author reached a case
 that should never happen, and it kills only the session that ran it.

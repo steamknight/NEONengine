@@ -30,7 +30,7 @@ namespace NEONengine
         stack_underflow,   ///< Popped more than pushed
         stack_overflow,    ///< Pushed past the end of the session's stack
         division_zero,     ///< Division or modulo by zero
-        invalid_address,   ///< PC or address out of bytecode bounds
+        invalid_address,   ///< PC out of bytecode bounds
         value_oob,         ///< VALUE index out of range
         flag_oob,          ///< FLAG index out of range
         out_of_memory,     ///< No memory for another session's stack
@@ -475,6 +475,16 @@ namespace NEONengine
 
         u8* stack_at(u16 offset) noexcept { return _stack_base + offset; }
         u8 const* stack_at(u16 offset) const noexcept { return _stack_base + offset; }
+
+        /**
+         * @brief Where a LOCAL offset points, or null when that is nowhere.
+         *
+         * The offset is signed and the frame pointer is anywhere in the stack,
+         * so the pair can name an address outside it. The stacks are laid out
+         * end to end, which would make that a silent read or write of the
+         * neighbouring session's. Kills the session instead.
+         */
+        u8* local_at(i8 offset) noexcept;
 
         u8* stack_base_for(u16 index) noexcept
         {

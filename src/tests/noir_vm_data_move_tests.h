@@ -777,6 +777,126 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── LOCAL bounds ────────────────────────────────────────────────────────────
+    //
+    // A LOCAL names an address as fp plus a signed byte, and fp can sit
+    // anywhere in the stack. The pair can therefore name an address outside it,
+    // and the session stacks lie end to end, so the read or write would land in
+    // the neighbour's. A stack has two ends and each already has a name: off the
+    // bottom is an overflow, off the top is an underflow.
+
+    namespace
+    {
+        /// LOCALS 8 on a 16 byte stack, leaving the lowest slot at fp-8.
+        u16 begin_local_fn(bytecode_builder& bc)
+        {
+            u16 fn = bc.begin_func();
+            bc.emit(noir_op::LOCALS);
+            bc.emit(8);
+            return fn;
+        }
+    }  // namespace
+
+    TEST_IMPL(test_noir_local_lowest_slot_works)
+    {
+        // The slot one byte further down is the first that is out, so this is
+        // the boundary the guard must not creep past.
+        bytecode_builder bc;
+        u16 fn = begin_local_fn(bc);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
+        bc.emit(to<u8>(-8));
+        bc.emit_u16(0x5A5A);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
+        bc.emit(to<u8>(-8));
+
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm(16);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_result::completed, "the lowest slot is legal");
+        TEST_ASSERT(vm.exit_code() == 0x5A5A, "and holds what was put in it");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_local_read_below_its_stack)
+    {
+        bytecode_builder bc;
+        u16 fn = begin_local_fn(bc);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
+        bc.emit(to<u8>(-9));
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm(16);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::stack_overflow), "one byte under is out");
+        TEST_ASSERT(message_has(vm, "falls below"), "and says which end it left by");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_local_read_above_its_stack)
+    {
+        // fp is 8 on a 16 byte stack, so +7 leaves one byte of the two inside.
+        bytecode_builder bc;
+        u16 fn = begin_local_fn(bc);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::LOCAL);
+        bc.emit(7);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm(16);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::stack_underflow), "half a word over is out");
+        TEST_ASSERT(message_has(vm, "reaches past"), "and says which end it left by");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_local_write_below_its_stack)
+    {
+        // The destination goes through the cached pair, not write_operand.
+        bytecode_builder bc;
+        u16 fn = begin_local_fn(bc);
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::LOCAL, noir_mode::IMM16);
+        bc.emit(to<u8>(-9));
+        bc.emit_u16(0x1234);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm(16);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::stack_overflow), "writing under is out too");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_local_pop_outside_its_stack)
+    {
+        // POP writes through write_operand, the one path the others miss.
+        bytecode_builder bc;
+        u16 fn = begin_local_fn(bc);
+
+        bc.emit(noir_op::POP);
+        bc.emit_mode(noir_mode::LOCAL, 0);
+        bc.emit(to<u8>(-9));
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm(16);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::stack_overflow), "popping into it is out too");
+        TEST_SUCCESS;
+    }
+
     // ── Test suite registration ─────────────────────────────────────────────────
 
     TEST_SUITE_BEGIN(noir_vm_data_move)
@@ -813,6 +933,12 @@ namespace NEONengine
     TEST(test_noir_clr_does_not_affect_others)
     // Invalid
     TEST(test_noir_data_move_invalid_opcode)
+    // LOCAL bounds
+    TEST(test_noir_local_lowest_slot_works)
+    TEST(test_noir_local_read_below_its_stack)
+    TEST(test_noir_local_read_above_its_stack)
+    TEST(test_noir_local_write_below_its_stack)
+    TEST(test_noir_local_pop_outside_its_stack)
     TEST_SUITE_END
 
 }  // namespace NEONengine
