@@ -71,8 +71,8 @@ namespace NEONengine
         void nb_play_sfx(u16) {}
 
         // ── Timeline ─────────────────────────────────────────────────────────
-        // Track names are resolved against the current scene, so a script that
-        // names a track another scene owns simply does nothing here.
+        // A track name means a track in the current scene, so naming one that
+        // another scene owns does nothing here.
         void nb_anim_play(u16 name_id) { scene_timeline_play(name_id); }
         void nb_anim_stop(u16 name_id) { scene_timeline_stop(name_id); }
 

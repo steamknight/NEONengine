@@ -19,12 +19,13 @@ namespace NEONengine
     /**
      * @brief Why a session died.
      *
-     * update() and execute() hand this back in place of their result.
+     * update(), execute() and execute_now() hand this back in place of their
+     * result.
      */
     enum class noir_error : u8
     {
         none,
-        invalid_opcode,    ///< Unknown opcode byte encountered
+        invalid_opcode,    ///< Unknown opcode byte
         invalid_func,      ///< Function ID out of range
         duplicate_script,  ///< A live session is already running that script
         stack_underflow,   ///< Popped more than pushed
@@ -43,8 +44,8 @@ namespace NEONengine
     /**
      * @brief What a call came back with.
      *
-     * Three callers share this: an instruction, update() and execute(). An
-     * error kills the session that raised it; the rest keep running.
+     * Two callers share this: an instruction and update(). An error kills the
+     * session that raised it; the rest keep running.
      */
     enum class noir_result : u8
     {
@@ -57,10 +58,9 @@ namespace NEONengine
     };
 
     /**
-     * @brief What the VM as a whole has to say about itself.
+     * @brief The machine's own state, as opposed to a session's.
      *
-     * A session has its own state; this is the machine's. It survives one
-     * update at most, except @c terminated, which is a latch only
+     * It lasts one update, except @c terminated, which is a latch only
      * reset_execution() lifts.
      */
     enum class noir_vm_state : u8
@@ -75,12 +75,11 @@ namespace NEONengine
 
 #ifdef GAME_DEBUG
     /**
-     * @brief Runtime statistics for tuning.
-     * Only available in debug builds.
+     * @brief Runtime statistics for tuning. Debug builds only.
      */
     struct noir_debug_stats
     {
-        u32 max_stack_used;         ///< High-water mark of stack usage (bytes)
+        u32 max_stack_used;         ///< Most stack any one session has used, in bytes
         u16 max_call_depth;         ///< Deepest CALL nesting reached
         u32 opcode_histogram[256];  ///< Execution count per opcode
 
@@ -93,10 +92,10 @@ namespace NEONengine
     /**
      * @brief What a bridge call does to the walk.
      *
-     * The kind is a property of the function, so it is declared with the
-     * function and nowhere else. noir_vm::call() reads it and returns the
-     * matching result, which is what stops a new deferred call being wired up
-     * as though it were immediate.
+     * The kind belongs to the function, so the bridge table declares it there
+     * and nowhere else. noir_vm::call() reads it and returns the matching
+     * result, which stops anyone adding a new deferred call as though it were
+     * immediate.
      */
     template<typename Sig>
     struct immediate  ///< Acts inside the opcode and returns
@@ -119,9 +118,8 @@ namespace NEONengine
     /**
      * @brief Function pointer table bridging the VM to engine systems.
      *
-     * The VM calls engine systems through this struct, keeping the VM fully
-     * decoupled from engine headers. All function pointers must be valid for
-     * the lifetime of the VM.
+     * The VM calls engine systems through this struct, so it includes no engine
+     * headers. Every function pointer must stay valid as long as the VM does.
      *
      * A deferred call records what the script asked for and returns; the opcode
      * then drains the frame pool, so no session runs again this update. The
@@ -183,7 +181,7 @@ namespace NEONengine
 
     enum class noir_session_state : u8
     {
-        running,  ///< Actively executing instructions
+        running,  ///< Running instructions
         waiting,  ///< WAIT timer active (wait_counter > 0)
         ended,    ///< Ran to its end
         died,     ///< An error killed it. Only fail() puts a session here.
@@ -290,7 +288,7 @@ namespace NEONengine
          * frame if the VM has not run yet.
          *
          * One session per script: if a live session is already running this
-         * function the request is dropped.
+         * function, the VM drops the request.
          *
          * @param func_id Function index in the TOC (0-based)
          * @return Nothing on success, or why the request was turned down
@@ -310,7 +308,7 @@ namespace NEONengine
          * there is nothing here to save a second context with.
          *
          * @param func_id Function index in the TOC (0-based)
-         * @return What the script left in D0, or why it never got there
+         * @return What the script left in D0, or why it failed
          */
         mtl::expected<i16, noir_error> execute_now(u16 func_id) noexcept;
 
@@ -338,14 +336,13 @@ namespace NEONengine
          * @brief Abandon every session and empty the run list.
          *
          * Clears the run list and all per-run execution state - registers, SR,
-         * stack pointer, frame pointer, program counter, call depth, the
-         * wait counter and the result. Borrowed memory (FLAGS,
-         * VALUES, BYTECODE, TOC, bridge), the stack allocation and the
-         * configured budgets are all preserved.
+         * stack pointer, frame pointer, program counter, call depth, the wait
+         * counter and the result. It keeps the stack allocation, the configured
+         * budgets and the borrowed memory: FLAGS, VALUES, BYTECODE, TOC and the
+         * bridge. Game state survives.
          *
-         * Used when control transfers away from the running scripts - a scene
-         * change, say - and the current call chains must be discarded rather
-         * than resumed. Game state in FLAGS/VALUES is untouched.
+         * Call this when control leaves the running scripts - a scene change,
+         * say - and their call chains should end rather than resume.
          *
          * This is the teardown a terminal call asks for, and the only thing
          * that lets the VM run again after one.
@@ -395,9 +392,9 @@ namespace NEONengine
         /**
          * @brief Who is using the register window.
          *
-         * The window holds one session and nothing here can save a second, so
-         * execute_now needs it free. Both rules it has to keep - not from
-         * inside an update, and not from inside another - are that one.
+         * The window holds one session and the VM cannot save a second, so
+         * execute_now needs it free. That covers both of its rules: no call
+         * from inside an update, and no call from inside another.
          */
         enum class window_owner : u8
         {
@@ -407,8 +404,8 @@ namespace NEONengine
         };
 
         // ── Instruction dispatch ─────────────────────────────────────────────
-        // An opcode is the byte; an instruction is one executed step. This
-        // charges the step, whatever the step turns out to do.
+        // An opcode is the byte; an instruction is one step. This counts the
+        // step, whatever the step turns out to do.
 
         noir_result execute_instruction() noexcept;
 
@@ -434,9 +431,9 @@ namespace NEONengine
         // call_result and call_flag have no deferred overload: a call that does
         // not act cannot answer.
         //
-        // Inlined on purpose. Left to itself the compiler gives each
-        // instantiation a body of its own, which puts a second call in front of
-        // every bridge call and costs more than it saves.
+        // Inlined on purpose: otherwise the compiler gives each instantiation a
+        // body of its own, which adds a second call in front of every bridge
+        // call and costs more than it saves.
 
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call(immediate<Sig> const& b, Args... args) noexcept
@@ -448,9 +445,9 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call(deferred_modal<Sig> const& b, Args... args) noexcept
         {
-            // Turned down before the request is recorded, not after: nothing
-            // draws a frame until execute_now returns, so the box would never
-            // reach the screen and nobody could dismiss it.
+            // Checked before the call, so nothing records the request. No frame
+            // draws until execute_now returns, so the box would never appear
+            // and the player could never dismiss it.
             if (_window_owner == window_owner::immediate)
                 return fail(noir_error::immediate_modal, "a modal call under execute_now");
 
@@ -461,8 +458,8 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call(deferred_terminal<Sig> const& b, Args... args) noexcept
         {
-            // Latched before the call, not after: a bridge function that tears
-            // the VM down on the spot must be able to clear it again.
+            // Set before the call, not after: a bridge function that tears the
+            // VM down on the spot has to be able to clear it again.
             _vm_state = noir_vm_state::terminated;
             b.fn(args...);
             return noir_result::deferred;
@@ -508,8 +505,7 @@ namespace NEONengine
 
         /**
          * @brief True if pushing this many bytes would overrun the session's stack.
-         * Kills the session when it would. Records a new high-water mark when it
-         * would not.
+         * Kills the session when it would. Records a new peak when it would not.
          */
         bool stack_overflow(u16 bytes) noexcept;
 
@@ -523,12 +519,12 @@ namespace NEONengine
         u8 const* stack_at(u16 offset) const noexcept { return _stack_base + offset; }
 
         /**
-         * @brief Where a LOCAL offset points, or null when that is nowhere.
+         * @brief Where a LOCAL offset points, or null if that is outside the stack.
          *
-         * The offset is signed and the frame pointer is anywhere in the stack,
-         * so the pair can name an address outside it. The stacks are laid out
-         * end to end, which would make that a silent read or write of the
-         * neighbouring session's. Kills the session instead.
+         * The offset is signed and the frame pointer can be anywhere in the
+         * stack, so the pair can name an address outside it. The stacks lie end
+         * to end, so that address would read or write the next session's stack
+         * and nothing would notice. Kills the session instead.
          */
         u8* local_at(i8 offset) noexcept;
 
@@ -569,8 +565,8 @@ namespace NEONengine
          *        first frame.
          *
          * Leaves it in the register window, dead if the frame did not fit. Both
-         * ways into a script come through here, so the frame do_ret() unwinds
-         * is laid out in one place.
+         * ways into a script come through here, so one place builds the frame
+         * do_ret() unwinds.
          */
         void enter_script(u16 func_id, u16 slot) noexcept;
 
@@ -584,7 +580,7 @@ namespace NEONengine
         /// Lowest stack slot no live session holds.
         u16 alloc_stack_slot() const noexcept;
 
-        /// Makes room for @p slots stacks. False if the memory was refused.
+        /// Makes room for @p slots stacks. False if the allocator refused.
         bool ensure_stack_slots(u16 slots) noexcept;
 
         /// Loads run list entry @p index into the register window.
@@ -650,16 +646,17 @@ namespace NEONengine
         u16 _rotation;        ///< Run list position the next update starts at
 
         window_owner _window_owner;  ///< Who is using the register window
-        noir_vm_state _vm_state;     ///< What this update - or the latch - has to say
+        noir_vm_state _vm_state;     ///< How this update ended, or the latch
 
         // ── Result ───────────────────────────────────────────────────────────
 
         u16 _exit_code;
 
-        /// Why the last session died. Reported through update() and execute().
+        /// Why the last session died. update(), execute() and execute_now()
+        /// report it.
         noir_error _last_error;
 
-        /// The same thing in words, for the player. Written only by fail().
+        /// The same thing in words, for the player. fail() is its only writer.
         char _error_message[96];
 
         // ── Cached destination for read-modify-write opcodes ─────────────────

@@ -1,12 +1,12 @@
 #include "noir_vm.h"
 
+#include <stdarg.h>
+#include <stdio.h>
+
 #include "core/logger.h"
 #include "core/noir_opcodes.h"
 #include "mtl/utility.h"
 #include "types.h"
-
-#include <stdarg.h>
-#include <stdio.h>
 
 NE_LOG_DOMAIN(Script);
 
@@ -16,10 +16,11 @@ namespace NEONengine
     using namespace noir_mode;
     using namespace noir_sr;
 
-    /// Pushed under a script's first frame. No bytecode offset can equal it.
+    /// The return address under a script's first frame. No bytecode offset can
+    /// equal it.
     constexpr u32 SENTINEL_PC = 0xFFFFFFFFu;
 
-    /// The PC is 16-bit, so bytecode past this cannot be addressed.
+    /// The PC is 16-bit, so it cannot reach bytecode past this.
     constexpr u32 MAX_BYTECODE_SIZE = 0x10000u;
 
     /// Stacks the VM has room for before the vector has to grow.
@@ -82,7 +83,7 @@ namespace NEONengine
         , _cached_dst_mode(0)
         , _cached_dst_param(0)
     {
-        // Grow the vector to fill its capacity so the memory is allocated
+        // Grow the vector to fill its capacity
         _stack.assign(to<size_t>(stack_size) * INITIAL_SLOTS, u8(0));
         _sessions.reserve(SESSION_SLOTS);
 
@@ -111,8 +112,6 @@ namespace NEONengine
     {
         _last_error = reason;
 
-        // Named here rather than in forty format strings: every death is a
-        // script's, and the one thing the reader always wants is which.
         int n = snprintf(_error_message, sizeof(_error_message), "script %u: ", _cur.script_id);
         if (n < 0 || to<size_t>(n) >= sizeof(_error_message)) n = 0;
 
@@ -121,8 +120,8 @@ namespace NEONengine
         vsnprintf(_error_message + n, sizeof(_error_message) - to<size_t>(n), fmt, args);
         va_end(args);
 
-        // Built whether or not anything is listening: the player is shown this
-        // in every build, and the log is only the second reader.
+        // Built even when nothing reads the log: every build shows this to the
+        // player, and the log is only the second reader.
         NE_LOG("%s", _error_message);
 
         // terminated is a latch, and losing it would let the VM run sessions in
@@ -163,7 +162,8 @@ namespace NEONengine
         }
 
         // The frame push goes through the running session's window, so the
-        // caller's - a bridge function is inside an opcode - has to survive it.
+        // caller's registers have to survive it: a bridge function that calls
+        // this is inside an opcode.
         noir_session const outer = _cur;
 
         enter_script(func_id, slot);
@@ -203,15 +203,15 @@ namespace NEONengine
 
         auto const result = run_slice();
 
-        // Out of instructions and still going. A deferred call leaves it
-        // running too, but that one stopped because it meant to.
+        // Out of instructions and still running. A deferred call also leaves it
+        // running, so check the result too: that one stopped on purpose.
         if (result == noir_result::ok && _cur.state == noir_session_state::running)
         {
             fail(noir_error::runaway, "ran past %u instructions", _immediate_cap);
         }
 
-        // Whatever it left in D0. A script that went out through a terminal call
-        // has no answer to give, and that is the answer.
+        // Whatever it left in D0. A script stopped by a terminal call never
+        // reached its RET, so D0 is whatever it last held.
         i16 const answer = to<i16>(_cur.d[0]);
         bool const died  = _cur.state == noir_session_state::died;
 
@@ -249,8 +249,8 @@ namespace NEONengine
 
         size_t const wanted = to<size_t>(slots) * _stack_bytes;
 
-        // resize() writes through whatever it already has when the allocation
-        // is refused, so take the memory first and only grow once it is there.
+        // resize() keeps writing into the old block if the allocator refuses,
+        // so take the memory first and grow only once it is there.
         _stack.reserve(wanted);
         if (_stack.capacity() < wanted)
         {
@@ -274,7 +274,7 @@ namespace NEONengine
     void noir_vm::store_session(size_t index) noexcept
     {
         // A bridge function can drop the run list from inside an instruction,
-        // so the entry this session was loaded from may be gone.
+        // so the entry this session came from may be gone.
         if (index >= _sessions.size()) return;
         _sessions[index] = _cur;
     }
@@ -313,8 +313,8 @@ namespace NEONengine
         _cur        = started;
         _stack_base = stack_base_for(slot);
 
-        // What do_ret() unwinds. The sentinel is the return address no bytecode
-        // offset can equal, so the top frame knows it is the top frame.
+        // What do_ret() unwinds. No bytecode offset can equal the sentinel, so
+        // do_ret() can tell the top frame from any other.
         push32(SENTINEL_PC);
         push32(to<u32>(_cur.fp));
 
@@ -350,7 +350,7 @@ namespace NEONengine
         // the teardown it asked for has happened.
         if (_vm_state == noir_vm_state::terminated) return noir_result::terminated;
 
-        // Whatever went wrong last update is history.
+        // Last update's failure no longer applies.
         _vm_state = noir_vm_state::ok;
 
         if (_sessions.empty()) return noir_result::ok;
@@ -383,22 +383,22 @@ namespace NEONengine
 
             auto const result = run_slice();
 
-            // What it did not use goes back for whoever comes after it.
+            // What it did not use goes back to the pool for the sessions after it.
             u16 const used         = to<u16>(slice - _cur.instructions_left);
             _cur.instructions_left = to<u16>(budget - used);
             pool                   = to<u16>(pool - used);
 
 #ifdef GAME_DEBUG
-            // Only a terminal call may take the run list away, and only a
-            // deferred result can carry one.
+            // Only a terminal call may empty the run list, and a terminal call
+            // always returns deferred.
             if (_sessions.size() < before && result != noir_result::deferred)
             {
                 NE_LOG("a bridge call dropped sessions without a terminal call");
             }
 #endif
 
-            // A terminal call leaves nothing worth writing back: the whole run
-            // list is about to be discarded.
+            // A terminal call leaves nothing worth writing back: the teardown
+            // clears the whole run list.
             if (_vm_state != noir_vm_state::terminated) store_session(i);
 
             // A deferred call ends the walk, which is what stops the next
@@ -454,9 +454,9 @@ namespace NEONengine
         {
             auto const result = execute_instruction();
 
-            // A deferred call has already run and the program counter has
-            // already moved on, so the session stays runnable, parked on the
-            // instruction after it. A failure has already killed the session.
+            // A deferred call has run and the program counter has moved on, so
+            // the session stays runnable, parked on the instruction after it.
+            // A failure has already killed the session.
             if (result == noir_result::deferred || result == noir_result::failed) return result;
         }
         return noir_result::ok;
@@ -478,12 +478,12 @@ namespace NEONengine
 
     noir_result noir_vm::execute_instruction() noexcept
     {
-        // Charged first, so every way the instruction can end - running,
+        // Counted first, so every way the instruction can end - running,
         // deferring, or killing the session - costs the same one.
         --_cur.instructions_left;
 
-        // Read before it is counted: the histogram indexes the bytecode, so
-        // counting first would be the one read that walks off the end of it.
+        // Read before counting: the histogram indexes the bytecode, so counting
+        // first would be the one read that goes past the end of it.
         u8 const opcode = read_u8();
         if (_cur.state == noir_session_state::died) return noir_result::failed;
 
@@ -548,8 +548,9 @@ namespace NEONengine
                 u16 func_id = read_u16();
                 if (func_id >= _func_count)
                 {
-                    return fail(
-                        noir_error::invalid_func, "CALL to function %u, which does not exist", func_id);
+                    return fail(noir_error::invalid_func,
+                        "CALL to function %u, which does not exist",
+                        func_id);
                 }
                 auto target = to<u16>(_func_toc[func_id]);
                 push32(to<u32>(_cur.pc));
@@ -943,28 +944,32 @@ namespace NEONengine
             case SETF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, true);
                 return noir_result::ok;
             }
             case CLRF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, false);
                 return noir_result::ok;
             }
             case TOGF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, !get_flag(idx));
                 return noir_result::ok;
             }
             case TSTF:
             {
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 // Z=1 when flag is clear, Z=0 when flag is set
                 _cur.sr = get_flag(idx) ? 0 : Z;
                 return noir_result::ok;
@@ -975,7 +980,8 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, true);
                 return noir_result::ok;
             }
@@ -983,7 +989,8 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, false);
                 return noir_result::ok;
             }
@@ -991,7 +998,8 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, !get_flag(idx));
                 return noir_result::ok;
             }
@@ -999,7 +1007,8 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = _cur.d[reg & 3];
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 _cur.sr = get_flag(idx) ? 0 : Z;
                 return noir_result::ok;
             }
@@ -1009,7 +1018,8 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 u16 val         = get_flag(idx) ? 1 : 0;
                 _cur.d[reg & 3] = val;
                 set_flags_nz(val);
@@ -1019,7 +1029,8 @@ namespace NEONengine
             {
                 u8 reg  = read_u8();
                 u16 idx = read_u16();
-                if (!validate_flag_index(idx)) return fail(noir_error::flag_oob, "flag %u is out of range", idx);
+                if (!validate_flag_index(idx))
+                    return fail(noir_error::flag_oob, "flag %u is out of range", idx);
                 set_flag(idx, (_cur.d[reg & 3] & 1) != 0);
                 return noir_result::ok;
             }
@@ -1409,8 +1420,8 @@ namespace NEONengine
         // Signed on purpose: a negative offset must not wrap back into range.
         i32 const at = to<i32>(_cur.fp) + offset;
 
-        // The two ends of a stack already have names, so a local that leaves
-        // through one takes the name of that end.
+        // The two ends of a stack already have error names, so a local that
+        // leaves through one reports the name of that end.
         if (at < 0)
         {
             fail(noir_error::stack_overflow,
@@ -1492,8 +1503,8 @@ namespace NEONengine
                 i8 offset = to<i8>(read_u8());
                 u8* addr  = local_at(offset);
                 if (!addr) break;
-                addr[0]   = to<u8>(value >> 8);
-                addr[1]   = to<u8>(value & 0xFF);
+                addr[0] = to<u8>(value >> 8);
+                addr[1] = to<u8>(value & 0xFF);
                 break;
             }
 
@@ -1526,12 +1537,12 @@ namespace NEONengine
 
     // ─── Cached destination read / write ────────────────────────────────────────
     //
-    // For two-operand opcodes that read-modify-write the destination (arithmetic,
-    // logic, MOV), inline data in the bytecode stream follows dst→src order
-    // (matching the mode byte layout [dst:4][src:4]).
+    // Two-operand opcodes that read-modify-write the destination (arithmetic,
+    // logic, MOV) carry their inline data in dst→src order, matching the mode
+    // byte layout [dst:4][src:4].
     //
-    // read_operand_cached() consumes the destination's inline data and caches it
-    // so that write_operand_cached() can write back without re-reading the stream.
+    // read_operand_cached() reads the destination's inline data and keeps it, so
+    // write_operand_cached() can write back without reading the stream again.
 
     u16 noir_vm::read_operand_cached(u8 mode) noexcept
     {
@@ -1594,8 +1605,8 @@ namespace NEONengine
                 i8 offset = to<i8>(to<u8>(_cached_dst_param));
                 u8* addr  = local_at(offset);
                 if (!addr) break;
-                addr[0]   = to<u8>(value >> 8);
-                addr[1]   = to<u8>(value & 0xFF);
+                addr[0] = to<u8>(value >> 8);
+                addr[1] = to<u8>(value & 0xFF);
                 break;
             }
 
