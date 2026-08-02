@@ -219,7 +219,7 @@ No mode byte — fixed or implicit operands.
 
 **LOCALS** operand `n` must be even (16-bit aligned). If `n` is odd, the VM halts with an error. The assembler always emits an even value (local count × 2), so this check guards against hand-crafted or corrupt bytecode.
 
-**WAIT** increments `wait_counter += frames` (additive — multiple WAITs accumulate). The VM enters `State::Waiting` and decrements the counter once per `update()` call. Execution resumes when the counter reaches 0.
+**WAIT** increments `wait_counter += frames` (additive — multiple WAITs accumulate). The VM enters `State::Waiting` and decrements the counter once per `update()` call. Execution resumes when the counter reaches 0. Under `execute_now` there is no `update()` to age it, so the VM steps over it.
 
 **CALL** looks up `func_id` in the function TOC, pushes return PC and FP, sets FP=SP, then jumps to the target. See [Calling Convention](#calling-convention).
 
@@ -704,7 +704,8 @@ nothing, says nothing to the player, and hands the reason back to the caller.
 | ValueOOB | Value index ≥ values_count |
 | FlagOOB | Flag index ≥ logical `flag_count` |
 | OutOfMemory | No memory for another session's stack |
-| NestedImmediate | `execute_now` called from inside another |
+| NestedImmediate | `execute_now` called from inside another, or from inside an update |
+| ImmediateModal | A deferred modal bridge call under `execute_now` |
 | Runaway | An `execute_now` script ran past its instruction cap |
 
 ---

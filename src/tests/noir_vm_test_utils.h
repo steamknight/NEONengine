@@ -414,13 +414,8 @@ namespace NEONengine
     };
 
     /// True when @p status reports a death for @p reason rather than a result.
-    inline bool failed_with(mtl::expected<noir_result, noir_error> const& status, noir_error reason)
-    {
-        return !status.has_value() && status.error() == reason;
-    }
-
-    /// The same, for a call that only says whether it worked.
-    inline bool failed_with(mtl::expected<void, noir_error> const& status, noir_error reason)
+    template<typename T>
+    inline bool failed_with(mtl::expected<T, noir_error> const& status, noir_error reason)
     {
         return !status.has_value() && status.error() == reason;
     }

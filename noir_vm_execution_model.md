@@ -115,9 +115,10 @@ at all.
 
 Each session gets a 1 KB stack. The size is configurable.
 
-Stacks live in a vector with room for four sessions. The vector grows
-if a fifth session starts. It never shrinks, not even when the scene changes —
-the scene resets the live count and keeps the memory.
+Stacks live in a vector with room for four sessions and the immediate context,
+which holds the first stack and never gives it up. The vector grows if a fifth
+session starts. It never shrinks, not even when the scene changes — the scene
+resets the live count and keeps the memory.
 
 A session that runs out of stack dies. See [Errors](#errors).
 
@@ -237,7 +238,9 @@ Rules:
 
 - Only engine code may call it, and only from outside a VM update. A bridge
   function invoked from an opcode must never call it. That would be re-entry,
-  and the VM has nothing to save a context with.
+  and the VM has nothing to save a context with. It is turned down when it
+  happens: one thing at a time owns the register window, and both rules are
+  that one rule.
 - There is exactly one immediate context, with its own stack. Nesting
   cannot happen: scripts cannot start scripts, and the compiler bans the calls
   that could open a second modal.
@@ -245,6 +248,16 @@ Rules:
   error. Nothing runs here that a script should not finish in a few thousand
   instructions; at 40 instructions an update, 2048 is what the whole VM would
   get through in a second of normal work.
+- A modal call kills the script, before the request is recorded. Nothing is
+  going to draw a frame to put the box on screen, and a request left behind
+  would be acted on next frame by a scene that never asked for it.
+- A `WAIT` is stepped over. Nothing ages it, so honouring it would stop the
+  script for good.
+
+The last two are the compiler's job. See [Compiler rules](#compiler-rules).
+
+A death here leaves the run list untouched, and a teardown a terminal call is
+still owed stays owed.
 
 ---
 
@@ -398,8 +411,9 @@ The line is written in every build, whether or not logging is compiled in. A
 message naming the fault beats a game that stops working for no visible reason.
 
 Errors include a bad opcode, a stack overflow from deep `CALL` nesting, a bad
-jump target, a `LOCAL` naming an address outside the session's own stack, and an
-`execute_now` script that runs past its instruction cap.
+jump target, a `LOCAL` naming an address outside the session's own stack, an
+`execute_now` script that runs past its instruction cap, and a modal bridge call
+under `execute_now`.
 
 A script can raise one itself with `HALT`. It says the author reached a case
 that should never happen, and it kills only the session that ran it.
@@ -441,15 +455,17 @@ session.
 
 ## Compiler rules
 
-The editor enforces these. The runtime does not check them.
+The editor enforces these. The runtime does not rely on it for the first two;
+the third it does not check.
 
 1. **No modal calls under `execute_now`.** Any script the engine can reach
    through `execute_now`, following every `CALL`, may not use a deferred modal
    bridge function. Such a call would record a request while the engine sits
    inside a loop that never returns, so the frame would never draw and the
-   player could never dismiss it.
+   player could never dismiss it. One that gets through kills the script before
+   the request is recorded.
 2. **No `WAIT` under `execute_now`.** No frames pass, so the wait would never
-   end.
+   end. One that gets through is stepped over.
 3. **No `WAIT 0`.**
 
 Rules 1 and 2 need the bridge function table: which function is immediate, which

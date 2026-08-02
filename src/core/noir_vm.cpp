@@ -25,6 +25,12 @@ namespace NEONengine
     /// Stacks the VM has room for before the vector has to grow.
     constexpr size_t SESSION_SLOTS = 4;
 
+    /// The stack execute_now runs on. No session may take it.
+    constexpr u16 IMMEDIATE_SLOT = 0;
+
+    /// Stacks the VM starts with: one per session, plus the immediate one.
+    constexpr size_t INITIAL_SLOTS = SESSION_SLOTS + 1;
+
     // ─── Debug stats ────────────────────────────────────────────────────────────
 
 #ifdef GAME_DEBUG
@@ -57,16 +63,18 @@ namespace NEONengine
         , _func_toc(func_toc)
         , _func_count(func_count)
         , _bridge(bridge)
-        , _stack(to<size_t>(stack_size) * SESSION_SLOTS)
+        , _stack(to<size_t>(stack_size) * INITIAL_SLOTS)
         , _stack_base(nullptr)
         , _stack_bytes(stack_size)
-        , _stack_slots(SESSION_SLOTS)
+        , _stack_slots(INITIAL_SLOTS)
         , _sessions()
         , _cur{}
         , _call_depth(0)
         , _session_budget(10)
         , _frame_pool(40)
+        , _immediate_cap(2048)
         , _rotation(0)
+        , _window_owner(window_owner::nobody)
         , _vm_state(noir_vm_state::ok)
         , _exit_code(0)
         , _last_error(noir_error::none)
@@ -75,7 +83,7 @@ namespace NEONengine
         , _cached_dst_param(0)
     {
         // Grow the vector to fill its capacity so the memory is allocated
-        _stack.assign(to<size_t>(stack_size) * SESSION_SLOTS, u8(0));
+        _stack.assign(to<size_t>(stack_size) * INITIAL_SLOTS, u8(0));
         _sessions.reserve(SESSION_SLOTS);
 
         reset_session();
@@ -117,7 +125,12 @@ namespace NEONengine
         // in every build, and the log is only the second reader.
         NE_LOG("%s", _error_message);
 
-        _vm_state  = noir_vm_state::failed;
+        // terminated is a latch, and losing it would let the VM run sessions in
+        // a scene that is over. A death cannot follow a terminal call inside an
+        // update - the call ends the walk - but execute() and execute_now()
+        // both run outside one.
+        if (_vm_state != noir_vm_state::terminated) _vm_state = noir_vm_state::failed;
+
         _cur.state = noir_session_state::died;
         return noir_result::failed;
     }
@@ -149,35 +162,15 @@ namespace NEONengine
             return mtl::unexpected(noir_error::out_of_memory);
         }
 
-        noir_session started{};
-        started.script_id   = func_id;
-        started.stack_index = slot;
-        started.sp          = _stack_bytes;
-        started.fp          = _stack_bytes;
-        started.pc          = to<u16>(_func_toc[func_id]);
-        started.state       = noir_session_state::running;
-
-        // The budget arrives at the top of the next update, so a session
-        // started from inside one does not run until the update after it.
-        started.instructions_left = 0;
-
         // The frame push goes through the running session's window, so the
         // caller's - a bridge function is inside an opcode - has to survive it.
         noir_session const outer = _cur;
 
-        _cur        = started;
-        _stack_base = stack_base_for(slot);
-
-        push32(SENTINEL_PC);
-        push32(to<u32>(_cur.fp));
+        enter_script(func_id, slot);
 
         // A frame that would not fit leaves the session dead; do not revive it.
         bool const fits = _cur.state != noir_session_state::died;
-        if (fits)
-        {
-            _cur.fp = _cur.sp;
-            _sessions.push_back(_cur);
-        }
+        if (fits) _sessions.push_back(_cur);
 
         _cur        = outer;
         _stack_base = stack_base_for(_cur.stack_index);
@@ -186,11 +179,55 @@ namespace NEONengine
         return mtl::unexpected(_last_error);
     }
 
+    // ─── execute_now(func_id) ───────────────────────────────────────────────────
+
+    mtl::expected<i16, noir_error> noir_vm::execute_now(u16 func_id) noexcept
+    {
+        if (_window_owner != window_owner::nobody)
+        {
+            NE_LOG("script %u cannot run now: the VM is already running one", func_id);
+            return mtl::unexpected(noir_error::nested_immediate);
+        }
+
+        if (func_id >= _func_count)
+        {
+            NE_LOG("invalid func_id %u (count=%u)", func_id, _func_count);
+            return mtl::unexpected(noir_error::invalid_func);
+        }
+
+        noir_session const outer = _cur;
+        _window_owner            = window_owner::immediate;
+
+        enter_script(func_id, IMMEDIATE_SLOT);
+        _cur.instructions_left = _immediate_cap;
+
+        auto const result = run_slice();
+
+        // Out of instructions and still going. A deferred call leaves it
+        // running too, but that one stopped because it meant to.
+        if (result == noir_result::ok && _cur.state == noir_session_state::running)
+        {
+            fail(noir_error::runaway, "ran past %u instructions", _immediate_cap);
+        }
+
+        // Whatever it left in D0. A script that went out through a terminal call
+        // has no answer to give, and that is the answer.
+        i16 const answer = to<i16>(_cur.d[0]);
+        bool const died  = _cur.state == noir_session_state::died;
+
+        _cur          = outer;
+        _stack_base   = stack_base_for(_cur.stack_index);
+        _window_owner = window_owner::nobody;
+
+        if (died) return mtl::unexpected(_last_error);
+        return answer;
+    }
+
     // ─── Stack slots ────────────────────────────────────────────────────────────
 
     u16 noir_vm::alloc_stack_slot() const noexcept
     {
-        for (u16 slot = 0;; ++slot)
+        for (u16 slot = IMMEDIATE_SLOT + 1;; ++slot)
         {
             bool taken = false;
             for (size_t i = 0; i < _sessions.size(); ++i)
@@ -256,6 +293,35 @@ namespace NEONengine
         _cur.state = noir_session_state::ended;
     }
 
+    // ─── enter_script() ─────────────────────────────────────────────────────────
+
+    void noir_vm::enter_script(u16 func_id, u16 slot) noexcept
+    {
+        noir_session started{};
+        started.script_id   = func_id;
+        started.stack_index = slot;
+        started.sp          = _stack_bytes;
+        started.fp          = _stack_bytes;
+        started.pc          = to<u16>(_func_toc[func_id]);
+        started.state       = noir_session_state::running;
+
+        // A run list session gets its budget at the top of the next update, so
+        // one started from inside an update waits for the one after it.
+        // execute_now hands out its own.
+        started.instructions_left = 0;
+
+        _cur        = started;
+        _stack_base = stack_base_for(slot);
+
+        // What do_ret() unwinds. The sentinel is the return address no bytecode
+        // offset can equal, so the top frame knows it is the top frame.
+        push32(SENTINEL_PC);
+        push32(to<u32>(_cur.fp));
+
+        if (_cur.state == noir_session_state::died) return;
+        _cur.fp = _cur.sp;
+    }
+
     // ─── reset_execution() ────────────────────────────────────────────────────────
 
     void noir_vm::reset_execution() noexcept
@@ -298,6 +364,8 @@ namespace NEONengine
         // it, parking on a WAIT, making a deferred call, or ending - leaves it
         // unable to run again in this update. A second walk would find the same
         // sessions and turn all of them down.
+        _window_owner = window_owner::update;
+
         for (size_t k = 0; k < _sessions.size() && pool > 0; ++k)
         {
             size_t const i = (start + k) % _sessions.size();
@@ -337,6 +405,8 @@ namespace NEONengine
             // session - and this one - running again this frame.
             if (result == noir_result::deferred) break;
         }
+
+        _window_owner = window_owner::nobody;
 
         ++_rotation;
         remove_dead_sessions();
@@ -453,6 +523,16 @@ namespace NEONengine
             case WAIT:
             {
                 u16 frames = read_u16();
+
+                // Nothing ages a wait here: no frame passes until execute_now
+                // returns, so honouring it would stop the script for good. The
+                // compiler bans it; this is what happens when one gets through.
+                if (_window_owner == window_owner::immediate)
+                {
+                    NE_LOG("script %u: WAIT under execute_now ignored", _cur.script_id);
+                    return noir_result::ok;
+                }
+
                 _cur.wait_counter += frames;
                 _cur.state = noir_session_state::waiting;
                 return noir_result::ok;

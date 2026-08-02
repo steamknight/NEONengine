@@ -35,6 +35,7 @@ namespace NEONengine
         flag_oob,          ///< FLAG index out of range
         out_of_memory,     ///< No memory for another session's stack
         nested_immediate,  ///< execute_now called from inside another
+        immediate_modal,   ///< A deferred modal bridge call under execute_now
         runaway,           ///< An execute_now script ran past its instruction cap
         halt,              ///< The script ran HALT: a case its author says cannot happen
     };
@@ -297,6 +298,23 @@ namespace NEONengine
         mtl::expected<void, noir_error> execute(u16 func_id) noexcept;
 
         /**
+         * @brief Run a script to its end here and now, and hand back its D0.
+         *
+         * For the case where the VM is stopped and something must happen
+         * anyway - a conversation choice that changes the music. It ignores the
+         * run list, the duplicate check, the session budget and the frame pool,
+         * and runs in the one reserved immediate context.
+         *
+         * Only engine code may call it, and only from outside an update: a
+         * bridge function reaching it from inside an opcode is re-entry, and
+         * there is nothing here to save a second context with.
+         *
+         * @param func_id Function index in the TOC (0-based)
+         * @return What the script left in D0, or why it never got there
+         */
+        mtl::expected<i16, noir_error> execute_now(u16 func_id) noexcept;
+
+        /**
          * @brief Run one update tick.
          *
          * Walks the run list in passes, giving each session that can run a
@@ -362,12 +380,32 @@ namespace NEONengine
          */
         void set_frame_pool(u16 count) noexcept { _frame_pool = count; }
 
+        /**
+         * @brief Set the most instructions one execute_now script may run.
+         * @param count Instructions per immediate run (default: 2048)
+         */
+        void set_immediate_cap(u16 count) noexcept { _immediate_cap = count; }
+
 #ifdef GAME_DEBUG
         noir_debug_stats const& debug_stats() const noexcept { return _debug_stats; }
         void reset_debug_stats() noexcept { _debug_stats.reset(); }
 #endif
 
         private:  //////////////////////////////////////////////////////////////////////////////////
+        /**
+         * @brief Who is using the register window.
+         *
+         * The window holds one session and nothing here can save a second, so
+         * execute_now needs it free. Both rules it has to keep - not from
+         * inside an update, and not from inside another - are that one.
+         */
+        enum class window_owner : u8
+        {
+            nobody,
+            update,     ///< update() is walking the run list
+            immediate,  ///< execute_now() is running a script
+        };
+
         // ── Instruction dispatch ─────────────────────────────────────────────
         // An opcode is the byte; an instruction is one executed step. This
         // charges the step, whatever the step turns out to do.
@@ -410,6 +448,12 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call(deferred_modal<Sig> const& b, Args... args) noexcept
         {
+            // Turned down before the request is recorded, not after: nothing
+            // draws a frame until execute_now returns, so the box would never
+            // reach the screen and nobody could dismiss it.
+            if (_window_owner == window_owner::immediate)
+                return fail(noir_error::immediate_modal, "a modal call under execute_now");
+
             b.fn(args...);
             return noir_result::deferred;
         }
@@ -520,6 +564,16 @@ namespace NEONengine
 
         void reset_session() noexcept;
 
+        /**
+         * @brief Loads a session for @p func_id on stack @p slot and opens its
+         *        first frame.
+         *
+         * Leaves it in the register window, dead if the frame did not fit. Both
+         * ways into a script come through here, so the frame do_ret() unwinds
+         * is laid out in one place.
+         */
+        void enter_script(u16 func_id, u16 slot) noexcept;
+
         /// True while a session can still be given instructions.
         static bool session_live(noir_session const& s) noexcept
         {
@@ -592,9 +646,11 @@ namespace NEONengine
         u16 _call_depth;      ///< Current internal CALL nesting
         u16 _session_budget;  ///< Instructions per session per frame (default: 10)
         u16 _frame_pool;      ///< Instructions per frame, all sessions (default: 40)
+        u16 _immediate_cap;   ///< Instructions one execute_now run may spend (default: 2048)
         u16 _rotation;        ///< Run list position the next update starts at
 
-        noir_vm_state _vm_state;  ///< What this update - or the latch - has to say
+        window_owner _window_owner;  ///< Who is using the register window
+        noir_vm_state _vm_state;     ///< What this update - or the latch - has to say
 
         // ── Result ───────────────────────────────────────────────────────────
 
