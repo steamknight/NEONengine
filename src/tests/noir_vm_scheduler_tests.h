@@ -819,7 +819,7 @@ namespace NEONengine
         auto next = vm.update();
 
         TEST_ASSERT(next == noir_result::yielded, "the next one is ordinary again");
-        TEST_ASSERT(message_has(vm, "popped more than it pushed"),
+        TEST_ASSERT(message_has("popped more than it pushed"),
             "the account of it is still on record");
         TEST_SUCCESS;
     }
@@ -857,7 +857,13 @@ namespace NEONengine
         auto vm = bc.build_vm(4);
         TEST_ASSERT(!vm.execute(fn0), "a four-byte stack cannot hold a frame");
         TEST_ASSERT(vm.session_count() == 0, "nothing was added to the run list");
+
+        // A script that dies before its first instruction has still died, and
+        // the player is owed the same account as for one that got further.
+        TEST_ASSERT(message_is("script 0: ran out of its 4 byte stack"), "the player was told");
+
         TEST_ASSERT(!vm.execute(fn1), "and the next one fails the same way");
+        TEST_ASSERT(message_is("script 1: ran out of its 4 byte stack"), "and told again");
         TEST_ASSERT(vm.update() == noir_result::ok, "update has nothing to do");
         TEST_SUCCESS;
     }

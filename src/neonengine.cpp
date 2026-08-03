@@ -173,4 +173,17 @@ namespace NEONengine
         _pStrings = mtl::move(strings.value());
         return true;
     }
+
+    void engine::request_error(char const* message) noexcept
+    {
+        if (!message || has_pending_error()) return;
+
+        size_t i = 0;
+        while (i + 1 < sizeof(_pending_error) && message[i] != '\0')
+        {
+            _pending_error[i] = message[i];
+            ++i;
+        }
+        _pending_error[i] = '\0';
+    }
 }  // namespace NEONengine

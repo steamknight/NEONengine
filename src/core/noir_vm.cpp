@@ -32,14 +32,20 @@ namespace NEONengine
     /// Stacks the VM starts with: one per session, plus the immediate one.
     constexpr size_t INITIAL_SLOTS = SESSION_SLOTS + 1;
 
+#ifdef GAME_DEBUG
+    /// Updates between lines while the frame budget keeps running out.
+    constexpr u16 SATURATION_LOG_EVERY = 50;
+#endif
+
     // ─── Debug stats ────────────────────────────────────────────────────────────
 
 #ifdef GAME_DEBUG
     void noir_debug_stats::reset() noexcept
     {
-        max_stack_used = 0;
-        max_call_depth = 0;
+        max_stack_used   = 0;
+        max_stack_script = 0;
         for (auto& c : opcode_histogram) c = 0;
+        consecutive_saturated_updates = 0;
     }
 #endif
 
@@ -67,8 +73,6 @@ namespace NEONengine
         , _stack(to<size_t>(stack_size) * INITIAL_SLOTS, u8(0))
         , _stack_bytes(stack_size)
         , _stack_slots(INITIAL_SLOTS)
-        // Two arguments size an mtl::vector; one only reserves. The stacks have
-        // to exist from the start, and the run list has to be empty.
         , _sessions(SESSION_SLOTS)
     {
         reset_session();
@@ -92,17 +96,18 @@ namespace NEONengine
     {
         _last_error = reason;
 
-        int n = snprintf(_error_message, sizeof(_error_message), "script %u: ", _current_session.script_id);
-        if (n < 0 || to<size_t>(n) >= sizeof(_error_message)) n = 0;
+        char message[NOIR_ERROR_MESSAGE_SIZE];
+        int n = snprintf(message, sizeof(message), "script %u: ", _current_session.script_id);
+        if (n < 0 || to<size_t>(n) >= sizeof(message)) n = 0;
 
         va_list args;
         va_start(args, fmt);
-        vsnprintf(_error_message + n, sizeof(_error_message) - to<size_t>(n), fmt, args);
+        vsnprintf(message + n, sizeof(message) - to<size_t>(n), fmt, args);
         va_end(args);
 
-        // Built even when nothing reads the log: every build shows this to the
-        // player, and the log is only the second reader.
-        NE_LOG("%s", _error_message);
+        NE_LOG("%s", message);
+
+        _bridge->report_error(message);
 
         // terminated is a latch, and losing it would let the VM run sessions in
         // a scene that is over. A death cannot follow a terminal call inside an
@@ -310,13 +315,11 @@ namespace NEONengine
 
         reset_session();
 
-        _call_depth = 0;
         _rotation   = 0;
         _vm_state   = noir_vm_state::ok;
 
         _exit_code        = 0;
         _last_error       = noir_error::none;
-        _error_message[0] = '\0';
         _cached_dst_mode  = 0;
         _cached_dst_param = 0;
     }
@@ -340,6 +343,17 @@ namespace NEONengine
         u16 frame_left     = _frame_budget;
         size_t const start = _rotation % _sessions.size();
 
+#ifdef GAME_DEBUG
+        walk_tally tally;
+        bool ended_on_deferred = false;
+        for (size_t i = 0; i < _sessions.size(); ++i)
+        {
+            if (!session_live(_sessions[i])) continue;
+            ++tally.live;
+            if (_sessions[i].state == noir_session_state::running) ++tally.ready;
+        }
+#endif
+
         // One walk. Every way a session can stop short of its budget - spending
         // it, parking on a WAIT, making a deferred call, or ending - leaves it
         // unable to run again in this update. A second walk would find the same
@@ -359,6 +373,7 @@ namespace NEONengine
 
 #ifdef GAME_DEBUG
             size_t const before = _sessions.size();
+            bool const capped   = frame_left < budget;
 #endif
 
             auto const result = run_slice();
@@ -375,6 +390,16 @@ namespace NEONengine
             {
                 NE_LOG("a bridge call dropped sessions without a terminal call");
             }
+
+            // Being capped is not enough on its own. A session given less than
+            // it asked for may have ended or parked inside that smaller slice,
+            // in which case it would not have used the rest either. It went
+            // short only if it spent every instruction it got and is still
+            // running.
+            bool const wants_more = used == slice
+                && _current_session.state == noir_session_state::running;
+            if (capped && wants_more) ++tally.cut_short;
+            else ++tally.ran_fully;
 #endif
 
             // A terminal call leaves nothing worth writing back: the teardown
@@ -383,10 +408,21 @@ namespace NEONengine
 
             // A deferred call ends the walk, which is what stops the next
             // session - and this one - running again this frame.
-            if (result == noir_result::deferred) break;
+            if (result == noir_result::deferred)
+            {
+#ifdef GAME_DEBUG
+                ended_on_deferred = true;
+#endif
+                break;
+            }
         }
 
         _run_mode = run_mode::idle;
+
+#ifdef GAME_DEBUG
+        tally.frame_ran_out = frame_left == 0 && !ended_on_deferred;
+        report_saturation(tally);
+#endif
 
         ++_rotation;
         remove_dead_sessions();
@@ -441,6 +477,42 @@ namespace NEONengine
         }
         return noir_result::ok;
     }
+
+#ifdef GAME_DEBUG
+    void noir_vm::report_saturation(walk_tally const& tally) noexcept
+    {
+        u16 const given         = to<u16>(tally.ran_fully + tally.cut_short);
+        u16 const never_reached = (tally.ready > given) ? to<u16>(tally.ready - given) : 0;
+
+        // An empty budget on its own says nothing: the last session may have
+        // ended on the last instruction. Somebody has to have been turned down.
+        bool const saturated = tally.frame_ran_out && (tally.cut_short > 0 || never_reached > 0);
+
+        u16& updates = _debug_stats.consecutive_saturated_updates;
+
+        if (!saturated)
+        {
+            if (updates > 0)
+            {
+                NE_LOG("frame budget: demand fits again, after %u updates", updates);
+                updates = 0;
+            }
+            return;
+        }
+
+        if (updates % SATURATION_LOG_EVERY == 0)
+        {
+            NE_LOG("frame budget of %u ran out: %u live, %u ran fully, %u cut short, %u never reached",
+                _frame_budget,
+                tally.live,
+                tally.ran_fully,
+                tally.cut_short,
+                never_reached);
+        }
+
+        ++updates;
+    }
+#endif
 
     void noir_vm::remove_dead_sessions() noexcept
     {
@@ -540,11 +612,6 @@ namespace NEONengine
 
                 _current_session.fp = _current_session.sp;
                 _current_session.pc = target;
-#ifdef GAME_DEBUG
-                ++_call_depth;
-                if (_call_depth > _debug_stats.max_call_depth)
-                    _debug_stats.max_call_depth = _call_depth;
-#endif
                 return noir_result::ok;
             }
 
@@ -1216,9 +1283,9 @@ namespace NEONengine
             }
 
             case DBG_STAT:
-                NE_LOG("STATS: max_stack=%lu max_call=%u",
+                NE_LOG("STATS: max_stack=%lu bytes, by script %u",
                     _debug_stats.max_stack_used,
-                    _debug_stats.max_call_depth);
+                    _debug_stats.max_stack_script);
                 break;
 
             case DBG_FLAG:
@@ -1280,10 +1347,6 @@ namespace NEONengine
 
         u32 return_pc = pop32();
         _current_session.pc       = to<u16>(return_pc);
-
-#ifdef GAME_DEBUG
-        if (_call_depth > 0) --_call_depth;
-#endif
 
         if (return_pc != SENTINEL_PC) return;
 
@@ -1349,7 +1412,11 @@ namespace NEONengine
 
 #ifdef GAME_DEBUG
         u16 used = to<u16>(_stack_bytes - (_current_session.sp - bytes));
-        if (used > _debug_stats.max_stack_used) _debug_stats.max_stack_used = used;
+        if (used > _debug_stats.max_stack_used)
+        {
+            _debug_stats.max_stack_used   = used;
+            _debug_stats.max_stack_script = _current_session.script_id;
+        }
 #endif
         return false;
     }

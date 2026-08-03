@@ -1183,7 +1183,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(failed_with(status, noir_error::invalid_address), "falling off the end is a death");
-        TEST_ASSERT(message_is(vm, "script 0: ran past the end of the bytecode at 1"),
+        TEST_ASSERT(message_is("script 0: ran past the end of the bytecode at 1"),
             "and it stopped at the first byte that is not there");
         TEST_SUCCESS;
     }

@@ -111,6 +111,12 @@ namespace NEONengine
             if (g_pEngine) g_pEngine->request_system(system_kind::quit_game);
         }
 
+        // ── Diagnostics ──────────────────────────────────────────────────────
+        void nb_report_error(char const* message)
+        {
+            if (g_pEngine) g_pEngine->request_error(message);
+        }
+
 #ifdef GAME_DEBUG
         void nb_debug_log(u16) {}
         void nb_debug_print(char const*, u8) {}
@@ -150,6 +156,8 @@ namespace NEONengine
             .load_game = {nb_load_game},
             .new_game  = {nb_new_game},
             .quit_game = {nb_quit_game},
+
+            .report_error = nb_report_error,
 
 #ifdef GAME_DEBUG
             .debug_log   = {nb_debug_log},

@@ -277,6 +277,7 @@ namespace NEONengine
         TEST_ASSERT(tried, "the bridge function did reach for it");
         TEST_ASSERT(refused, "and was turned down");
         TEST_ASSERT(reason == noir_error::nested_immediate, "for re-entering");
+        TEST_ASSERT(nothing_reported(), "and nothing died, so the player hears nothing");
         TEST_SUCCESS;
     }
 
@@ -314,6 +315,7 @@ namespace NEONengine
         TEST_ASSERT(refused, "and was turned down");
         TEST_ASSERT(reason == noir_error::nested_immediate, "for nesting");
         TEST_ASSERT(r == i16(55), "the outer script carried on regardless");
+        TEST_ASSERT(nothing_reported(), "and nothing died, so the player hears nothing");
         TEST_SUCCESS;
     }
 
@@ -363,7 +365,7 @@ namespace NEONengine
         auto const r = vm.execute_now(fn);
 
         TEST_ASSERT(failed_with(r, noir_error::runaway), "the cap stopped it");
-        TEST_ASSERT(message_is(vm, "script 0: ran past 50 instructions"), "and said so");
+        TEST_ASSERT(message_is("script 0: ran past 50 instructions"), "and said so");
         TEST_SUCCESS;
     }
 
@@ -457,7 +459,7 @@ namespace NEONengine
         auto const r = vm.execute_now(fn);
 
         TEST_ASSERT(failed_with(r, noir_error::immediate_modal), "a modal cannot run here");
-        TEST_ASSERT(message_is(vm, "script 0: a modal call under execute_now"), "and said so");
+        TEST_ASSERT(message_is("script 0: a modal call under execute_now"), "and said so");
         TEST_SUCCESS;
     }
 

@@ -192,12 +192,19 @@ Two things can end a walk early:
 - Demand used the whole frame budget. Sessions still wanted instructions and did
   not get them.
 
+An empty budget on its own is not the second one. A walk whose last session
+reached its `RET` on the last instruction the frame could pay for turned nobody
+down. Somebody has to have gone short.
+
 The VM logs when that saturation starts, every 50 updates while it lasts, and
 when it ends. Each line carries:
 
 - how many sessions were live
-- how many spent their whole budget or ended
+- how many got every instruction they asked for
 - how many ran but were cut short
+- how many the walk never reached
+
+Only debug builds count this. A release build has no log to write it to.
 - how many got nothing at all
 
 The closing line reports the worst update seen, not the last one.
@@ -407,6 +414,13 @@ The VM logs that line and sends it to the bridge, which puts it on screen with
 the same nine-patch box `SAY` uses. It is a modal, so the game holds still until
 the player dismisses it.
 
+The VM keeps no copy. It builds the line, hands it over, and forgets it; the
+engine holds the message until the scene has shown it. That slot is the error's
+own, not the one a script's `SAY` uses, because a death does not end the walk: a
+session further along it can ask for a modal, or die in turn, before the scene
+looks. The first message stands until the scene takes it, the second death being
+the likelier consequence of the two.
+
 The line is written in every build, whether or not logging is compiled in. A
 message naming the fault beats a game that stops working for no visible reason.
 
@@ -414,6 +428,9 @@ Errors include a bad opcode, a stack overflow from deep `CALL` nesting, a bad
 jump target, a `LOCAL` naming an address outside the session's own stack, an
 `execute_now` script that runs past its instruction cap, and a modal bridge call
 under `execute_now`.
+
+A script whose first frame will not fit died before it ran an instruction, and
+it is reported like any other. How far it got does not come into it.
 
 A script can raise one itself with `HALT`. It says the author reached a case
 that should never happen, and it kills only the session that ran it.
@@ -450,6 +467,10 @@ that lower SP. Nothing else pays for it.
 
 **`opcode_histogram`** — how many times each opcode ran, counted across every
 session.
+
+**`consecutive_saturated_updates`** — updates in a row the frame budget has run
+out on, back to 0 when one finishes with instructions to spare. It is what
+decides which updates get a line and which stay quiet.
 
 ---
 

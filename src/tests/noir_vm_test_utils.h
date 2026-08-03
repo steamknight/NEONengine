@@ -69,6 +69,9 @@ namespace NEONengine
         bool new_game_called;
         bool quit_game_called;
 
+        // Diagnostics
+        char error_text[NOIR_ERROR_MESSAGE_SIZE];  ///< What the last death told the player
+
 #ifdef GAME_DEBUG
         // Debug
         u16 debug_log_string_id;
@@ -122,6 +125,8 @@ namespace NEONengine
             load_slot        = 0;
             new_game_called  = false;
             quit_game_called = false;
+
+            error_text[0] = '\0';
 
 #ifdef GAME_DEBUG
             debug_log_string_id = 0;
@@ -261,6 +266,19 @@ namespace NEONengine
         g_mock_log.quit_game_called = true;
     }
 
+    // The last death wins, so a test that provokes two reads the second - which
+    // is what the VM's own account used to do.
+    static void mock_report_error(char const* message)
+    {
+        size_t i = 0;
+        while (i + 1 < sizeof(g_mock_log.error_text) && message[i] != '\0')
+        {
+            g_mock_log.error_text[i] = message[i];
+            ++i;
+        }
+        g_mock_log.error_text[i] = '\0';
+    }
+
 #ifdef GAME_DEBUG
     static void mock_debug_log(u16 string_id)
     {
@@ -313,6 +331,8 @@ namespace NEONengine
         .load_game = {mock_load_game},
         .new_game  = {mock_new_game},
         .quit_game = {mock_quit_game},
+
+        .report_error = mock_report_error,
 
 #ifdef GAME_DEBUG
         .debug_log   = {mock_debug_log},
@@ -420,10 +440,10 @@ namespace NEONengine
         return !status.has_value() && status.error() == reason;
     }
 
-    /// True when the VM's account of the last death mentions @p needle.
-    inline bool message_has(noir_vm const& vm, char const* needle)
+    /// True when the message the player was shown mentions @p needle.
+    inline bool message_has(char const* needle)
     {
-        for (char const* start = vm.error_message(); *start; ++start)
+        for (char const* start = g_mock_log.error_text; *start; ++start)
         {
             char const* a = start;
             char const* b = needle;
@@ -433,13 +453,16 @@ namespace NEONengine
         return *needle == '\0';
     }
 
-    /// True when that account is @p expected and nothing besides.
-    inline bool message_is(noir_vm const& vm, char const* expected)
+    /// True when that message is @p expected and nothing besides.
+    inline bool message_is(char const* expected)
     {
-        char const* a = vm.error_message();
+        char const* a = g_mock_log.error_text;
         while (*a && *a == *expected) { ++a; ++expected; }
         return *a == *expected;
     }
+
+    /// True when no death has told the player anything.
+    inline bool nothing_reported() { return g_mock_log.error_text[0] == '\0'; }
 
 }  // namespace NEONengine
 

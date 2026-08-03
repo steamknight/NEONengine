@@ -28,6 +28,7 @@
 #include "tests/noir_vm_debug_tests.h"
 #include "tests/noir_vm_deferred_tests.h"
 #include "tests/noir_vm_logic_tests.h"
+#include "tests/noir_vm_reporting_tests.h"
 #include "tests/noir_vm_scene_tests.h"
 #include "tests/noir_vm_scheduler_tests.h"
 #include "tests/noir_vm_tests.h"
@@ -139,6 +140,7 @@ namespace NEONengine::tests
         RUN_SUITE(noir_vm_scheduler);
         RUN_SUITE(noir_vm_deferred);
         RUN_SUITE(noir_vm_immediate);
+        RUN_SUITE(noir_vm_reporting);
 
         char summary[64];
         snprintf(summary,

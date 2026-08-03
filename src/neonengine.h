@@ -163,9 +163,9 @@ namespace NEONengine
         /**
          * @brief Post a modal requested by a script (SAY, FADE_OUT, and so on).
          *
-         * The opcode drains the frame pool as it records this, so no session
-         * runs again until the scene has put the modal up and taken it down.
-         * One slot is enough: nothing else runs to record a second.
+         * The opcode spends the rest of the frame budget as it records this, so
+         * no session runs again until the scene has put the modal up and taken
+         * it down. One slot is enough: nothing else runs to record a second.
          */
         void request_modal(modal_kind kind, u16 a, u16 b = 0) noexcept
         {
@@ -182,6 +182,25 @@ namespace NEONengine
             _pending_modal            = modal_request{};
             return taken;
         }
+
+        /**
+         * @brief Post what killed a script, for the scene to put on screen.
+         *
+         * A slot of its own, because a death does not end the walk: a session
+         * later in it can record a modal, or die in turn, before the scene
+         * looks. The first message stands until the scene takes it, the second
+         * death being the likelier consequence of the two.
+         */
+        void request_error(char const* message) noexcept;
+
+        /** @brief True when a dead script has a message waiting. */
+        bool has_pending_error() const noexcept { return _pending_error[0] != '\0'; }
+
+        /** @brief The waiting message, empty when there is none. */
+        char const* pending_error() const noexcept { return _pending_error; }
+
+        /** @brief Drop the waiting message, having shown it. */
+        void clear_pending_error() noexcept { _pending_error[0] = '\0'; }
 
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         u16 current_scene() const noexcept { return _current_scene; }
@@ -210,6 +229,10 @@ namespace NEONengine
         bool _has_pending_language{ false };
         modal_request _pending_modal{};  ///< Modal requested by a script, awaiting the next frame.
         system_request _pending_system{};  ///< Scene change, save or new game, awaiting the next frame.
+
+        /// What killed a script, awaiting the next frame. Empty when none did.
+        char _pending_error[NOIR_ERROR_MESSAGE_SIZE]{};
+
         u16 _current_scene{ 0 };           ///< Scene the runtime is presenting.
     };
 

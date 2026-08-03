@@ -48,7 +48,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(failed_with(status, noir_error::halt), "HALT reports err_halt");
-        TEST_ASSERT(message_has(vm, "HALT"), "and says so in words");
+        TEST_ASSERT(message_has("HALT"), "and says so in words");
         TEST_SUCCESS;
     }
 

@@ -65,9 +65,14 @@ file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS src/*.h?? src/core/*.h?? src/states/
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
-# Debugging flag exposed via CMake specifically for your game code.
-# add_compile_definitions rather than CMAKE_C_FLAGS: every engine source is C++,
-# so a C-only flag never reaches them.
+# These three reach the sources through add_compile_definitions, not
+# CMAKE_C_FLAGS: every engine source is C++, so a C-only flag never arrives.
+
+# The VM's diagnostics: its debug stats, the lines it writes when the frame
+# budget runs out, and the bodies of the DBG_ opcodes, which are NOPs without
+# it. It costs a 1KB opcode histogram and a count on every instruction, so a
+# release build turns it off.
+set(GAME_DEBUG ON CACHE BOOL "Enable NoirVM debug diagnostics")
 if(GAME_DEBUG)
     add_compile_definitions(GAME_DEBUG)
 endif()

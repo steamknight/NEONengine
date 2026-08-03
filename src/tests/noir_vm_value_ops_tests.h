@@ -1169,8 +1169,8 @@ namespace NEONengine
         auto vm = bc.build_vm();
         bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(message_has(vm, "script 0"), "the message names the script");
-        TEST_ASSERT(message_has(vm, "value 32"), "and the index that was out of range");
+        TEST_ASSERT(message_has("script 0"), "the message names the script");
+        TEST_ASSERT(message_has("value 32"), "and the index that was out of range");
         TEST_SUCCESS;
     }
 

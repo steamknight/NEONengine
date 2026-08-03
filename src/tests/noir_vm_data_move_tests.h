@@ -837,7 +837,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(failed_with(status, noir_error::stack_overflow), "one byte under is out");
-        TEST_ASSERT(message_has(vm, "falls below"), "and says which end it left by");
+        TEST_ASSERT(message_has("falls below"), "and says which end it left by");
         TEST_SUCCESS;
     }
 
@@ -856,7 +856,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(failed_with(status, noir_error::stack_underflow), "half a word over is out");
-        TEST_ASSERT(message_has(vm, "reaches past"), "and says which end it left by");
+        TEST_ASSERT(message_has("reaches past"), "and says which end it left by");
         TEST_SUCCESS;
     }
 

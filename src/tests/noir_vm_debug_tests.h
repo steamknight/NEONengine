@@ -20,7 +20,7 @@ namespace NEONengine
     // DBG_LOGS  (0xE1): u8 len + inline bytes → bridge->debug_print(str, len)
     // DBG_REG   (0xE2): Dump D0–D3, SR, SP, FP, PC to log
     // DBG_STK   (0xE3): Dump top 16 bytes of stack to log
-    // DBG_STAT  (0xE4): Dump debug stats (max_stack, max_call)
+    // DBG_STAT  (0xE4): Dump debug stats (max_stack and the script that set it)
     // DBG_FLAG  (0xE5): D0=index → log flag[D0], or D0=0xFFFF → log all flags
     // DBG_VAL   (0xE6): D0=index → log value[D0], or D0=0xFFFF → log all values
     // 0xE7–0xEF: Unknown — treated as NOP

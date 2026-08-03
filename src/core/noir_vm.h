@@ -33,6 +33,10 @@ namespace NEONengine
     /// the frame budget cannot bound it and it needs a cap of its own.
     constexpr u16 NOIR_IMMEDIATE_CAP = 2048;
 
+    /// Longest error message, terminator included. The VM hands the bridge a
+    /// buffer this size and keeps nothing; anything longer is cut.
+    constexpr size_t NOIR_ERROR_MESSAGE_SIZE = 96;
+
     // ─── Results ────────────────────────────────────────────────────────────────
 
     /**
@@ -98,9 +102,13 @@ namespace NEONengine
      */
     struct noir_debug_stats
     {
-        u32 max_stack_used;         ///< Most stack any one session has used, in bytes
-        u16 max_call_depth;         ///< Deepest CALL nesting reached
+        u32 max_stack_used;    ///< Most stack any one session has used, in bytes
+        u16 max_stack_script;  ///< The script that used it
         u32 opcode_histogram[256];  ///< Execution count per opcode
+
+        /// Number of consecutive frames that ran out of frame budget. Back to 0 when one
+        /// finishes with instructions to spare.
+        u16 consecutive_saturated_updates;
 
         void reset() noexcept;
     };
@@ -190,6 +198,17 @@ namespace NEONengine
         deferred_terminal<void(u16 slot)> load_game;
         deferred_terminal<void()> new_game;
         deferred_terminal<void()> quit_game;
+
+        // Diagnostics
+        /**
+         * @brief A session died; tell the player what happened.
+         *
+         * No opcode reaches this, so it carries no kind: the VM calls it
+         * itself, from the one place a session can die. The message is a
+         * NUL-terminated string on the VM's stack, so anything that outlives
+         * the call has to be a copy.
+         */
+        void (*report_error)(char const* message);
 
 #ifdef GAME_DEBUG
         immediate<void(u16 string_id)> debug_log;              ///< Log string table entry
@@ -375,9 +394,6 @@ namespace NEONengine
         u16 exit_code() const noexcept { return _exit_code; }
         u16 reg_d(u8 i) const noexcept { return _current_session.d[i & 3]; }
         u8 sr() const noexcept { return _current_session.sr; }
-
-        /// What killed the last session to die, in words. Empty until one does.
-        char const* error_message() const noexcept { return _error_message; }
 
         /// True while a terminal call is waiting for its teardown.
         bool terminated() const noexcept { return _vm_state == noir_vm_state::terminated; }
@@ -613,6 +629,29 @@ namespace NEONengine
         /// Hands every session its budget for this update and ages the waits.
         void begin_update_budgets() noexcept;
 
+#ifdef GAME_DEBUG
+        /// What one walk did, for report_saturation().
+        struct walk_tally
+        {
+            u16 live{0};       ///< Sessions running or waiting out a WAIT
+            u16 ready{0};      ///< Of those, the ones the walk could run
+            u16 ran_fully{0};  ///< Ready sessions given everything they asked for
+            u16 cut_short{0};  ///< Ready sessions given less, the frame having run out
+
+            /// The walk ended on an empty frame budget rather than a deferred call.
+            bool frame_ran_out{false};
+        };
+
+        /**
+         * @brief Logs the frame budget running out, and running out no longer.
+         *
+         * One line when it starts, one every 50 updates it lasts, one when it
+         * ends. A budget that runs out every frame starves whichever sessions
+         * the walk reaches last, so it needs raising.
+         */
+        void report_saturation(walk_tally const& tally) noexcept;
+#endif
+
         /**
          * @brief Runs the loaded session until its slice or its state runs out.
          * @return `deferred` when a deferred call ended it, `failed` when the
@@ -660,8 +699,6 @@ namespace NEONengine
 
         // ── Execution state ──────────────────────────────────────────────────
 
-        u16 _call_depth{0};  ///< Current internal CALL nesting
-
         /// Instructions one session may run in one frame.
         u16 _session_budget{NOIR_SESSION_BUDGET};
 
@@ -683,9 +720,6 @@ namespace NEONengine
         /// Why the last session died. update(), execute() and execute_now()
         /// report it.
         noir_error _last_error{noir_error::none};
-
-        /// The same thing in words, for the player. fail() is its only writer.
-        char _error_message[96]{};
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 
