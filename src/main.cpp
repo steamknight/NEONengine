@@ -23,8 +23,6 @@ using namespace NEONengine;
 
 extern "C" void __cxa_finalize(void*);
 
-UBYTE ubDebugToggle = 1;
-
 void genericCreate(void)
 {
     log_init();
@@ -64,21 +62,31 @@ void genericProcess(void)
     keyProcess();
     mouseProcess();
     ptplayerProcess();
+
+    // Pushed here rather than by whoever asked for it. A bridge call runs deep
+    // inside the running state's own callback, and pushing from there would
+    // draw the box and then let the rest of that callback paint over it. 
+    if (g_pEngine->has_pending_message())
+    {
+        statePush(g_gameStateManager, &g_stateMessage);
+    }
+
     stateProcess(g_gameStateManager);
     screenProcess(NEONengine::g_mainScreen);
 
+    // The state stack already records whether the stats are up, so asking it is
+    // both shorter and safe when something else - a message box - is on top.
     if (keyUse(KEY_F1))
     {
-        if (ubDebugToggle)
+        tState const* current = g_gameStateManager->pCurrent;
+        if (current == &g_stateScene)
         {
             statePush(g_gameStateManager, &g_stateDebugView);
         }
-        else
+        else if (current == &g_stateDebugView)
         {
             statePop(g_gameStateManager);
         }
-
-        ubDebugToggle = 1 - ubDebugToggle;
     }
 
     if (keyUse(KEY_F2))

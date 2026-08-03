@@ -87,6 +87,22 @@ namespace NEONengine
         {}
 
         /**
+         * @brief Construct from a writable buffer, taking it as a C string.
+         *
+         * A buffer is sized for the longest string it may ever hold, so its
+         * extent says nothing about the string in it and the terminator has to
+         * decide the length. Without this the constructor above would claim the
+         * whole buffer, because binding an array to a reference beats decaying
+         * it to a pointer.
+         *
+         * @param buffer Character buffer holding a null-terminated string.
+         */
+        template<size_type N>
+        constexpr bstr_view(char (&buffer)[N]) noexcept
+            : bstr_view(static_cast<char const*>(buffer))
+        {}
+
+        /**
          * @brief Construct from null terminated C string (length scanned once).
          *
          * @param s Pointer (may be nullptr, treated as empty).

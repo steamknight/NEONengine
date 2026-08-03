@@ -59,6 +59,10 @@ namespace NEONengine
         public:  ///////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief Renders @p text into a bitmap, wrapped to @p maxWidth.
+         *
+         * The bitmap is as wide as the widest line the text broke into, which
+         * is at most @p maxWidth, so a caller drawing a box around it can size
+         * that box to the text rather than to the width it allowed.
          */
         ace::text_bitmap_ptr create_text(bstr_view const& text,
                                          u16 maxWidth,
@@ -73,6 +77,7 @@ namespace NEONengine
         {
             u16 start;
             u16 end;
+            u16 width;  ///< Rendered width in pixels, measured as ACE measures it.
 
             size_t length() const { return end - start; }
         };

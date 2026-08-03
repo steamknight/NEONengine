@@ -11,6 +11,7 @@
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/nine_patch.h"
 #include "core/noir_vm.h"
 #include "core/screen.h"
 #include "core/string_table.h"
@@ -19,6 +20,50 @@
 
 namespace NEONengine
 {
+    /// Widest a message box may be, in pixels, unless its caller asks for less.
+    constexpr u16 MESSAGE_MAX_WIDTH = 256;
+
+    /// Gap between the nine-patch border and the text inside it, in pixels.
+    constexpr u16 MESSAGE_MARGIN = 8;
+
+    /// Gap between a message's caption and its text, in pixels.
+    constexpr u16 MESSAGE_CAPTION_GAP = 4;
+
+    /// Palette index a message's text uses unless its caller asks for another.
+    constexpr u8 MESSAGE_TEXT_COLOR = 1;
+
+    /// Palette index a dead script's report uses.
+    constexpr u8 MESSAGE_ERROR_COLOR = 2;
+
+    /** @brief Where a message box sits on the screen. */
+    enum class message_align : u8
+    {
+        top,
+        middle,
+        bottom,
+    };
+
+    /**
+     * @brief One box of text waiting to be put on screen.
+     *
+     * A line a character speaks and a dead script's report differ only in what
+     * these fields hold, so everything that has something to say fills one of
+     * these in and one state draws them all.
+     *
+     * Neither string is copied. Whoever posts a request has to keep both alive
+     * until the box is drawn, which is the next time the main loop runs.
+     */
+    struct message_request
+    {
+        bstr_view text;
+        bstr_view caption;  ///< Drawn above the text. Empty when there is none.
+        u16 max_width{ MESSAGE_MAX_WIDTH };
+        text_justify justify{ text_justify::LEFT };
+        u8 color{ MESSAGE_TEXT_COLOR };
+        u8 caption_color{ MESSAGE_TEXT_COLOR };
+        message_align align{ message_align::bottom };
+    };
+
     /**
      * @brief What a deferred modal bridge call asked the scene to put up.
      *
@@ -28,7 +73,6 @@ namespace NEONengine
     enum class modal_kind : u8
     {
         none,
-        say,          ///< a = string id, b = speaker id
         show_dialog,  ///< a = dialogue id
         fade_out,     ///< a = frames
         fade_in,      ///< a = frames
@@ -87,6 +131,16 @@ namespace NEONengine
         public:  //////////////////////////////////////////////////////////////////////////////////
         tFont* default_font() noexcept { return _pUiFont.get(); }
         text_renderer* default_text_renderer() noexcept { return _pTextRenderer.get(); }
+
+        /**
+         * @brief The frame every box of text is drawn in.
+         *
+         * Held for the process lifetime because a box goes up whenever a
+         * character speaks, and decoding the source art blocks on the pak.
+         *
+         * @return Null when the project ships no nine-patch.
+         */
+        nine_patch* default_nine_patch() noexcept { return _pNinePatch.get(); }
 
         game_data& data() noexcept { return *_pGameData; }
         noir_vm& vm() noexcept { return *_vm; }
@@ -184,23 +238,32 @@ namespace NEONengine
         }
 
         /**
-         * @brief Post what killed a script, for the scene to put on screen.
+         * @brief Post a box of text for the message state to put on screen.
          *
-         * A slot of its own, because a death does not end the walk: a session
-         * later in it can record a modal, or die in turn, before the scene
-         * looks. The first message stands until the scene takes it, the second
-         * death being the likelier consequence of the two.
+         * The first request stands until it has been shown. A script dies
+         * without ending the walk it was part of, so a session later in that
+         * same walk can speak, or die in turn, before anything looks at the
+         * slot; the death that stopped the first one is the more useful of the
+         * two to read.
+         *
+         * A request with no text is not a message and is ignored.
          */
-        void request_error(char const* message) noexcept;
+        void show_message(message_request const& request) noexcept
+        {
+            if (request.text.is_empty() || has_pending_message()) return;
+            _pending_message = request;
+        }
 
-        /** @brief True when a dead script has a message waiting. */
-        bool has_pending_error() const noexcept { return _pending_error[0] != '\0'; }
+        /** @brief True when something has a box of text waiting to be shown. */
+        bool has_pending_message() const noexcept { return !_pending_message.text.is_empty(); }
 
-        /** @brief The waiting message, empty when there is none. */
-        char const* pending_error() const noexcept { return _pending_error; }
-
-        /** @brief Drop the waiting message, having shown it. */
-        void clear_pending_error() noexcept { _pending_error[0] = '\0'; }
+        /** @brief Consume the waiting message, clearing the slot. */
+        message_request take_pending_message() noexcept
+        {
+            message_request const taken = _pending_message;
+            _pending_message            = message_request{};
+            return taken;
+        }
 
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         u16 current_scene() const noexcept { return _current_scene; }
@@ -216,6 +279,7 @@ namespace NEONengine
             nullptr
         };  ///< The UI font, loaded from the pak via UIST; the engine's font.
         text_renderer_ptr _pTextRenderer{ nullptr };
+        mtl::unique_ptr<nine_patch> _pNinePatch{ nullptr };  ///< The UI frame, from UIST.
         string_table_ptr _pStrings{
             nullptr
         };  ///< The active language's strings, swapped by set_language.
@@ -230,8 +294,8 @@ namespace NEONengine
         modal_request _pending_modal{};  ///< Modal requested by a script, awaiting the next frame.
         system_request _pending_system{};  ///< Scene change, save or new game, awaiting the next frame.
 
-        /// What killed a script, awaiting the next frame. Empty when none did.
-        char _pending_error[NOIR_ERROR_MESSAGE_SIZE]{};
+        /// Box of text awaiting the next frame. Its text is empty when there is none.
+        message_request _pending_message{};
 
         u16 _current_scene{ 0 };           ///< Scene the runtime is presenting.
     };
@@ -241,7 +305,8 @@ namespace NEONengine
     extern tStateManager* g_gameStateManager;
     extern tState g_stateDebugView,  //
         g_stateScene,                //
-        g_stateDialogueTest;
+        g_stateDialogueTest,         //
+        g_stateMessage;
 
 #ifdef ACE_TEST_RUNNER
     namespace tests

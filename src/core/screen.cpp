@@ -26,6 +26,7 @@ namespace NEONengine
         tSimpleBufferManager* pBuffer;
         tFade* pFade;
         UWORD uwOffset;
+        tBitMap* pHeldBack;  ///< The buffer a freeze took out of rotation.
     };
 
     Screen* screenCreate()
@@ -116,6 +117,52 @@ namespace NEONengine
         debug_start_idle();
         vPortWaitForEnd(screen->pViewport);
         debug_stop_idle();
+    }
+
+    void screenFreezeDisplay(Screen* screen)
+    {
+        if (screen->pHeldBack) return;
+
+        // simpleBufferProcess() does nothing at all when the two are the same
+        // pointer: it neither rewrites the bitplane pointers nor swaps. Pointing
+        // the back buffer at the displayed one also aims every draw helper at
+        // the screen, since they all target the back buffer.
+        screen->pHeldBack        = screen->pBuffer->pBack;
+        screen->pBuffer->pBack   = screen->pBuffer->pFront;
+    }
+
+    void screenResumeDisplay(Screen* screen)
+    {
+        if (!screen->pHeldBack) return;
+
+        screen->pBuffer->pBack = screen->pHeldBack;
+        screen->pHeldBack      = nullptr;
+    }
+
+    bool screenIsFrozen(Screen* screen)
+    {
+        return screen->pHeldBack != nullptr;
+    }
+
+    void screenRestoreRect(Screen* screen, WORD wX, WORD wY, WORD wWidth, WORD wHeight)
+    {
+        if (!screen->pHeldBack) return;
+
+        // MINTERM_COOKIE, not MINTERM_COPY. blitCopy puts its edge masks on the
+        // blitter's A channel, and MINTERM_COPY is A AND B, so in a word only
+        // partly inside the rectangle the pixels outside it resolve to zero. A
+        // rectangle that does not start and end on a word would black out up to
+        // 15 columns either side of what it restored. MINTERM_COOKIE keeps the
+        // destination in those pixels.
+        blitCopy(screen->pHeldBack,
+            wX,
+            wY + screen->uwOffset,
+            screen->pBuffer->pBack,
+            wX,
+            wY + screen->uwOffset,
+            wWidth,
+            wHeight,
+            MINTERM_COOKIE);
     }
 
     void screenClear(Screen* screen, UBYTE ubColorIndex)

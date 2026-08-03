@@ -80,6 +80,54 @@ namespace NEONengine
     void screenProcess(Screen* screen);
 
     /**
+     * @brief Locks the display on the buffer that is on screen now.
+     *
+     * The two buffers stop alternating and every draw helper lands on the one
+     * being displayed, so an overlay paints itself once instead of once per
+     * buffer per frame. What was drawn last frame is left untouched in the
+     * other buffer, which is what @ref screenRestoreRect paints back from.
+     *
+     * The pointer sprite and the palette are unaffected: only the buffer
+     * manager stops, not the rest of the frame.
+     *
+     * @param screen The screen to hold still.
+     *
+     * @see screenResumeDisplay()
+     */
+    void screenFreezeDisplay(Screen* screen);
+
+    /**
+     * @brief Lets the two buffers alternate again.
+     *
+     * The next frame shows the buffer that was held back, so whatever the
+     * overlay left behind must be painted over before this is called.
+     *
+     * @param screen The screen to release.
+     *
+     * @see screenFreezeDisplay()
+     */
+    void screenResumeDisplay(Screen* screen);
+
+    /**
+     * @brief Whether the display is being held on one buffer.
+     */
+    bool screenIsFrozen(Screen* screen);
+
+    /**
+     * @brief Paints a region of the held-back buffer over the displayed one.
+     *
+     * Undoes an overlay without a copy of the screen behind it: the buffer the
+     * freeze held back still has the region as it was. It holds the frame
+     * before the one on display, so it is only the same picture while nothing
+     * is moving, which is why the world stops behind an overlay.
+     *
+     * Takes scene-space coordinates, as screenBlitCopy does.
+     *
+     * @param screen A frozen screen. Does nothing when it is not frozen.
+     */
+    void screenRestoreRect(Screen* screen, WORD wX, WORD wY, WORD wWidth, WORD wHeight);
+
+    /**
      * @brief Clears the given screen with a color from the current color palette
      *
      * @param screen The screen to clear

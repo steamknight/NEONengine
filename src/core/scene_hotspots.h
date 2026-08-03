@@ -40,6 +40,16 @@ namespace NEONengine
     void scene_hotspots_update();
 
     /**
+     * @brief Take the button as it stands next update, without reading an edge.
+     *
+     * Anything that stops this from running for a stretch has to call it before
+     * play resumes. The button may have been pressed or released unseen in the
+     * meantime, and the press that dismissed whatever was covering the scene
+     * would otherwise read as a fresh click on whatever lies under the pointer.
+     */
+    void scene_hotspots_resync_button();
+
+    /**
      * @brief Enables or disables the hotspot @p id, as HOTSPOT_ON/OFF do.
      *
      * @param id A global HOTS id; ids outside the current scene are ignored.

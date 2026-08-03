@@ -38,11 +38,13 @@ namespace NEONengine
         {
             pOutData->start = start;
             pOutData->end   = start;
+            pOutData->width = 0;
             *pStartIndex    = start + 1;
             return start + 1 <= textLength;
         }
 
         u32 lineWidth    = 0;
+        u32 breakWidth   = 0;
         u32 lastBreakPos = 0;
         bool     hasBreak     = false;
 
@@ -55,6 +57,7 @@ namespace NEONengine
             {
                 pOutData->start = start;
                 pOutData->end   = idx;
+                pOutData->width = to<u16>(lineWidth);
                 *pStartIndex    = idx + 1;
                 return true;
             }
@@ -63,11 +66,13 @@ namespace NEONengine
             if (c == ' ')
             {
                 lastBreakPos = idx;
+                breakWidth   = lineWidth;
                 hasBreak     = true;
             }
 
             // Measure width (1px inter-character spacing per ACE font spec)
-            lineWidth += _glyphCache[to<u8>(c)] + 1;
+            u32 const glyphWidth = _glyphCache[to<u8>(c)] + 1;
+            lineWidth += glyphWidth;
 
             // Soft wrap when exceeding maxWidth (0 = no wrapping)
             if (maxWidth > 0 && lineWidth > maxWidth)
@@ -76,12 +81,16 @@ namespace NEONengine
                 {
                     pOutData->start = start;
                     pOutData->end   = lastBreakPos;
+                    pOutData->width = to<u16>(breakWidth);
                     *pStartIndex    = lastBreakPos + 1;
                 }
                 else
                 {
                     pOutData->start = start;
                     pOutData->end   = idx;
+                    // The overflowing character starts the next line, so its own
+                    // width is not part of this one.
+                    pOutData->width = to<u16>(lineWidth - glyphWidth);
                     // Guarantee forward progress: consume at least one character
                     *pStartIndex = (idx > start) ? idx : idx + 1;
                 }
@@ -92,6 +101,7 @@ namespace NEONengine
         // Safety fallback
         pOutData->start = start;
         pOutData->end   = textLength;
+        pOutData->width = to<u16>(lineWidth);
         *pStartIndex    = textLength + 1;
         return true;
     }
@@ -173,12 +183,21 @@ namespace NEONengine
 
         if (lineCount == 0) { return ace::text_bitmap_ptr(nullptr); }
 
+        // The widest line is what the text actually occupies. A single character
+        // too wide to wrap can exceed the allowance, so it is still capped.
+        u16 contentWidth = 0;
+        for (auto idx = 0u; idx < lineCount; ++idx)
+        {
+            if (lines[idx].width > contentWidth) contentWidth = lines[idx].width;
+        }
+        if (contentWidth > maxWidth || contentWidth == 0) contentWidth = maxWidth;
+
         // Allocate the result bitmap
         u16 height = _pFont->uwHeight * lineCount;
         auto pResult
-            = ace::fontCreateTextBitMap(mtl::round_up<16>(maxWidth), mtl::round_up<16>(height));
+            = ace::fontCreateTextBitMap(mtl::round_up<16>(contentWidth), mtl::round_up<16>(height));
 
-        pResult->uwActualWidth  = maxWidth;
+        pResult->uwActualWidth  = contentWidth;
         pResult->uwActualHeight = height;
 
         // Render each line and composite into the result
@@ -197,16 +216,19 @@ namespace NEONengine
             fontFillTextBitMap(_pFont, _pLineBitmap.get(), _scratchArea.data());
             NE_LOG("-> %s", _scratchArea.data());
 
+            // Justified within the text's own width, not the width it was
+            // allowed, so the bitmap holds no empty margin for a caller to
+            // draw a box around.
+            u16 const slack = contentWidth > _pLineBitmap->uwActualWidth
+                ? to<u16>(contentWidth - _pLineBitmap->uwActualWidth)
+                : u16(0);
+
             u16 x = 0;
             switch (justification)
             {
-                case text_justify::RIGHT:
-                    x = maxWidth - _pLineBitmap->uwActualWidth;
-                    break;
+                case text_justify::RIGHT: x = slack; break;
 
-                case text_justify::CENTER:
-                    x = (maxWidth - _pLineBitmap->uwActualWidth) >> 1;
-                    break;
+                case text_justify::CENTER: x = slack >> 1; break;
 
                 case text_justify::LEFT:  // fallthrough
                 default: x = 0; break;

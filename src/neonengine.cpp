@@ -5,6 +5,7 @@
 #include "core/logger.h"
 #include "core/noir_bridge.h"
 
+#include <ace++/bitmap.h>
 #include <ace++/palette.h>
 
 #include <mtl/utility.h>
@@ -86,6 +87,33 @@ namespace NEONengine
                 error_code::FAILED_TO_CREATE_TEXT_RENDERER);
         }
 
+        // A project without a frame still runs; boxes of text then draw their
+        // words with nothing behind them, which is legible but plain.
+        mtl::unique_ptr<nine_patch> uiFrame{ nullptr };
+        auto const& ui = gd->ui_state();
+        if (ui.nine_patch_bitmap_id != data::NO_ID
+            && ui.nine_patch_bitmap_id < gd->bitmaps().size())
+        {
+            auto const& ref = gd->bitmaps()[ui.nine_patch_bitmap_id];
+            auto frameArt   = ace::bitmapCreateFromFd(gd->open_asset(ref.bitmap_hash), 0);
+            if (frameArt)
+            {
+                uiFrame = mtl::unique_ptr<nine_patch>(new (mtl::MemF::Fast) nine_patch(frameArt,
+                    ui.nine_patch_left,
+                    ui.nine_patch_top,
+                    ui.nine_patch_right,
+                    ui.nine_patch_bottom));
+            }
+            else
+            {
+                NE_LOG("Could not load the UI nine-patch (bitmap %hu)", ui.nine_patch_bitmap_id);
+            }
+        }
+        else
+        {
+            NE_LOG("The project ships no UI nine-patch");
+        }
+
         // English is the one language the format guarantees is present, so it is
         // the boot language; set_language() swaps to another once one is chosen.
         auto strings = string_table::create(language::EN);
@@ -106,6 +134,7 @@ namespace NEONengine
         result->_pGameData     = mtl::move(gameData.value());
         result->_pUiFont       = mtl::move(uiFont);
         result->_pTextRenderer = mtl::move(textRenderer.value());
+        result->_pNinePatch    = mtl::move(uiFrame);
         result->_pStrings      = mtl::move(strings.value());
 
         // Seed the runtime game-state buffers from the loaded initial state, then
@@ -172,18 +201,5 @@ namespace NEONengine
 
         _pStrings = mtl::move(strings.value());
         return true;
-    }
-
-    void engine::request_error(char const* message) noexcept
-    {
-        if (!message || has_pending_error()) return;
-
-        size_t i = 0;
-        while (i + 1 < sizeof(_pending_error) && message[i] != '\0')
-        {
-            _pending_error[i] = message[i];
-            ++i;
-        }
-        _pending_error[i] = '\0';
     }
 }  // namespace NEONengine

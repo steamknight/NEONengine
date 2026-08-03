@@ -56,9 +56,13 @@ namespace NEONengine
         void nb_inv_clear() {}
 
         // ── Dialogue / Audio ─────────────────────────────────────────────────
-        void nb_say(u16 string_id, u16 speaker_id)
+        void nb_say(u16 string_id, u16)
         {
-            if (g_pEngine) g_pEngine->request_modal(modal_kind::say, string_id, speaker_id);
+            if (!g_pEngine) return;
+
+            g_pEngine->show_message(message_request{
+                .text = g_pEngine->strings().get_string(string_id),
+            });
         }
         void nb_show_dialog(u16 dialogue_id)
         {
@@ -112,9 +116,38 @@ namespace NEONengine
         }
 
         // ── Diagnostics ──────────────────────────────────────────────────────
+        /// The one message text the engine does not already hold. @see nb_report_error
+        char s_error_text[NOIR_ERROR_MESSAGE_SIZE];
+
+        /**
+         * @brief Puts what killed a script in front of the player.
+         *
+         * The VM builds the line in a buffer of its own that it reuses, so
+         * unlike every other message this text has to be copied to outlive the
+         * call. Whether the message is wanted is settled before the copy: a
+         * script dying does not end the walk it was part of, so a second one
+         * can die before the first message has been drawn, and that second
+         * death must not rewrite the text the waiting request points at.
+         */
         void nb_report_error(char const* message)
         {
-            if (g_pEngine) g_pEngine->request_error(message);
+            if (!g_pEngine || !message || g_pEngine->has_pending_message()) return;
+
+            size_t length = 0;
+            while (length + 1 < sizeof(s_error_text) && message[length] != '\0')
+            {
+                s_error_text[length] = message[length];
+                ++length;
+            }
+            s_error_text[length] = '\0';
+
+            g_pEngine->show_message(message_request{
+                .text          = bstr_view(s_error_text, length),
+                .caption       = "Script Error",
+                .color         = MESSAGE_ERROR_COLOR,
+                .caption_color = MESSAGE_ERROR_COLOR,
+                .align         = message_align::middle,
+            });
         }
 
 #ifdef GAME_DEBUG

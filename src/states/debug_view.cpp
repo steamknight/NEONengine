@@ -4,11 +4,13 @@
 
 #include <proto/exec.h> // Bartman's compiler needs this
 
+#include <ace/managers/blit.h>
 #include <ace/managers/system.h>
 #include <ace/managers/timer.h>
 #include <ace/utils/font.h>
 #include <ace/utils/palette.h>
 
+#include "core/mouse_pointer.h"
 #include "core/screen.h"
 
 namespace NEONengine
@@ -35,11 +37,20 @@ namespace NEONengine
 
         s_ulFps = systemIsPal() ? 50 : 60;
 
+        // The stats are redrawn in place every few frames while nothing else
+        // runs. Without this they would land in alternating buffers and the
+        // display would flick between two different readings.
+        screenFreezeDisplay(g_mainScreen);
+
         logBlockEnd("debugViewCreate");
     }
 
     void debugViewProcess(void)
     {
+        // Nothing else runs while the stats are up, so the sprite would sit
+        // where it was until they came down.
+        mousePointerUpdate();
+
         ULONG ulNow = timerGet();
         ULONG ulDelta = timerGetDelta(s_ulDelta, ulNow);
 
@@ -53,15 +64,28 @@ namespace NEONengine
         sprintf(s_elapsedTime, "Elapsed Time: %lds.", ulNow / s_ulFps);
         fontFillTextBitMap(s_pFont, s_pElapsedTimeBmp, s_elapsedTime);
 
-        blitRect(screenGetBackBuffer(g_mainScreen), 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight, 0);
-        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pTextBmp, 0, 0, 24, FONT_COOKIE);
+        screenRestoreRect(g_mainScreen, 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight);
+        screenTextCopy(g_mainScreen, s_pTextBmp, 0, 0, 24, FONT_COOKIE);
 
-        blitRect(screenGetBackBuffer(g_mainScreen), 0, SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight, s_pElapsedTimeBmp->uwActualWidth, s_pElapsedTimeBmp->uwActualHeight, 0);
-        fontDrawTextBitMap(screenGetBackBuffer(g_mainScreen), s_pElapsedTimeBmp, 0, SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight, 24, FONT_COOKIE);
+        WORD const elapsedY = to<WORD>(SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight);
+        screenRestoreRect(g_mainScreen,
+            0,
+            elapsedY,
+            s_pElapsedTimeBmp->uwActualWidth,
+            s_pElapsedTimeBmp->uwActualHeight);
+        screenTextCopy(g_mainScreen, s_pElapsedTimeBmp, 0, to<UWORD>(elapsedY), 24, FONT_COOKIE);
     }
 
     void debugViewDestroy(void)
     {
+        screenRestoreRect(g_mainScreen, 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight);
+        screenRestoreRect(g_mainScreen,
+            0,
+            to<WORD>(SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight),
+            s_pElapsedTimeBmp->uwActualWidth,
+            s_pElapsedTimeBmp->uwActualHeight);
+        screenResumeDisplay(g_mainScreen);
+
         fontDestroyTextBitMap(s_pTextBmp);
         fontDestroyTextBitMap(s_pElapsedTimeBmp);
     }

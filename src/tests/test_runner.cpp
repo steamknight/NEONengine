@@ -17,6 +17,7 @@
 #include "tests/mtl_expected_tests.h"
 #include "tests/mtl_list_tests.h"
 #include "tests/mtl_vector_tests.h"
+#include "tests/nine_patch_tests.h"
 #include "tests/noir_vm_arithmetic_tests.h"
 #include "tests/noir_vm_control_flow_tests.h"
 #include "tests/noir_vm_data_move_tests.h"
@@ -123,6 +124,7 @@ namespace NEONengine::tests
         RUN_SUITE(mtl_vector);
         RUN_SUITE(mtl_expected);
         RUN_SUITE(game_data);
+        RUN_SUITE(nine_patch);
         RUN_SUITE(track_clock);
         RUN_SUITE(noir_vm);
         RUN_SUITE(noir_vm_data_move);

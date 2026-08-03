@@ -198,6 +198,11 @@ namespace NEONengine
         refresh_state_frame(index);
     }
 
+    void scene_hotspots_resync_button()
+    {
+        s_resyncButton = true;
+    }
+
     void scene_hotspots_update()
     {
         auto const is_down = mouseCheck(MOUSE_PORT_1, MOUSE_LMB) != 0;

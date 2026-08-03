@@ -61,17 +61,17 @@ namespace NEONengine
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartText, ulEndText));
         snprintf(renderBuffer, sizeof(renderBuffer), "Text created in %s", timerBuffer);
         auto pTextCreate = g_pEngine->default_text_renderer()->create_text(
-            (char const*)renderBuffer, 320, text_justify::CENTER);
+            renderBuffer, 320, text_justify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartPatch, ulEndPatch));
         snprintf(renderBuffer, sizeof(renderBuffer), "Patch created in %s", timerBuffer);
         auto pPatchCreate = g_pEngine->default_text_renderer()->create_text(
-            (char const*)renderBuffer, 320, text_justify::CENTER);
+            renderBuffer, 320, text_justify::CENTER);
 
         timerFormatPrec(timerBuffer, timerGetDelta(ulStartRender, ulEndRender));
         snprintf(renderBuffer, sizeof(renderBuffer), "Rendered in %s", timerBuffer);
         auto pRender = g_pEngine->default_text_renderer()->create_text(
-            (char const*)renderBuffer, 320, text_justify::CENTER);
+            renderBuffer, 320, text_justify::CENTER);
 
         screenTextCopy(g_mainScreen, pTextCreate.get(), 0, 180, 1, FONT_COOKIE);
         screenTextCopy(g_mainScreen, pPatchCreate.get(), 0, 191, 1, FONT_COOKIE);

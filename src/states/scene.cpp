@@ -388,12 +388,6 @@ namespace NEONengine
                     screenFadeFromBlack(g_mainScreen, fade_frames(), 0, scene_fade_done);
                     return;
 
-                case modal_kind::say:
-                    NE_LOG("SAY string %hu, speaker %hu: no dialogue box yet",
-                        request.a,
-                        request.b);
-                    return;
-
                 case modal_kind::show_dialog:
                     NE_LOG("SHOW_DIALOG %hu: no dialogue box yet", request.a);
                     return;

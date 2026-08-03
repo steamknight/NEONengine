@@ -340,6 +340,21 @@ The scene decides what runs. The VM does not know whether anything is on screen.
                             or a scene change is waiting
 ```
 
+A box of text is not one of these. Anything with something to say posts it to a
+single slot, and the main loop puts the box up before it runs any state at all.
+The box then runs in the scene's place rather than inside it, so none of the
+steps above happen while it is on screen and the VM is held without anything
+having to remember that it is. The steps above see a box only in that they do
+not run.
+
+This is why a script that fails before a scene exists still reaches the player.
+It is also why the box is drawn where it cannot be painted over: a bridge call
+runs inside step 4, and putting the box up from there would leave the rest of
+step 4, and the drawing that follows it, to cover what had just been drawn.
+
+Fades stay modals, because a fade runs inside the scene and the scene has to
+keep drawing for it to be seen.
+
 A system request and a modal request are different things. A modal says what to
 put on screen; a system request says which game to play. `SAVE` records a system
 request from a modal call, because saving is not a scene change but the session
@@ -410,16 +425,18 @@ Every death goes through one funnel. It records the reason, writes a line naming
 the script and the fault, and marks the session dead. Nothing else may kill a
 session, which is what stops the three from disagreeing.
 
-The VM logs that line and sends it to the bridge, which puts it on screen with
-the same nine-patch box `SAY` uses. It is a modal, so the game holds still until
-the player dismisses it.
+The VM logs that line and sends it to the bridge, which puts it in front of the
+player in the same box `SAY` uses, captioned and inked to mark it as a fault.
+The box holds the whole game still until the player dismisses it.
 
-The VM keeps no copy. It builds the line, hands it over, and forgets it; the
-engine holds the message until the scene has shown it. That slot is the error's
-own, not the one a script's `SAY` uses, because a death does not end the walk: a
-session further along it can ask for a modal, or die in turn, before the scene
-looks. The first message stands until the scene takes it, the second death being
-the likelier consequence of the two.
+The VM keeps no copy. It builds the line in a buffer it reuses, hands it over,
+and forgets it. A death does not end the walk, so a session further along the
+same walk can speak, or die in turn, before anything has drawn the first
+message; the bridge therefore settles whether the message is wanted before it
+copies the text, and the first one to arrive is the one shown. A deferred `SAY`
+spends the rest of the frame budget, so at most one can be recorded per update
+and it can only ever follow a death, never precede one. One slot is enough for
+both, and the death is what the player sees.
 
 The line is written in every build, whether or not logging is compiled in. A
 message naming the fault beats a game that stops working for no visible reason.
@@ -509,14 +526,11 @@ RET
 frame  N    step 4  session S runs SAY #12
                     bridge records "say 12", spends the frame budget
                     S is runnable, PC on SAY #13
-frame  N+1  step 0  scene puts the box on screen
-            step 2  timeline skipped
-            step 4  VM skipped
-frame  N+k  step 1  player clicks; box closes
-            step 2  timeline runs
-            step 4  VM runs; S resumes on SAY #13,
+frame  N+1          main loop puts the box up; the scene does not run
+frame  N+k          player clicks; the box closes
+frame  N+k+1 step 4 VM runs; S resumes on SAY #13,
                     records "say 13", spends the frame budget
-frame  N+k+1        second box on screen
+frame  N+k+2        second box on screen
 ```
 
 ### A conversation choice that changes the music
