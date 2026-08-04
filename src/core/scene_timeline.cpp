@@ -134,42 +134,6 @@ namespace NEONengine
             }
         }
 
-        /**
-         * @brief Names @p type the way the editor and the format docs do.
-         */
-        char const* keyframe_type_name(u8 type)
-        {
-            switch (to<data::keyframe_type>(type))
-            {
-                case data::keyframe_type::GFX_MOVE: return "GFX_MOVE";
-                case data::keyframe_type::GFX_VISIBILITY: return "GFX_VISIBILITY";
-                case data::keyframe_type::PALETTE_CYCLE_START: return "PALETTE_CYCLE_START";
-                case data::keyframe_type::PALETTE_CYCLE_END: return "PALETTE_CYCLE_END";
-                case data::keyframe_type::SFX_PLAY: return "SFX_PLAY";
-                case data::keyframe_type::MUSIC_PLAY: return "MUSIC_PLAY";
-                case data::keyframe_type::MUSIC_STOP: return "MUSIC_STOP";
-                case data::keyframe_type::EXECUTE_SCRIPT: return "EXECUTE_SCRIPT";
-                default: return "?";
-            }
-        }
-
-        /// @brief Whether this slice acts on @p type at all.
-        bool is_implemented(u8 type)
-        {
-            switch (to<data::keyframe_type>(type))
-            {
-                case data::keyframe_type::GFX_MOVE:
-                case data::keyframe_type::GFX_VISIBILITY:
-                case data::keyframe_type::PALETTE_CYCLE_START:
-                case data::keyframe_type::PALETTE_CYCLE_END:
-                case data::keyframe_type::SFX_PLAY:
-                case data::keyframe_type::MUSIC_PLAY:
-                case data::keyframe_type::MUSIC_STOP:
-                case data::keyframe_type::EXECUTE_SCRIPT: return true;
-                default: return false;
-            }
-        }
-
         /// @brief Whether @p key moves a graphic instance.
         bool is_move(data::keyframe const& key)
         {
@@ -928,7 +892,11 @@ namespace NEONengine
         for (u16 slot = 0; slot < s_gfxi_count; ++slot) s_glides.push_back(glide{});
 
         u32 total_keys      = 0;
-        u16 unimplemented   = 0;  ///< Bitmask over data::keyframe_type.
+        u32 unknown_keys    = 0;  ///< Keyframes whose type this build cannot name.
+
+        // Only ever read back through NE_LOG, which a build without logging
+        // expands to nothing.
+        [[maybe_unused]] u8 first_unknown = 0;  ///< The first such type seen.
         auto const all_keyframes = g_pEngine->data().keyframes();
 
         NE_LOG("%hu, %lu track(s)", scene.timeline_id, to<ULONG>(tracks.size()));
@@ -974,9 +942,15 @@ namespace NEONengine
                 for (u16 offset = 0; offset < track.keyframe_range.count; ++offset)
                 {
                     auto const& key = all_keyframes[to<size_t>(track.keyframe_range.start) + offset];
-                    if (!is_implemented(key.type) && key.type < data::KEYFRAME_TYPE_COUNT)
+
+                    // A type this build cannot name at all means the pak was
+                    // built by a newer editor. Counted here and reported once
+                    // below, because a looping track would say so 50 times a
+                    // second at fire time.
+                    if (key.type >= data::KEYFRAME_TYPE_COUNT)
                     {
-                        unimplemented |= to<u16>(1 << key.type);
+                        if (unknown_keys == 0) first_unknown = key.type;
+                        ++unknown_keys;
                     }
 
                     // Reported here rather than at fire time for the same reason:
@@ -1000,15 +974,15 @@ namespace NEONengine
             s_clocks.push_back(clock);
         }
 
-        // Reported once here rather than at fire time, where an unimplemented
-        // keyframe on a looping track would log 50 times a second.
-        for (u8 type = 0; type < data::KEYFRAME_TYPE_COUNT; ++type)
+        // A pak this far out of step is wrong as a whole, so one line says so
+        // rather than one per type: the first type this build cannot name is
+        // enough to identify which editor built it.
+        if (unknown_keys > 0)
         {
-            if (unimplemented & (1 << type))
-            {
-                NE_LOG("  %s keyframes are not implemented yet and will be skipped",
-                    keyframe_type_name(type));
-            }
+            NE_LOG("  %lu keyframe(s) have types this build does not know, first %hu; "
+                   "they will be skipped",
+                to<ULONG>(unknown_keys),
+                to<u16>(first_unknown));
         }
 
         // The editor rejects a name repeated inside one scene, so this means the
