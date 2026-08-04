@@ -58,8 +58,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msoft-float")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -msoft-float")
 
 set(ACE_TEST_RUNNER OFF CACHE BOOL "Enable the test runner")
-set(ACE_USE_AGA_FEATURES ON)
-set(ACE_USE_ECS_FEATURES ON)
+# ACE declares these with set(... CACHE BOOL ...) in cmake/ace_config.cmake,
+# which ignores a normal variable, so a plain set() here silently did nothing.
+# FORCE because the engine calls AGA-only ACE functions; it is not a choice.
+set(ACE_USE_AGA_FEATURES ON CACHE BOOL "AGA feature set, required by NEONengine" FORCE)
+set(ACE_USE_ECS_FEATURES ON CACHE BOOL "ECS feature set, required by NEONengine" FORCE)
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.c?? src/core/*.c?? src/states/*.c?? src/utils/*.c?? src/mtl/*.c?? src/ace++/*.c??)
 file(GLOB_RECURSE HEADERS CONFIGURE_DEPENDS src/*.h?? src/core/*.h?? src/states/*.h?? src/utils/*.h?? src/mtl/*.h?? src/ace++/*.h??)
 
