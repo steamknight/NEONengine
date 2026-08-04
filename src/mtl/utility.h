@@ -45,9 +45,6 @@ namespace mtl
         return static_cast<remove_reference_t<T>&&>(t);
     }
 
-// The do/while is load-bearing. Without it, `if (c) LOG_CRASH(m);` guards only
-// the logWrite, which is nothing when ACE_DEBUG is off, so the null store runs
-// on every call. Address 0 is ordinary RAM, so only an optimised build traps.
 #define LOG_CRASH(error)                      \
     do {                                      \
         logWrite("FATAL ERROR: %s", (error)); \
