@@ -11,6 +11,7 @@
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/game_session.h"
 #include "core/nine_patch.h"
 #include "core/noir_vm.h"
 #include "core/screen.h"
@@ -144,6 +145,13 @@ namespace NEONengine
 
         game_data& data() noexcept { return *_pGameData; }
         noir_vm& vm() noexcept { return *_vm; }
+
+        /**
+         * @brief What the player has done, as opposed to what the data says.
+         *
+         * Created at boot and held for as long as the playthrough lasts.
+         */
+        game_session& session() noexcept { return _session; }
 
         /** @brief The active language's strings. */
         string_table& strings() noexcept { return *_pStrings; }
@@ -284,6 +292,7 @@ namespace NEONengine
             nullptr
         };  ///< The active language's strings, swapped by set_language.
 
+        game_session _session{};     ///< This playthrough's record of what the player has done.
         noir_vm_ptr _vm{ nullptr };  ///< The one persistent script VM, over the buffers below.
         mtl::vector<u8> _flags;      ///< Runtime game flags, seeded from FLGS (mutable, savable).
         mtl::vector<u16> _values;    ///< Runtime game values, seeded from VALS (mutable, savable).

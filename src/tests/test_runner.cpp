@@ -13,6 +13,7 @@
 #include "core/screen.h"
 #include "tests/bstr_view_tests.h"
 #include "tests/game_data_tests.h"
+#include "tests/game_session_tests.h"
 #include "tests/mtl_array_tests.h"
 #include "tests/mtl_expected_tests.h"
 #include "tests/mtl_list_tests.h"
@@ -124,6 +125,7 @@ namespace NEONengine::tests
         RUN_SUITE(mtl_vector);
         RUN_SUITE(mtl_expected);
         RUN_SUITE(game_data);
+        RUN_SUITE(game_session);
         RUN_SUITE(nine_patch);
         RUN_SUITE(track_clock);
         RUN_SUITE(noir_vm);

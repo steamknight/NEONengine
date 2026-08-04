@@ -137,6 +137,10 @@ namespace NEONengine
         result->_pNinePatch    = mtl::move(uiFrame);
         result->_pStrings      = mtl::move(strings.value());
 
+        // The playthrough's memory of what the player has read and taken, sized
+        // from the data just loaded. Nothing reads or writes it yet.
+        result->_session.create_from(*result->_pGameData);
+
         // Seed the runtime game-state buffers from the loaded initial state, then
         // build the one persistent script VM over them. FLAGS/VALUES are copied so
         // the on-disk image stays pristine and the runtime state is separately
