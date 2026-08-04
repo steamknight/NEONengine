@@ -157,11 +157,19 @@ static void deallocWithSizeTracking(void* ptr)
     memFree(raw, blockSize(storedSize));
 }
 
+// Every operator new below is noinline on purpose. They hand back an interior
+// pointer, raw + HEADER_SIZE, and operator delete subtracts it again. Let LTO
+// inline one into a caller and GCC sees the returned pointer as memAlloc's
+// result plus four, then reports the matching delete as freeing something that
+// is not the start of a block (-Wfree-nonheap-object). Its rule does not model
+// a replacement operator delete that undoes the offset. The cost is one jsr,
+// against a memAlloc that already calls systemUse, AllocMem and systemUnuse.
+
 /**
  * @brief Global operator new override (FAST/CHIP decided at compile config).
  * @param size Number of bytes requested.
  */
-void* operator new(decltype(sizeof(int)) size) noexcept
+[[gnu::noinline]] void* operator new(decltype(sizeof(int)) size) noexcept
 {
     return allocWithSizeTracking(size, GLOBAL_MEM_FLAGS, "Global new failed: out of memory");
 }
@@ -177,7 +185,7 @@ void operator delete(void* ptr) noexcept
 /**
  * @brief Global array new override.
  */
-void* operator new[](decltype(sizeof(int)) size) noexcept
+[[gnu::noinline]] void* operator new[](decltype(sizeof(int)) size) noexcept
 {
     return allocWithSizeTracking(size, GLOBAL_MEM_FLAGS, "Global new[] failed: out of memory");
 }
@@ -210,7 +218,7 @@ void operator delete[](void* ptr, decltype(sizeof(int)) /*size*/) noexcept
  * @param size     Number of bytes requested.
  * @param memFlags Desired memory pool.
  */
-void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
+[[gnu::noinline]] void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
 {
     return allocWithSizeTracking(
         size, static_cast<ULONG>(memFlags), "Placement new failed: out of memory");
@@ -219,7 +227,7 @@ void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
 /**
  * @brief Placement array new with explicit memory flags.
  */
-void* operator new[](decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
+[[gnu::noinline]] void* operator new[](decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept
 {
     return allocWithSizeTracking(
         size, static_cast<ULONG>(memFlags), "Placement new[] failed: out of memory");

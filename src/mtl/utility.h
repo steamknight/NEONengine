@@ -45,13 +45,20 @@ namespace mtl
         return static_cast<remove_reference_t<T>&&>(t);
     }
 
-#define LOG_CRASH(error)                  \
-    logWrite("FATAL ERROR: %s", (error)); \
-    *(volatile int*)0 = 0;
+// The do/while is load-bearing. Without it, `if (c) LOG_CRASH(m);` guards only
+// the logWrite, which is nothing when ACE_DEBUG is off, so the null store runs
+// on every call. Address 0 is ordinary RAM, so only an optimised build traps.
+#define LOG_CRASH(error)                      \
+    do {                                      \
+        logWrite("FATAL ERROR: %s", (error)); \
+        *(volatile int*)0 = 0;                \
+    } while (0)
 
-#define TRAP(error)                                                         \
-    if (__builtin_is_constant_evaluated()) { static_assert(false, error); } \
-    else { LOG_CRASH(error) }
+#define TRAP(error)                                                             \
+    do {                                                                        \
+        if (__builtin_is_constant_evaluated()) { static_assert(false, error); } \
+        else { LOG_CRASH(error); }                                              \
+    } while (0)
 
     // static_cast and reinterpret_cast, spelled shorter. The forwarding
     // reference keeps move-only types working and avoids copying the argument,

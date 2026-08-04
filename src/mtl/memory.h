@@ -193,9 +193,10 @@ namespace mtl
     }
 }  // namespace mtl
 
-// Placement new operators that take MemF for memory type selection
-void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept;
-void* operator new[](decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept;
+// Placement new operators that take MemF for memory type selection.
+// For the noinline, see the note above the operator new definitions in memory.cpp.
+[[gnu::noinline]] void* operator new(decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept;
+[[gnu::noinline]] void* operator new[](decltype(sizeof(int)) size, mtl::MemF memFlags) noexcept;
 
 // Note: Placement delete operators are only called if the constructor throws
 // Since we're using noexcept, these are mainly for completeness
