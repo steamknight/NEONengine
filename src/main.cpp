@@ -70,6 +70,12 @@ void genericProcess(void)
     {
         statePush(g_gameStateManager, &g_stateMessage);
     }
+    // Same reason, and never in the same frame as a message: two overlays would
+    // freeze the display twice and the second would paint over the first.
+    else if (g_pEngine->has_pending_dialogue())
+    {
+        statePush(g_gameStateManager, &g_stateDialogue);
+    }
 
     stateProcess(g_gameStateManager);
     screenProcess(NEONengine::g_mainScreen);

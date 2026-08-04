@@ -389,7 +389,12 @@ namespace NEONengine
                     return;
 
                 case modal_kind::show_dialog:
-                    NE_LOG("SHOW_DIALOG %hu: no dialogue box yet", request.a);
+                    // Held like a fade: the dialogue state is pushed by the main
+                    // loop next frame, and until it comes down nothing here may
+                    // run - least of all the VM, whose parked session would
+                    // otherwise resume past SHOW_DIALOG before a word was read.
+                    s_modal = request;
+                    g_pEngine->request_dialogue(request.a);
                     return;
 
                 case modal_kind::none: return;
@@ -535,6 +540,19 @@ namespace NEONengine
         scene_bobs_draw();
     }
 
+    /**
+     * @brief Takes the scene back from an overlay that has just come down.
+     *
+     * A dialogue is answered by a state of its own, so unlike a fade the scene
+     * cannot tell when it is over. This is that moment: the hold comes off and
+     * the parked script runs again on the next frame. Other overlays - a
+     * message box, the debug view - never set the hold, so they pass through.
+     */
+    void sceneResume(void)
+    {
+        if (s_modal.kind == modal_kind::show_dialog) s_modal = modal_request{};
+    }
+
     void sceneDestroy(void)
     {
         s_backdropStale = false;
@@ -554,5 +572,6 @@ namespace NEONengine
         .cbCreate  = sceneCreate,
         .cbLoop    = sceneProcess,
         .cbDestroy = sceneDestroy,
+        .cbResume  = sceneResume,
     };
 }  // namespace NEONengine

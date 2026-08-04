@@ -36,6 +36,12 @@ namespace NEONengine
     /// Palette index a dead script's report uses.
     constexpr u8 MESSAGE_ERROR_COLOR = 2;
 
+    /// Gap between the edge of the screen and the dialogue frame, in pixels.
+    constexpr u16 DIALOGUE_MARGIN = 8;
+
+    /// Palette index a dialogue page's text uses.
+    constexpr u8 DIALOGUE_TEXT_COLOR = MESSAGE_TEXT_COLOR;
+
     /** @brief Where a message box sits on the screen. */
     enum class message_align : u8
     {
@@ -273,6 +279,34 @@ namespace NEONengine
             return taken;
         }
 
+        /**
+         * @brief Post a conversation for the dialogue state to put on screen.
+         *
+         * Deferred for the same reason a message is: the scene answers
+         * SHOW_DIALOG from inside its own loop callback, and a state pushed
+         * there would draw the box and then let the rest of that callback paint
+         * over it. The main loop pushes it instead, before any state runs.
+         *
+         * One slot is enough. The opcode that asks for one parks its session and
+         * spends the frame budget, and the scene holds the VM until the box has
+         * come down, so nothing runs to ask for a second.
+         */
+        void request_dialogue(u16 dialogue_id) noexcept
+        {
+            _pending_dialogue     = dialogue_id;
+            _has_pending_dialogue = true;
+        }
+
+        /** @brief True when a conversation is waiting to be put on screen. */
+        bool has_pending_dialogue() const noexcept { return _has_pending_dialogue; }
+
+        /** @brief Consume the waiting conversation, clearing the slot. */
+        u16 take_pending_dialogue() noexcept
+        {
+            _has_pending_dialogue = false;
+            return _pending_dialogue;
+        }
+
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         u16 current_scene() const noexcept { return _current_scene; }
         void set_current_scene(u16 scene_id) noexcept { _current_scene = scene_id; }
@@ -306,6 +340,9 @@ namespace NEONengine
         /// Box of text awaiting the next frame. Its text is empty when there is none.
         message_request _pending_message{};
 
+        u16 _pending_dialogue{ 0 };          ///< Dialogue awaiting the next frame.
+        bool _has_pending_dialogue{ false };
+
         u16 _current_scene{ 0 };           ///< Scene the runtime is presenting.
     };
 
@@ -314,7 +351,7 @@ namespace NEONengine
     extern tStateManager* g_gameStateManager;
     extern tState g_stateDebugView,  //
         g_stateScene,                //
-        g_stateDialogueTest,         //
+        g_stateDialogue,             //
         g_stateMessage;
 
 #ifdef ACE_TEST_RUNNER

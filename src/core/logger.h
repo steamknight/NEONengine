@@ -50,6 +50,7 @@ namespace NEONengine
     X(Hotspot)                \
     X(Cursor)                 \
     X(Cache)                  \
+    X(Dialogue)               \
     X(Test)
 
     enum class log_domain : UBYTE
