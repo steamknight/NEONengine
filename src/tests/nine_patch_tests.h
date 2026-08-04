@@ -91,7 +91,7 @@ namespace NEONengine
         }
     }  // namespace
 
-    /// The width a message box of the shipped frame actually asks for.
+    /// The width a real message box asks for, which width_for has to change.
     TEST_IMPL(test_nine_patch_fills_an_unaligned_box)
     {
         char const* fault = np_check_render(254, 94);
@@ -99,7 +99,7 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    /// The same box rounded up to a whole word.
+    /// A width width_for leaves alone.
     TEST_IMPL(test_nine_patch_fills_an_aligned_box)
     {
         char const* fault = np_check_render(256, 94);
@@ -107,7 +107,7 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    /// Narrow enough that the middle tiles only once, so no tile meets another.
+    /// Too narrow for the middle to tile twice, so no tile meets another.
     TEST_IMPL(test_nine_patch_fills_a_single_tile_box)
     {
         char const* fault = np_check_render(64, 64);

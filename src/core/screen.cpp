@@ -148,12 +148,8 @@ namespace NEONengine
     {
         if (!screen->pHeldBack) return;
 
-        // MINTERM_COOKIE, not MINTERM_COPY. blitCopy puts its edge masks on the
-        // blitter's A channel, and MINTERM_COPY is A AND B, so in a word only
-        // partly inside the rectangle the pixels outside it resolve to zero. A
-        // rectangle that does not start and end on a word would black out up to
-        // 15 columns either side of what it restored. MINTERM_COOKIE keeps the
-        // destination in those pixels.
+        // Not MINTERM_COPY: it would zero the pixels outside the rectangle in its
+        // two edge groups of 16, blacking out up to 15 columns either side.
         blitCopy(screen->pHeldBack,
             wX,
             wY + screen->uwOffset,
