@@ -57,15 +57,10 @@ namespace NEONengine
         u16 uwMidWidth  = w - l - r;
         u16 uwMidHeight = h - t - b;
 
-        // A tile is read from the middle at the source's left border and drawn
-        // one tile further along each time, so it only stays at the same offset
-        // within a word as its source if it advances by whole words. A middle
-        // that is not a whole number of words repeats at the largest whole
-        // number of words inside it; one narrower than a word cannot do even
-        // that, and is drawn as it is rather than not at all.
+        // Every tile is read from the same column, so the step must be a multiple
+        // of 16 to keep each one at the source's offset mod 16, which blitCopy
+        // requires. Rows have no such rule.
         u16 uwStepX = uwMidWidth >= 16 ? to<u16>(uwMidWidth & 0xFFF0) : uwMidWidth;
-
-        // Rows carry no such condition: the blitter addresses them one at a time.
         u16 uwStepY = uwMidHeight;
 
         u16 uwMiddleEndX = width - r;

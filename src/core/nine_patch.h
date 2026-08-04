@@ -31,10 +31,18 @@ namespace NEONengine
         ace::bitmap_ptr render(u16 width, u16 height, u32 flags);
 
         /**
-         * @brief The smallest width at or above @p minimum this can draw well.
+         * @brief The smallest width at or above @p minimum that draws correctly.
          *
-         * @ref render snaps to this on its own. Callers that draw a box around
-         * the result should ask first, so their idea of how wide it is matches.
+         * The pieces down the right-hand side are read from the source at its
+         * own width less the right border, and drawn at the patch's width less
+         * that same border. The blitter moves bitplane data 16 pixels at a
+         * time, and blitCopy only draws correctly when its source and its
+         * destination start the same distance into one of those groups of 16.
+         * The two widths therefore have to leave the same remainder when
+         * divided by 16.
+         *
+         * @ref render applies this itself. A caller that draws a box around the
+         * result should ask first, so its idea of the width matches what it got.
          */
         u16 width_for(u16 minimum) const;
 
