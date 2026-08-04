@@ -11,7 +11,8 @@
         "cmakeSettings": {
             "M68K_CPU": "68000",
             "TOOLCHAIN_PREFIX": "m68k-amiga-elf",
-            "TOOLCHAIN_PATH": "${command:amiga.bin-path}/opt"
+            "TOOLCHAIN_PATH": "${command:amiga.bin-path}/opt",
+            "NE_ELF2HUNK": "${workspaceFolder}/../../libs/elf2hunk/build/Release.x64/elf2hunk.exe"
         },
         "keep": true
     }

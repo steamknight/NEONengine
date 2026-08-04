@@ -99,6 +99,17 @@ include_directories(${ACE_SOURCE_DIR}/include)
 # Force lower-case binary name for Linux etc.
 set(TARGET_NAME ${PROJECT_NAME_LOWER})
 
+# elf2hunk before 057526f emits a load-time relocation for every PC-relative
+# branch. That breaks the 32-bit BRA.L which -foptimize-sibling-calls emits on
+# 68020: AmigaDOS adds the segment base to what is a displacement, so the
+# branch lands outside the program. The tool bundled with the amiga-debug
+# extension still does this, so tail calls stay off unless this points at a
+# build of github.com/BartmanAbyss/elf2hunk at 057526f or later.
+set(NE_ELF2HUNK "" CACHE FILEPATH "elf2hunk that leaves PC-relative relocations alone")
+if(NE_ELF2HUNK)
+    set(ELF2HUNK "${NE_ELF2HUNK}")
+endif()
+
 if(ELF2HUNK)
     # Add elf2hunk step for Bartman compiler
     set(GAME_LINKED ${TARGET_NAME}.elf) # Intermediate executable
@@ -115,10 +126,14 @@ else()
     add_executable(${GAME_LINKED} ${SOURCES} ${HEADERS})
 endif()
 
-# CRITICAL: Disable aggressive optimizations for 68020+ - known to cause crashes
-# -fno-optimize-sibling-calls: Prevents tail-call optimization that generates invalid branches
-target_compile_options(${GAME_LINKED} PRIVATE -fno-optimize-sibling-calls)
-target_compile_options(ace PRIVATE -fno-optimize-sibling-calls)
+if(NOT NE_ELF2HUNK)
+    message(WARNING
+        "Using the toolchain's elf2hunk, so tail calls are disabled. Set "
+        "NE_ELF2HUNK to a build of github.com/BartmanAbyss/elf2hunk at "
+        "057526f or later to enable them.")
+    target_compile_options(${GAME_LINKED} PRIVATE -fno-optimize-sibling-calls)
+    target_compile_options(ace PRIVATE -fno-optimize-sibling-calls)
+endif()
 
 # logWrite() takes char*, so every string literal passed to it trips
 # -Wwrite-strings. Kept out of the toolchain flags so a fresh configure gets it.
