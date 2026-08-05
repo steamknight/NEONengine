@@ -13,6 +13,16 @@
             "kickstart": "C:\\Users\\Public\\Documents\\Amiga Files\\Shared\\rom\\amiga-os-310-a1200.rom",
             "internalConsoleOptions": "openOnSessionStart",
             "fastmem": "8M"
+        },
+        {
+            "type": "amiga",
+            "request": "launch",
+            "name": "Amiga 1200 Tests",
+            "config": "A1200-FAST",
+            "program": "${workspaceFolder}/build/testrun/neonengine",
+            "kickstart": "C:\\Users\\Public\\Documents\\Amiga Files\\Shared\\rom\\amiga-os-310-a1200.rom",
+            "internalConsoleOptions": "openOnSessionStart",
+            "fastmem": "8M"
         }
     ]
 }

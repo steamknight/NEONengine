@@ -62,6 +62,27 @@ namespace NEONengine
         return page_id < _page_range.start + _page_range.count;
     }
 
+    bool dialogue_session::is_available(u16 page_id) const noexcept
+    {
+        auto const& page = _pages[page_id];
+
+        if ((page.flags & data::PAGE_FLAG_ENABLED) == 0) return false;
+
+        if (page.check_flag_id != data::NO_ID && _bridge && _bridge->get_flag
+            && !_bridge->get_flag(page.check_flag_id))
+        {
+            return false;
+        }
+
+        if ((page.flags & data::PAGE_FLAG_ONE_TIME) != 0 && _bridge && _bridge->is_page_read
+            && _bridge->is_page_read(page_id))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     void dialogue_session::go_to(u16 page_id) noexcept
     {
         if (!is_own_page(page_id))
@@ -70,7 +91,19 @@ namespace NEONengine
             return;
         }
 
-        _current = page_id;
-        if (_bridge && _bridge->mark_page_read) _bridge->mark_page_read(page_id);
+        // Forward by index, never along next_page_id: adjacency is what makes a
+        // one-time page fall through to its replacement, and a scan bounded by
+        // the page range cannot loop the way a walk through the graph could.
+        u16 const end = to<u16>(_page_range.start + _page_range.count);
+        for (u16 candidate = page_id; candidate < end; ++candidate)
+        {
+            if (!is_available(candidate)) continue;
+
+            _current = candidate;
+            if (_bridge && _bridge->mark_page_read) _bridge->mark_page_read(candidate);
+            return;
+        }
+
+        _current = data::NO_ID;
     }
 }  // namespace NEONengine

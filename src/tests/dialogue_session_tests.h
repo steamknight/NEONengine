@@ -36,11 +36,26 @@ namespace NEONengine
         struct dlg_mock_log
         {
             static constexpr u8 MAX_CALLS = 32;
+            static constexpr u16 MAX_PAGES = 64;
+            static constexpr u16 MAX_FLAGS = 16;
 
             dlg_call calls[MAX_CALLS];
             u8 count;
 
-            void reset() { count = 0; }
+            /// What the engine would remember: one bit per page, one per flag.
+            bool page_read[MAX_PAGES];
+            bool flags[MAX_FLAGS];
+
+            /// How many times the check flag of a page was asked for.
+            u8 flag_reads;
+
+            void reset()
+            {
+                count      = 0;
+                flag_reads = 0;
+                for (u16 i = 0; i < MAX_PAGES; ++i) page_read[i] = false;
+                for (u16 i = 0; i < MAX_FLAGS; ++i) flags[i] = false;
+            }
 
             void record(dlg_call_kind kind, u16 arg)
             {
@@ -54,10 +69,26 @@ namespace NEONengine
         void dlg_mock_mark_page_read(u16 page_index)
         {
             g_dlg_log.record(dlg_call_kind::mark_page_read, page_index);
+            if (page_index < dlg_mock_log::MAX_PAGES) g_dlg_log.page_read[page_index] = true;
+        }
+
+        bool dlg_mock_is_page_read(u16 page_index)
+        {
+            if (page_index >= dlg_mock_log::MAX_PAGES) return false;
+            return g_dlg_log.page_read[page_index];
+        }
+
+        bool dlg_mock_get_flag(u16 flag_id)
+        {
+            ++g_dlg_log.flag_reads;
+            if (flag_id >= dlg_mock_log::MAX_FLAGS) return false;
+            return g_dlg_log.flags[flag_id];
         }
 
         dialogue_bridge const g_dlg_mock_bridge = {
             .mark_page_read = dlg_mock_mark_page_read,
+            .is_page_read   = dlg_mock_is_page_read,
+            .get_flag       = dlg_mock_get_flag,
         };
 
         /// True when the pages read, in the order they were read, are @p expected.
@@ -85,8 +116,29 @@ namespace NEONengine
             page.check_flag_id       = data::NO_ID;
             page.next_page_id        = next;
             page.display_function_id = data::NO_ID;
-            page.flags               = 1;  // enabled
+            page.flags               = data::PAGE_FLAG_ENABLED;
             page.choice_range        = data::range{ 0, 0 };
+            return page;
+        }
+
+        /// @p page with the authored enable bit its author never set.
+        data::page disabled(data::page page)
+        {
+            page.flags = to<u16>(page.flags & ~data::PAGE_FLAG_ENABLED);
+            return page;
+        }
+
+        /// @p page burnt by its one-time bit once it has been read.
+        data::page one_time(data::page page)
+        {
+            page.flags = to<u16>(page.flags | data::PAGE_FLAG_ONE_TIME);
+            return page;
+        }
+
+        /// @p page shown only while flag @p flag_id is true.
+        data::page gated_on(data::page page, u16 flag_id)
+        {
+            page.check_flag_id = flag_id;
             return page;
         }
 
@@ -393,6 +445,237 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Availability and the sequential skip ────────────────────────────────────
+
+    TEST_IMPL(test_dialogue_never_shows_a_page_its_author_disabled)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[] = { a_page(10, 1), disabled(a_page(11, 2)), a_page(12, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3);
+        session.begin(0);
+
+        session.advance();
+
+        u16 const expected[] = { 0, 2 };
+        TEST_ASSERT(session.current_page_index() == 2, "a disabled page is passed over");
+        TEST_ASSERT(pages_read_were(expected, 2), "and is never marked read");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_skips_a_page_whose_check_flag_is_false)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[]
+            = { a_page(10, 1), gated_on(a_page(11, 2), 3), a_page(12, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3);
+        session.begin(0);
+
+        session.advance();
+
+        TEST_ASSERT(session.current_page_index() == 2, "a page gated on a false flag is skipped");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_shows_a_gated_page_once_its_flag_is_true)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[]
+            = { a_page(10, 1), gated_on(a_page(11, 2), 3), a_page(12, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3);
+        g_dlg_log.flags[3] = true;
+        session.begin(0);
+
+        session.advance();
+
+        TEST_ASSERT(session.current_page_index() == 1, "the same page is shown once its flag is true");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_page_with_no_check_flag_needs_no_flag)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { a_page(10, 1), a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+        session.begin(0);
+        session.advance();
+
+        TEST_ASSERT(session.current_page_index() == 1,
+            "a page with no check flag is available with every flag false");
+        TEST_ASSERT(g_dlg_log.flag_reads == 0, "and the engine is never asked about a flag");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_one_time_page_is_shown_once_then_skipped)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { one_time(a_page(10, 0)), a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.current_page_index() == 0, "a one-time page is shown the first time");
+
+        session.advance();
+
+        u16 const expected[] = { 0, 1 };
+        TEST_ASSERT(session.current_page_index() == 1,
+            "coming back to it a second time skips past it");
+        TEST_ASSERT(pages_read_were(expected, 2), "and it is read exactly once");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_skips_a_one_time_page_burnt_before_it_started)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { one_time(a_page(10, data::NO_ID)), a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+        g_dlg_log.page_read[0] = true;
+
+        TEST_ASSERT(session.begin(0), "a burnt opening page does not stop the dialogue starting");
+        TEST_ASSERT(session.current_page_index() == 1, "it opens on the page after it instead");
+        TEST_SUCCESS;
+    }
+
+    /// The replacement is the next page by index, never the skipped page's own
+    /// next-page field - ADR-0002.
+    TEST_IMPL(test_dialogue_replaces_an_unavailable_page_by_index)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 5, 0) };
+        data::page pages[] = { a_page(10, 1),
+            disabled(a_page(11, 4)),
+            a_page(12, data::NO_ID),
+            a_page(13, data::NO_ID),
+            a_page(14, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 5);
+        session.begin(0);
+
+        session.advance();
+
+        TEST_ASSERT(session.current_page_index() == 2,
+            "the page after the skipped one is shown, not the one it named as next");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_skips_a_run_of_unavailable_pages)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 4, 0) };
+        data::page pages[] = { a_page(10, 1),
+            disabled(a_page(11, data::NO_ID)),
+            gated_on(a_page(12, data::NO_ID), 1),
+            a_page(13, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 4);
+        session.begin(0);
+
+        session.advance();
+
+        u16 const expected[] = { 0, 3 };
+        TEST_ASSERT(session.current_page_index() == 3, "the scan carries on until a page is available");
+        TEST_ASSERT(pages_read_were(expected, 2), "no page it passed over is marked read");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_ends_when_nothing_after_an_unavailable_page_is_available)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[] = { a_page(10, 1),
+            disabled(a_page(11, 0)),
+            disabled(a_page(12, 0)) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3);
+        session.begin(0);
+
+        session.advance();
+
+        TEST_ASSERT(session.has_ended(), "running off the end of the scan ends the conversation");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_with_every_page_unavailable_does_not_start)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { disabled(a_page(10, 1)), gated_on(a_page(11, data::NO_ID), 2) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+
+        TEST_ASSERT(!session.begin(0), "a dialogue with nothing available ends rather than hangs");
+        TEST_ASSERT(session.has_ended(), "and shows no page");
+        TEST_ASSERT(g_dlg_log.count == 0, "and reads none of them");
+        TEST_SUCCESS;
+    }
+
+    /// The greeting-variant pattern: a one-time opening, its replacement next by
+    /// index, both leading to the same hub page.
+    TEST_IMPL(test_dialogue_greeting_variant_needs_no_extra_wiring)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[]
+            = { one_time(a_page(10, 2)), a_page(11, 2), a_page(12, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3);
+
+        session.begin(0);
+        TEST_ASSERT(session.current_page_index() == 0, "the first visit gets the opening greeting");
+        session.advance();
+        TEST_ASSERT(session.current_page_index() == 2, "which leads to the hub page");
+        session.advance();
+        TEST_ASSERT(session.has_ended(), "and the first conversation ends");
+
+        session.begin(0);
+        TEST_ASSERT(session.current_page_index() == 1, "the second visit gets the replacement");
+        session.advance();
+        TEST_ASSERT(session.current_page_index() == 2, "which leads to the same hub page");
+
+        u16 const expected[] = { 0, 2, 1, 2 };
+        TEST_ASSERT(pages_read_were(expected, 4), "and the burnt greeting is never read again");
+        TEST_SUCCESS;
+    }
+
+    /// All three conditions on one page: only the combination lets it through.
+    TEST_IMPL(test_dialogue_availability_conditions_combine)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { one_time(gated_on(a_page(10, data::NO_ID), 4)), a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+
+        wire(session, dialogues, 1, pages, 2);
+        session.begin(0);
+        TEST_ASSERT(session.current_page_index() == 1, "a false check flag alone keeps it off");
+
+        wire(session, dialogues, 1, pages, 2);
+        g_dlg_log.flags[4]     = true;
+        g_dlg_log.page_read[0] = true;
+        session.begin(0);
+        TEST_ASSERT(session.current_page_index() == 1, "being already burnt alone keeps it off");
+
+        wire(session, dialogues, 1, pages, 2);
+        g_dlg_log.flags[4] = true;
+        session.begin(0);
+        TEST_ASSERT(session.current_page_index() == 0,
+            "enabled, flagged true and unburnt together let it through");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(dialogue_session)
         TEST(test_dialogue_starts_ended)
         TEST(test_dialogue_opens_on_its_first_page)
@@ -412,6 +695,19 @@ namespace NEONengine
         TEST(test_dialogue_advancing_after_the_end_does_nothing)
         TEST(test_dialogue_follows_a_page_pointing_at_itself)
         TEST(test_dialogue_pages_are_addressed_globally)
+
+        TEST(test_dialogue_never_shows_a_page_its_author_disabled)
+        TEST(test_dialogue_skips_a_page_whose_check_flag_is_false)
+        TEST(test_dialogue_shows_a_gated_page_once_its_flag_is_true)
+        TEST(test_dialogue_page_with_no_check_flag_needs_no_flag)
+        TEST(test_dialogue_one_time_page_is_shown_once_then_skipped)
+        TEST(test_dialogue_skips_a_one_time_page_burnt_before_it_started)
+        TEST(test_dialogue_replaces_an_unavailable_page_by_index)
+        TEST(test_dialogue_skips_a_run_of_unavailable_pages)
+        TEST(test_dialogue_ends_when_nothing_after_an_unavailable_page_is_available)
+        TEST(test_dialogue_with_every_page_unavailable_does_not_start)
+        TEST(test_dialogue_greeting_variant_needs_no_extra_wiring)
+        TEST(test_dialogue_availability_conditions_combine)
     TEST_SUITE_END
 }  // namespace NEONengine
 

@@ -47,12 +47,13 @@ namespace NEONengine
             dialogue_bridge const* bridge) noexcept;
 
         /**
-         * @brief Starts the dialogue @p dialogue_id at its first page.
+         * @brief Starts the dialogue @p dialogue_id at its first available page.
          *
          * @return True when a page is on show. False when @p dialogue_id names
-         *         no dialogue, or names one whose first page is absent or falls
-         *         outside its own page range - in which case there is nothing to
-         *         put on screen and the caller should leave the scene alone.
+         *         no dialogue, or names one whose first page is absent, falls
+         *         outside its own page range, or is followed by no available
+         *         page at all - in which case there is nothing to put on screen
+         *         and the caller should leave the scene alone.
          */
         bool begin(u16 dialogue_id) noexcept;
 
@@ -70,8 +71,9 @@ namespace NEONengine
          *
          * The no-destination sentinel ends the conversation, as does a next page
          * that falls outside the dialogue's page range - which is what running
-         * past the last page looks like. Calling this after the end does
-         * nothing.
+         * past the last page looks like. When the named page is not available it
+         * is replaced by the next available page by index, not by its own
+         * next-page field. Calling this after the end does nothing.
          */
         void advance() noexcept;
 
@@ -81,8 +83,26 @@ namespace NEONengine
         bool is_own_page(u16 page_id) const noexcept;
 
         /**
+         * @brief Whether the page at global @p page_id may be presented.
+         *
+         * Three things have to hold: the author enabled it, its check flag is
+         * either absent or currently true, and its one-time bit has not already
+         * been burnt by a previous read. The enable bit is static - the loaded
+         * game data is read-only - so only the last two can change during a
+         * playthrough.
+         */
+        bool is_available(u16 page_id) const noexcept;
+
+        /**
          * @brief Puts @p page_id on show and marks it read, or ends the
-         *        conversation when it is not a page of this dialogue.
+         *        conversation when there is nothing available to show.
+         *
+         * An unavailable page is not shown; the search moves forward by index
+         * through the dialogue's pages until it finds one that is available,
+         * and ends the conversation on running off the end. Skipped pages run
+         * nothing and their own next-page field is never consulted. See
+         * ADR-0002 for why the scan is by index rather than along next-page
+         * links.
          */
         void go_to(u16 page_id) noexcept;
 

@@ -624,6 +624,12 @@ namespace NEONengine::data
         range choice_range;          ///< 16: CHOC range.
     };
 
+    /// page::flags bit 0: the author enabled this page. Never changes at runtime.
+    constexpr u16 PAGE_FLAG_ENABLED = 1 << 0;
+
+    /// page::flags bit 1: the page is burnt once it has been read.
+    constexpr u16 PAGE_FLAG_ONE_TIME = 1 << 1;
+
     static_assert(sizeof(page) == 20, "page must be exactly 20 bytes");
     static_assert(__builtin_offsetof(page, next_page_id) == 10, "next_page_id must be at offset 10");
     static_assert(__builtin_offsetof(page, choice_range) == 16, "choice_range must be at offset 16");

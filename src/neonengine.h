@@ -159,6 +159,20 @@ namespace NEONengine
          */
         game_session& session() noexcept { return _session; }
 
+        /**
+         * @brief The current value of game state flag @p flag_id.
+         *
+         * Reads the buffer the VM borrows, so scripts and authored data see the
+         * same flag. An id past the end of that buffer is false, because a flag
+         * the data never declared has never been set.
+         */
+        bool get_flag(u16 flag_id) const noexcept
+        {
+            u32 const byte = to<u32>(flag_id) >> 3;
+            if (byte >= _flags.size()) return false;
+            return (_flags[byte] & to<u8>(1 << (flag_id & 7))) != 0;
+        }
+
         /** @brief The active language's strings. */
         string_table& strings() noexcept { return *_pStrings; }
 

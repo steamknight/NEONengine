@@ -33,6 +33,23 @@ namespace NEONengine
          * today, a bit in the game session - is the engine's business.
          */
         void (*mark_page_read)(u16 page_index);
+
+        /**
+         * @brief Whether the page at global PAGS @p page_index has been read.
+         *
+         * Asked of every page the conversation is about to land on, because a
+         * one-time page that has been read is no longer available.
+         */
+        bool (*is_page_read)(u16 page_index);
+
+        /**
+         * @brief The current value of game state flag @p flag_id.
+         *
+         * Asked of a page's check flag before it is shown. Never asked for the
+         * no-flag sentinel: a page with no check flag is available on that
+         * count without the engine being consulted.
+         */
+        bool (*get_flag)(u16 flag_id);
     };
 
     /**
