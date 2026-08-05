@@ -240,6 +240,12 @@ the shared inventory PNG, are padded to exactly 32 entries, and are packaged as
 their own `.plt`. The inventory sheet is five bitplanes with local indices
 0-31; the aligned masked draw path maps it to 32-63.
 
+The baking happens in the exporter, not at runtime. A portrait and its mask are
+written at the screen's bitplane depth with base index 32 already folded into
+the pixels, the same way bob strips carry their palette slot's base. The engine
+reads a portrait straight into CHIP RAM, validates that its depth (and its
+mask's) matches the screen's, and draws it with a plain cookie-cut blit.
+
 Cursor and nine-patch source PNG palettes are conversion-only. Their source
 RGB values do not define runtime colors. Cursor local indices 0-15 map to UI
 entries 16-31, with local zero transparent, for the attached 4-bitplane

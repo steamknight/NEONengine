@@ -7,8 +7,6 @@
 #include <ace/managers/blit.h>
 #include <ace/utils/bitmap.h>
 
-#include <string.h>
-
 #include <ace++/bitmap.h>
 #include <ace++/palette.h>
 
@@ -26,12 +24,6 @@ namespace NEONengine
     {
         /// A portrait's rows are this many bytes wide, per bitplane.
         constexpr u16 PORTRAIT_BYTE_WIDTH = PORTRAIT_WIDTH / 8;
-
-        /// Planes a 32-color portrait is authored at, holding local indices 0..31.
-        constexpr UBYTE PORTRAIT_PLANES = 5;
-
-        static_assert(
-            (1u << PORTRAIT_PLANES) == PORTRAIT_PALETTE_COLORS, "the band is 2^planes colors");
 
         /// One loaded portrait: its artwork, its mask, and the colors it needs.
         struct portrait
@@ -88,89 +80,6 @@ namespace NEONengine
         }
 
         /**
-         * @brief Rebuilds @p source at @p depth planes with the band's base baked in.
-         *
-         * Portraits are authored at 32 colors and carry local indices 0..31,
-         * while the screen is deeper than that and the band they are drawn from
-         * starts at PORTRAIT_PALETTE_FIRST. The planes the artwork has are
-         * copied across as they are, and each plane above them is filled or left
-         * clear according to the matching bit of the base index - so local index
-         * n comes out as base + n, which is where its colors were put. The base
-         * is a multiple of the band's size, which is what makes that an
-         * or rather than an addition.
-         *
-         * Doing it once here rather than per blit is what lets the portrait be
-         * drawn with a plain cookie-cut, exactly as a bob's frames are. It
-         * belongs in the exporter, which has every fact it needs and already
-         * does this for bob strips - see issue 08. Until then the engine pays
-         * for it, in the Chip RAM the deeper copy takes and the time the rebuild
-         * costs as the box appears.
-         *
-         * @param source A portrait-sized bitmap, in any memory.
-         * @param base   The palette index the artwork's index 0 becomes.
-         * @return A Chip RAM bitmap the blitter can read, or null.
-         */
-        ace::bitmap_ptr bake_to_band(tBitMap const* source, UBYTE depth, u16 base)
-        {
-            ace::bitmap_ptr baked
-                = ace::bitmapCreate(PORTRAIT_WIDTH, PORTRAIT_HEIGHT, depth, BMF_INTERLEAVED | BMF_CLEAR);
-            if (!baked) return baked;
-
-            // Planes[p] steps a row by BytesPerRow whether the bitmap is
-            // interleaved or not, so one addressing scheme serves both.
-            for (u16 row = 0; row < PORTRAIT_HEIGHT; ++row)
-            {
-                ULONG const from = to<ULONG>(row) * source->BytesPerRow;
-                ULONG const into = to<ULONG>(row) * baked->BytesPerRow;
-
-                for (UBYTE plane = 0; plane < depth; ++plane)
-                {
-                    UBYTE* out = baked->Planes[plane] + into;
-
-                    if (plane < source->Depth)
-                    {
-                        memcpy(out, source->Planes[plane] + from, PORTRAIT_BYTE_WIDTH);
-                    }
-                    else if ((base >> plane) & 1)
-                    {
-                        // Set for the whole rectangle, not only where the mask
-                        // is opaque: the cookie-cut drops the rest anyway.
-                        memset(out, 0xFF, PORTRAIT_BYTE_WIDTH);
-                    }
-                }
-            }
-
-            return baked;
-        }
-
-        /**
-         * @brief Rebuilds @p source's mask bits into every one of @p depth planes.
-         *
-         * The blitter reads a mask with the artwork's own stride, so a mask has
-         * to carry its bits in as many planes as the artwork it cuts - and the
-         * artwork has just been rebuilt deeper than the mask was exported at.
-         */
-        ace::bitmap_ptr bake_mask(tBitMap const* source, UBYTE depth)
-        {
-            ace::bitmap_ptr baked
-                = ace::bitmapCreate(PORTRAIT_WIDTH, PORTRAIT_HEIGHT, depth, BMF_INTERLEAVED);
-            if (!baked) return baked;
-
-            for (u16 row = 0; row < PORTRAIT_HEIGHT; ++row)
-            {
-                UBYTE const* from = source->Planes[0] + to<ULONG>(row) * source->BytesPerRow;
-                ULONG const into  = to<ULONG>(row) * baked->BytesPerRow;
-
-                for (UBYTE plane = 0; plane < depth; ++plane)
-                {
-                    memcpy(baked->Planes[plane] + into, from, PORTRAIT_BYTE_WIDTH);
-                }
-            }
-
-            return baked;
-        }
-
-        /**
          * @brief Reads BMPS @p bitmap_id's artwork, mask and colors into @p out.
          *
          * Reads the pak: the caller holds the system-use guard. Returns false
@@ -189,16 +98,18 @@ namespace NEONengine
 
             data::bitmap_ref const& ref = bitmaps[bitmap_id];
 
-            // Fast RAM: only the CPU reads these, and what the blitter will read
-            // is built from them below.
-            ace::bitmap_ptr source = ace::bitmapCreateFromFd(gd.open_asset(ref.bitmap_hash), 1);
-            if (!source)
+            UBYTE const depth = screenGetBackBuffer(g_mainScreen)->Depth;
+
+            // Chip RAM: the blitter reads these exactly as the exporter wrote
+            // them, with the band's base already in the pixels.
+            ace::bitmap_ptr image = ace::bitmapCreateFromFd(gd.open_asset(ref.bitmap_hash), 0);
+            if (!image)
             {
                 NE_LOG("portrait bitmap %hu could not be read", bitmap_id);
                 return false;
             }
 
-            if (!is_portrait_sized(source.get()))
+            if (!is_portrait_sized(image.get()))
             {
                 NE_LOG("portrait bitmap %hu is smaller than %hux%hu",
                     bitmap_id,
@@ -207,22 +118,23 @@ namespace NEONengine
                 return false;
             }
 
-            // More planes than the band has colors for cannot be told where to
-            // land: index 32 and up would run past the end of the band.
-            if (source->Depth == 0 || source->Depth > PORTRAIT_PLANES)
+            // A shallower portrait would leave the planes above it holding the
+            // previous scene's pixels, and a deeper one would be blitted into
+            // planes the screen does not have.
+            if (image->Depth != depth)
             {
-                NE_LOG("portrait bitmap %hu has %hhu planes, band holds %hhu",
+                NE_LOG("portrait bitmap %hu has %hhu planes, screen has %hhu",
                     bitmap_id,
-                    source->Depth,
-                    PORTRAIT_PLANES);
+                    image->Depth,
+                    depth);
                 return false;
             }
 
-            ace::bitmap_ptr source_mask{ nullptr };
+            ace::bitmap_ptr mask{ nullptr };
             if (ref.mask_hash != data::NO_ASSET)
             {
-                source_mask = ace::bitmapCreateFromFd(gd.open_asset(ref.mask_hash), 1);
-                if (!source_mask)
+                mask = ace::bitmapCreateFromFd(gd.open_asset(ref.mask_hash), 0);
+                if (!mask)
                 {
                     NE_LOG("portrait bitmap %hu has a mask that could not be read", bitmap_id);
                     return false;
@@ -230,7 +142,7 @@ namespace NEONengine
 
                 // The mask is read at the artwork's size, so a smaller one would
                 // be read past its end the same way a smaller portrait would.
-                if (!is_portrait_sized(source_mask.get()))
+                if (!is_portrait_sized(mask.get()))
                 {
                     NE_LOG("portrait bitmap %hu has a mask smaller than %hux%hu",
                         bitmap_id,
@@ -238,24 +150,19 @@ namespace NEONengine
                         PORTRAIT_HEIGHT);
                     return false;
                 }
-            }
 
-            UBYTE const depth = screenGetBackBuffer(g_mainScreen)->Depth;
-
-            ace::bitmap_ptr image = bake_to_band(source.get(), depth, PORTRAIT_PALETTE_FIRST);
-            if (!image)
-            {
-                NE_LOG("portrait bitmap %hu would not fit in Chip RAM", bitmap_id);
-                return false;
-            }
-
-            ace::bitmap_ptr mask{ nullptr };
-            if (source_mask)
-            {
-                mask = bake_mask(source_mask.get(), depth);
-                if (!mask)
+                // The blitter walks the mask with the artwork's own stride, so a
+                // mask that is not laid out identically - same width, depth and
+                // interleaving, which BytesPerRow together with Depth covers -
+                // would be read out of step with it and past its end.
+                if (mask->BytesPerRow != image->BytesPerRow || mask->Depth != image->Depth)
                 {
-                    NE_LOG("portrait bitmap %hu's mask would not fit in Chip RAM", bitmap_id);
+                    NE_LOG("portrait bitmap %hu's mask is laid out %hu:%hhu, artwork %hu:%hhu",
+                        bitmap_id,
+                        mask->BytesPerRow,
+                        mask->Depth,
+                        image->BytesPerRow,
+                        image->Depth);
                     return false;
                 }
             }
@@ -337,6 +244,16 @@ namespace NEONengine
 
         s_band_holder = data::NO_ID;
         s_portraits.clear();
+    }
+
+    void dialogue_portraits_release_band()
+    {
+        // Nothing to hand back when no portrait ever took the band, and nothing
+        // to do when the scene's own colors are already the live ones.
+        if (!s_band_taken || s_band_holder == data::NO_ID) return;
+
+        publish_band(s_band_held);
+        s_band_holder = data::NO_ID;
     }
 
     bool dialogue_portraits_has(u16 speaker_id)

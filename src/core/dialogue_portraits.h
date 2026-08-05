@@ -10,12 +10,12 @@
  *
  * Portrait colors live in their own palette band, the way a bob's colors live
  * in its slot: showing a portrait means putting its colors in the band and
- * drawing artwork whose indices point there. Portraits are authored at 32
- * colors with their own local indices, so each one is rebuilt at the screen's
- * depth with the band's base folded in when it is loaded - once per
- * conversation rather than once per blit. The band belongs to the scene's
- * reverse bob slots the rest of the time, so what was there is put back when
- * the conversation ends.
+ * drawing artwork whose indices point there. The exporter writes a portrait at
+ * the screen's depth with the band's base already folded into the pixels, as it
+ * does for bob strips, so the engine reads one straight into Chip RAM and the
+ * draw is a plain cookie-cut. The band belongs to the scene's reverse bob slots
+ * the rest of the time, so what was there is put back when the conversation
+ * ends.
  *
  * One conversation at a time, like the state that draws it.
  */
@@ -63,6 +63,19 @@ namespace NEONengine
      * way out of the box.
      */
     void dialogue_portraits_unload();
+
+    /**
+     * @brief Hands the palette band back without unloading anything.
+     *
+     * What a page with no portrait needs: the band holds whichever speaker was
+     * last on screen, and their colors would otherwise stay live over a scene
+     * that has the column back. The loaded portraits are kept, so the next
+     * speaker who has one simply takes the band again.
+     *
+     * Safe to call when the band was never taken, and when it has already been
+     * handed back.
+     */
+    void dialogue_portraits_release_band();
 
     /**
      * @brief Whether @p speaker_id has a portrait that can be drawn.
