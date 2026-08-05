@@ -19,14 +19,14 @@ namespace NEONengine
         _bridge        = bridge;
         _page_range    = data::range{};
         _current       = data::NO_ID;
-        _choice_count  = 0;
+        collect_choices();
     }
 
     bool dialogue_session::begin(u16 dialogue_id) noexcept
     {
         _page_range   = data::range{};
         _current      = data::NO_ID;
-        _choice_count = 0;
+        collect_choices();
 
         if (dialogue_id >= _dialogues.size()) return false;
 
@@ -73,6 +73,114 @@ namespace NEONengine
     {
         if (slot >= _choice_count) return data::NO_ID;
         return _available[slot];
+    }
+
+    u8 dialogue_session::shown_slot(u8 index) const noexcept
+    {
+        if (index >= _shown_count) return NO_SLOT;
+        return _shown[index];
+    }
+
+    void dialogue_session::fit_choices(mtl::span<u16> heights,
+        u16 space,
+        u16 spacing,
+        u16 more_height) noexcept
+    {
+        _space       = space;
+        _spacing     = spacing;
+        _more_height = more_height;
+
+        for (u8 slot = 0; slot < _choice_count; ++slot)
+        {
+            _heights[slot] = slot < heights.size() ? heights[slot] : u16(0);
+        }
+
+        // The first pass, and the only one a page that fits ever needs: when
+        // everything reaches the end of the list there is no "More..." at all,
+        // and no set to rotate to.
+        _has_more = build_set(0, space, MAX_CHOICES_SHOWN) < _choice_count;
+
+        if (!_has_more)
+        {
+            _set_start = 0;
+            _set_end   = _choice_count;
+            return;
+        }
+
+        // The second pass, run for whichever set the player is on: the first on
+        // arrival, and the one "More..." moved them to afterwards.
+        rebuild_set();
+    }
+
+    void dialogue_session::rotate_choices() noexcept
+    {
+        if (!_has_more) return;
+
+        _set_start = _set_end < _choice_count ? _set_end : u8(0);
+        rebuild_set();
+    }
+
+    void dialogue_session::rebuild_set() noexcept
+    {
+        // One "More..." line and the gap above it, taken off the top before
+        // anything is fitted, so no choice has to be dropped to make room for it.
+        u16 const reserved = to<u16>(_more_height + _spacing);
+        u16 const budget   = _space > reserved ? to<u16>(_space - reserved) : u16(0);
+
+        _set_end = build_set(_set_start, budget, to<u8>(MAX_CHOICES_SHOWN - 1));
+
+        // The page keeps room for one choice and a "More..." back before its
+        // text is placed, so a set that had to be forced on screen means that
+        // reservation was not honoured.
+        if (_shown_count == 1 && _heights[_shown[0]] > budget)
+        {
+            NE_LOG("page %hu has no room for even one choice; showing it anyway", _current);
+        }
+    }
+
+    u8 dialogue_session::build_set(u8 start, u16 budget, u8 cap) noexcept
+    {
+        _shown_count = 0;
+
+        u16 used = 0;
+        u8 slot  = start;
+        for (; slot < _choice_count; ++slot)
+        {
+            // A choice the caller could not measure is not drawn, and so is
+            // never the reason a set ends: it belongs to whichever set it falls
+            // in and shows nothing there.
+            if (_heights[slot] == 0) continue;
+
+            if (_shown_count >= cap) break;
+
+            u16 const needed = to<u16>(_shown_count ? _spacing + _heights[slot] : _heights[slot]);
+            if (used + needed > budget && _shown_count > 0) break;
+
+            // A set showing nothing at all would leave the player rotating
+            // through it forever, so the first measurable choice goes in
+            // however little room there is.
+            used                   = to<u16>(used + needed);
+            _shown[_shown_count++] = slot;
+        }
+
+        // Past the unmeasurable choices trailing the set, so the next set never
+        // opens on a run of choices that draw nothing.
+        while (slot < _choice_count && _heights[slot] == 0) ++slot;
+
+        return slot;
+    }
+
+    void dialogue_session::show_every_choice() noexcept
+    {
+        for (u8 slot = 0; slot < _choice_count; ++slot) _shown[slot] = slot;
+
+        _shown_count = _choice_count;
+        _set_start   = 0;
+        _set_end     = _choice_count;
+        _has_more    = false;
+        _space       = 0;
+        _spacing     = 0;
+        _more_height = 0;
     }
 
     data::choice const* dialogue_session::choice_at(u8 slot) const noexcept
@@ -153,15 +261,12 @@ namespace NEONengine
         _choice_count = 0;
 
         auto const* page = current_page();
-        if (!page) return;
 
         // A range running past the loaded choices is truncated to what is there,
         // so a malformed pak costs the player a reply rather than a read off the
         // end of the chunk.
-        u32 const start = page->choice_range.start;
-        if (start >= _choices.size()) return;
-
-        u32 end = start + page->choice_range.count;
+        u32 const start = page ? page->choice_range.start : 0;
+        u32 end         = page ? start + page->choice_range.count : 0;
         if (end > _choices.size()) end = _choices.size();
 
         for (u32 candidate = start; candidate < end; ++candidate)
@@ -173,19 +278,23 @@ namespace NEONengine
                 NE_LOG("page %hu offers more than %hhu choices; the rest are dropped",
                     _current,
                     MAX_CHOICES);
-                return;
+                break;
             }
 
             _available[_choice_count++] = to<u16>(candidate);
         }
+
+        // Arriving at a page starts on its first set, and shows the lot until
+        // the drawing side has measured them and said how much room there is.
+        show_every_choice();
     }
 
     void dialogue_session::go_to(u16 page_id) noexcept
     {
         if (!is_own_page(page_id))
         {
-            _current      = data::NO_ID;
-            _choice_count = 0;
+            _current = data::NO_ID;
+            collect_choices();
             return;
         }
 
@@ -207,7 +316,7 @@ namespace NEONengine
             return;
         }
 
-        _current      = data::NO_ID;
-        _choice_count = 0;
+        _current = data::NO_ID;
+        collect_choices();
     }
 }  // namespace NEONengine

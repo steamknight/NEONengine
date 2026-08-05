@@ -46,6 +46,15 @@ namespace NEONengine
     class text_renderer;
     using text_renderer_ptr = mtl::unique_ptr<text_renderer>;
 
+    /**
+     * @brief The space a wrapped string would take, in pixels.
+     */
+    struct text_extent
+    {
+        u16 width{ 0 };
+        u16 height{ 0 };
+    };
+
     class text_renderer
     {
         public:  ///////////////////////////////////////////////////////////////////////////////////
@@ -68,6 +77,18 @@ namespace NEONengine
                                          u16 maxWidth,
                                          text_justify justification);
 
+        /**
+         * @brief What create_text() would report for @p text, without drawing it.
+         *
+         * Breaks the text exactly as create_text() does but allocates no
+         * bitmap, so a caller sizing a layout around several strings pays for
+         * the ones it goes on to draw and no more.
+         *
+         * @return The extent, zero in both directions when there is nothing to
+         *         draw or no font to draw it with.
+         */
+        text_extent measure_text(bstr_view const& text, u16 maxWidth);
+
         static result create(tFont* pFont);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +109,16 @@ namespace NEONengine
                                    u32* pStartIndex,
                                    u32 maxWidth,
                                    line_data* pOutData);
+
+        /**
+         * @brief Breaks @p text into at most MAX_LINES lines in @p pLines.
+         *
+         * @return How many lines it broke into, zero when there are none.
+         */
+        u32 lay_out_lines(bstr_view const& text, u16 maxWidth, line_data* pLines);
+
+        /** @brief The width @p lineCount lines occupy, capped at @p maxWidth. */
+        static u16 content_width(line_data const* pLines, u32 lineCount, u16 maxWidth);
 
         void ensure_line_bitmap(u16 width);
 

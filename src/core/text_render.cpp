@@ -151,6 +151,46 @@ namespace NEONengine
         _lineBitmapWidth = alignedWidth;
     }
 
+    u32 text_renderer::lay_out_lines(bstr_view const& text, u16 maxWidth, line_data* pLines)
+    {
+        u32 startIndex = 0;
+        u32 lineCount  = 0;
+        line_data line{};
+
+        while (lineCount < MAX_LINES && break_text_into_lines(text, &startIndex, maxWidth, &line))
+        {
+            pLines[lineCount++] = line;
+        }
+
+        return lineCount;
+    }
+
+    u16 text_renderer::content_width(line_data const* pLines, u32 lineCount, u16 maxWidth)
+    {
+        // The widest line is what the text actually occupies. A single character
+        // too wide to wrap can exceed the allowance, so it is still capped.
+        u16 width = 0;
+        for (auto idx = 0u; idx < lineCount; ++idx)
+        {
+            if (pLines[idx].width > width) width = pLines[idx].width;
+        }
+        if (width > maxWidth || width == 0) width = maxWidth;
+
+        return width;
+    }
+
+    text_extent text_renderer::measure_text(bstr_view const& text, u16 maxWidth)
+    {
+        if (text.is_empty() || !_pFont) return text_extent{};
+
+        auto lines          = mtl::array<line_data, MAX_LINES>();
+        u32 const lineCount = lay_out_lines(text, maxWidth, lines.begin());
+        if (lineCount == 0) return text_extent{};
+
+        return text_extent{ content_width(lines.begin(), lineCount, maxWidth),
+            to<u16>(_pFont->uwHeight * lineCount) };
+    }
+
     ace::text_bitmap_ptr text_renderer::create_text(bstr_view const& text,
                                                     u16 maxWidth,
                                                     text_justify justification)
@@ -170,27 +210,13 @@ namespace NEONengine
         ensure_line_bitmap(maxWidth);
 
         // Break text into lines
-        u32 startIndex = 0;
         auto lines = mtl::array<line_data, MAX_LINES>();
         line_data line{};
-        u32 lineCount = 0;
-
-        while (lineCount < MAX_LINES
-               && break_text_into_lines(text, &startIndex, maxWidth, &line))
-        {
-            lines[lineCount++] = line;
-        }
+        u32 const lineCount = lay_out_lines(text, maxWidth, lines.begin());
 
         if (lineCount == 0) { return ace::text_bitmap_ptr(nullptr); }
 
-        // The widest line is what the text actually occupies. A single character
-        // too wide to wrap can exceed the allowance, so it is still capped.
-        u16 contentWidth = 0;
-        for (auto idx = 0u; idx < lineCount; ++idx)
-        {
-            if (lines[idx].width > contentWidth) contentWidth = lines[idx].width;
-        }
-        if (contentWidth > maxWidth || contentWidth == 0) contentWidth = maxWidth;
+        u16 const contentWidth = content_width(lines.begin(), lineCount, maxWidth);
 
         // Allocate the result bitmap
         u16 height = _pFont->uwHeight * lineCount;

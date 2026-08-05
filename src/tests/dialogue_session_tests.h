@@ -1182,6 +1182,354 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Choice sets ─────────────────────────────────────────────────────────────
+
+    namespace
+    {
+        /// A page offering @p count choices, each leading back to the page itself.
+        void a_page_of_choices(data::page* pages, data::choice* choices, u16 count)
+        {
+            pages[0] = with_choices(a_page(10, data::NO_ID), 0, count);
+            pages[1] = a_page(11, data::NO_ID);
+
+            for (u16 slot = 0; slot < count; ++slot)
+            {
+                choices[slot] = a_choice(to<u16>(20 + slot), 0);
+            }
+        }
+
+        /// True when the current set draws exactly @p expected, in that order.
+        bool set_was(dialogue_session const& session, u8 const* expected, u8 expected_count)
+        {
+            if (session.shown_count() != expected_count) return false;
+            for (u8 index = 0; index < expected_count; ++index)
+            {
+                if (session.shown_slot(index) != expected[index]) return false;
+            }
+            return true;
+        }
+    }  // namespace
+
+    /// Nothing is fitted until the drawing side has measured, so a caller that
+    /// never fits - every test above this one - sees the whole list.
+    TEST_IMPL(test_dialogue_shows_every_choice_until_they_are_fitted)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        u8 const expected[] = { 0, 1, 2 };
+        TEST_ASSERT(set_was(session, expected, 3), "every available choice is in the set");
+        TEST_ASSERT(!session.has_more(), "and there is nothing to rotate to");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choices_that_all_fit_offer_no_more)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 100, 2, 10);
+
+        u8 const expected[] = { 0, 1, 2 };
+        TEST_ASSERT(set_was(session, expected, 3), "all three are shown at once");
+        TEST_ASSERT(!session.has_more(), "so no slot is given to More...");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_shown_slot_past_the_set_names_nothing)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[2];
+        a_page_of_choices(pages, choices, 2);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 2), 100, 2, 10);
+
+        TEST_ASSERT(session.shown_slot(2) == dialogue_session::NO_SLOT,
+            "an index past the set names no choice");
+        TEST_SUCCESS;
+    }
+
+    /// One choice too many for the space is the whole of what starts a rotation:
+    /// the room "More..." needs comes off the top, so the first set is shorter
+    /// than what would have fitted without it.
+    TEST_IMPL(test_dialogue_one_choice_too_many_starts_a_rotation)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        // Two of the three fit; the second pass gives one of those two to
+        // "More...", so only the first choice is left on screen.
+        u16 heights[] = { 10, 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+
+        u8 const first[] = { 0 };
+        TEST_ASSERT(set_was(session, first, 1), "the first set holds what is left after More...");
+        TEST_ASSERT(session.has_more(), "and offers More... to reach the rest");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_rotating_shows_the_next_set_then_wraps)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+
+        u8 const second[] = { 1 };
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, second, 1), "More... moves on to the next choice");
+        TEST_ASSERT(session.has_more(), "which offers More... in its turn");
+
+        u8 const third[] = { 2 };
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, third, 1), "and on again to the last");
+
+        u8 const first[] = { 0 };
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, first, 1),
+            "the last set comes back round to the first, so nothing is out of reach");
+        TEST_SUCCESS;
+    }
+
+    /// The numbering runs 1 to 9, so a tenth choice rotates however much room
+    /// there is for it.
+    TEST_IMPL(test_dialogue_more_than_nine_choices_rotate)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[10];
+        a_page_of_choices(pages, choices, 10);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 10);
+        session.begin(0);
+
+        u16 heights[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+        session.fit_choices(mtl::span<u16>(heights, 10), 1000, 0, 1);
+
+        u8 const first[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+        TEST_ASSERT(set_was(session, first, 8),
+            "eight are shown, the ninth slot going to More...");
+        TEST_ASSERT(session.has_more(), "which the tenth choice is reached through");
+
+        u8 const second[] = { 8, 9 };
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, second, 2), "the rest follow in the next set");
+
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, first, 8), "and it comes back round to the first eight");
+        TEST_SUCCESS;
+    }
+
+    /// A wrapped choice takes several lines, and the fit has to believe what it
+    /// was told about it rather than assume every choice is one line tall.
+    TEST_IMPL(test_dialogue_fits_a_multi_line_choice_at_its_true_height)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        // Three one-line choices would all have fitted in 42; the middle one
+        // running to three lines is what pushes the last out of the set.
+        u16 heights[] = { 10, 30, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 42, 2, 10);
+
+        u8 const first[] = { 0 };
+        TEST_ASSERT(set_was(session, first, 1), "the tall choice does not fit beside the first");
+        TEST_ASSERT(session.has_more(), "so the page rotates");
+
+        u8 const second[] = { 1 };
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, second, 1), "and the tall one has the next set to itself");
+        TEST_SUCCESS;
+    }
+
+    /// The page reserves room for one choice and a "More..." before its text is
+    /// placed. Should that ever fail, showing nothing would rotate through empty
+    /// sets forever, so one choice goes up regardless.
+    TEST_IMPL(test_dialogue_shows_one_choice_even_with_no_room_for_it)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[2];
+        a_page_of_choices(pages, choices, 2);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 2), 0, 2, 10);
+
+        u8 const first[] = { 0 };
+        TEST_ASSERT(set_was(session, first, 1), "the first choice is shown anyway");
+        TEST_ASSERT(session.has_more(), "with More... to reach the other");
+
+        u8 const second[] = { 1 };
+        session.rotate_choices();
+        TEST_ASSERT(set_was(session, second, 1), "which the rotation does reach");
+        TEST_SUCCESS;
+    }
+
+    /// A choice the drawing side could not measure - its text is missing from
+    /// the string table - is passed as zero and belongs to no set at all.
+    TEST_IMPL(test_dialogue_leaves_out_a_choice_that_could_not_be_measured)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        u16 heights[] = { 10, 0, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 100, 2, 10);
+
+        u8 const expected[] = { 0, 2 };
+        TEST_ASSERT(set_was(session, expected, 2), "the unmeasurable choice is not drawn");
+        TEST_ASSERT(!session.has_more(),
+            "and does not make a page that otherwise fits rotate");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_rotating_a_page_that_fits_does_nothing)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[2];
+        a_page_of_choices(pages, choices, 2);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 2), 100, 2, 10);
+        session.rotate_choices();
+
+        u8 const expected[] = { 0, 1 };
+        TEST_ASSERT(set_was(session, expected, 2), "the set is the one it always was");
+        TEST_SUCCESS;
+    }
+
+    /// Fitting the same page again - a redraw after a rotation - must not send
+    /// the player back to the first set.
+    TEST_IMPL(test_dialogue_fitting_again_keeps_the_set_the_player_is_on)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+        session.rotate_choices();
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+
+        u8 const second[] = { 1 };
+        TEST_ASSERT(set_was(session, second, 1), "the set is still the rotated one");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_arriving_at_a_page_starts_on_its_first_set)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[2];
+        data::choice choices[3];
+        a_page_of_choices(pages, choices, 3);
+        pages[0].next_page_id = 1;
+        pages[1].next_page_id = 0;
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+        session.rotate_choices();
+
+        session.advance();
+        session.advance();
+        TEST_ASSERT(session.current_page_index() == 0, "the conversation is back on the page");
+
+        u8 const everything[] = { 0, 1, 2 };
+        TEST_ASSERT(set_was(session, everything, 3),
+            "which offers the whole list again until it is fitted");
+
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+        u8 const first[] = { 0 };
+        TEST_ASSERT(set_was(session, first, 1), "and fits from the first set, not where it left");
+        TEST_SUCCESS;
+    }
+
+    /// The set says which of the page's choices it draws, so the reply the
+    /// player picked in a rotated set is the one that gets taken.
+    TEST_IMPL(test_dialogue_a_rotated_set_names_the_choices_it_draws)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 3),
+            a_page(11, data::NO_ID),
+            a_page(12, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 0), a_choice(21, 2), a_choice(22, 0) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3, choices, 3);
+        session.begin(0);
+
+        u16 heights[] = { 10, 10, 10 };
+        session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
+        session.rotate_choices();
+
+        session.take_choice(session.shown_slot(0));
+
+        TEST_ASSERT(session.current_page_index() == 2,
+            "the choice taken is the one the rotated set drew");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(dialogue_session)
         TEST(test_dialogue_starts_ended)
         TEST(test_dialogue_opens_on_its_first_page)
@@ -1238,6 +1586,20 @@ namespace NEONengine
         TEST(test_dialogue_that_has_ended_offers_no_choices)
         TEST(test_dialogue_choice_range_past_the_choices_is_truncated)
         TEST(test_dialogue_choice_availability_conditions_combine)
+
+        TEST(test_dialogue_shows_every_choice_until_they_are_fitted)
+        TEST(test_dialogue_choices_that_all_fit_offer_no_more)
+        TEST(test_dialogue_shown_slot_past_the_set_names_nothing)
+        TEST(test_dialogue_one_choice_too_many_starts_a_rotation)
+        TEST(test_dialogue_rotating_shows_the_next_set_then_wraps)
+        TEST(test_dialogue_more_than_nine_choices_rotate)
+        TEST(test_dialogue_fits_a_multi_line_choice_at_its_true_height)
+        TEST(test_dialogue_shows_one_choice_even_with_no_room_for_it)
+        TEST(test_dialogue_leaves_out_a_choice_that_could_not_be_measured)
+        TEST(test_dialogue_rotating_a_page_that_fits_does_nothing)
+        TEST(test_dialogue_fitting_again_keeps_the_set_the_player_is_on)
+        TEST(test_dialogue_arriving_at_a_page_starts_on_its_first_set)
+        TEST(test_dialogue_a_rotated_set_names_the_choices_it_draws)
     TEST_SUITE_END
 }  // namespace NEONengine
 

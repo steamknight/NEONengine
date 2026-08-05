@@ -89,6 +89,15 @@ namespace NEONengine
         static constexpr u32 LANGUAGE_NAME_ID = 0;
 
         /**
+         * @brief The id holding the dialogue's "More..." choice.
+         *
+         * Reserved by the editor immediately after the language name, so the
+         * engine can put the choice that rotates to the next choice set on
+         * screen in the player's language without carrying any text of its own.
+         */
+        static constexpr u32 MORE_CHOICES_ID = 1;
+
+        /**
          * @brief Longest language name @ref peek_language_name will report.
          */
         static constexpr u32 MAX_LANGUAGE_NAME = 32;
@@ -138,6 +147,13 @@ namespace NEONengine
          * @see LANGUAGE_NAME_ID
          */
         bstr_view const language_name() const { return get_string(LANGUAGE_NAME_ID); }
+
+        /**
+         * @brief The "More..." choice, written in this table's language.
+         *
+         * @see MORE_CHOICES_ID
+         */
+        bstr_view const more_choices() const { return get_string(MORE_CHOICES_ID); }
 
         /**
          * @brief Load @p lang from "data/lang/<code>.noir".

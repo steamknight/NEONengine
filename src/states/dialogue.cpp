@@ -76,7 +76,8 @@ namespace NEONengine
             ace::text_bitmap_ptr number{ nullptr };  ///< "1.", "2.", and so on.
             ace::text_bitmap_ptr text{ nullptr };    ///< What the reply says.
 
-            /// Which of the session's available choices this is.
+            /// Which of the session's available choices this is, or NO_SLOT for
+            /// the "More..." that rotates to the next set.
             u8 session_slot;
 
             u16 x;       ///< Left edge of the number, in scene space.
@@ -85,6 +86,12 @@ namespace NEONengine
             u16 width;
             u16 height;
         };
+
+        /// The "More..." row rotates rather than leading anywhere of its own.
+        constexpr u8 MORE_SLOT = dialogue_session::NO_SLOT;
+
+        static_assert(DIALOGUE_MAX_CHOICES_SHOWN == dialogue_session::MAX_CHOICES_SHOWN,
+            "the numbering the box draws and the cap the session fits to are the same limit");
 
         drawn_choice s_choices[DIALOGUE_MAX_CHOICES_SHOWN];
 
@@ -242,93 +249,154 @@ namespace NEONengine
         }
 
         /**
-         * @brief Renders the replies the page offers and measures what they need.
+         * @brief The column every reply's text starts at, in frame space.
          *
-         * Nothing is put on screen yet: the frame has to be sized around them
-         * first, which is why this widens @p contentWidth when a reply is wider
-         * than the page text.
-         *
-         * A reply the string table has nothing for is dropped and the rest
-         * renumber, so every number the player can see belongs to a reply that
-         * is actually there.
-         *
-         * @return The height the replies add under the page text, zero for a
-         *         page that offers none - which is the page that advances on a
-         *         click instead.
+         * The widest number the page could put up decides it, so a number
+         * narrower than that still leaves the text beside it aligned - and a
+         * reply that wraps hangs under its own text rather than its number.
+         * Measured over every number the page could reach rather than the ones
+         * the current set happens to draw, so rotating between sets of
+         * different lengths does not shift the text sideways.
          */
-        u16 build_choices(text_renderer* renderer, u16 allowance, u16& contentWidth)
+        u16 choice_column(text_renderer* renderer, u16 allowance)
         {
-            forget_choices();
+            u8 numbered = s_session.choice_count();
+            if (numbered > DIALOGUE_MAX_CHOICES_SHOWN) numbered = DIALOGUE_MAX_CHOICES_SHOWN;
 
-            u8 count = s_session.choice_count();
-            if (count == 0) return 0;
-
-            if (count > DIALOGUE_MAX_CHOICES_SHOWN)
-            {
-                // The numbering runs 1 to 9, and this ticket's pages fit on one
-                // screen; the rest wait for the choice sets that rotate.
-                NE_LOG("page %hu offers %hhu replies; showing the first %hhu",
-                    s_session.current_page_index(),
-                    count,
-                    DIALOGUE_MAX_CHOICES_SHOWN);
-                count = DIALOGUE_MAX_CHOICES_SHOWN;
-            }
-
-            // Every reply's text starts at the same column, so a number narrower
-            // than the widest still leaves the text beside it aligned - and a
-            // reply that wraps hangs under its own text rather than its number.
             u16 numberWidth = 0;
-            for (u8 slot = 0; slot < count; ++slot)
+            for (u8 slot = 0; slot < numbered; ++slot)
             {
-                char label[3]  = { to<char>('1' + slot), '.', '\0' };
-                auto measuring = renderer->create_text(label, allowance, text_justify::LEFT);
-                if (measuring && measuring->uwActualWidth > numberWidth)
-                {
-                    numberWidth = measuring->uwActualWidth;
-                }
+                char label[3]      = { to<char>('1' + slot), '.', '\0' };
+                u16 const measured = renderer->measure_text(label, allowance).width;
+                if (measured > numberWidth) numberWidth = measured;
             }
 
-            u16 const column
-                = to<u16>(DIALOGUE_CHOICE_INDENT + numberWidth + DIALOGUE_CHOICE_NUMBER_GAP);
-            if (column >= allowance)
-            {
-                NE_LOG("no room beside the reply numbers; showing none");
-                return 0;
-            }
+            return to<u16>(DIALOGUE_CHOICE_INDENT + numberWidth + DIALOGUE_CHOICE_NUMBER_GAP);
+        }
 
-            u16 const choiceAllowance = to<u16>(allowance - column);
-            u16 widest                = 0;
-            u16 height                = 0;
+        /** @brief What "More..." says, in the player's language. */
+        bstr_view more_text()
+        {
+            return g_pEngine->strings().more_choices();
+        }
+
+        /**
+         * @brief Measures every reply the page offers, without drawing any.
+         *
+         * What the session fits its choice sets against. A reply the string
+         * table has nothing for measures zero, which is how the session is told
+         * to leave it out of every set: the numbers the player sees then run 1,
+         * 2, 3 with no gaps and no dead slots.
+         *
+         * @param heights Room for one height per available reply.
+         * @return What the tallest reply the page could show takes, which is
+         *         what it keeps back for the floor under its text. The tallest
+         *         rather than the one that happens to come first, so that
+         *         whichever reply a set opens with has room for it; and the
+         *         page's rather than the current set's, so that rotating
+         *         between sets does not move the text above them.
+         */
+        u16 measure_choices(text_renderer* renderer, u16 choiceAllowance, u16* heights)
+        {
+            u8 const count = s_session.choice_count();
+            u16 tallest    = 0;
 
             for (u8 slot = 0; slot < count; ++slot)
             {
                 auto string
                     = g_pEngine->strings().get_string(s_session.choice_at(slot)->text_string_id);
-                if (string.is_empty())
+
+                heights[slot] = string.is_empty()
+                    ? u16(0)
+                    : renderer->measure_text(string, choiceAllowance).height;
+
+                if (heights[slot] == 0)
                 {
                     NE_LOG("reply %hu has no text to show", s_session.choice_index(slot));
                     continue;
                 }
 
+                if (heights[slot] > tallest) tallest = heights[slot];
+            }
+
+            return tallest;
+        }
+
+        /** @brief Adds @p text as the next reply on screen, numbered where it lands. */
+        void push_choice(text_renderer* renderer,
+            u8 session_slot,
+            ace::text_bitmap_ptr&& text,
+            u16 column,
+            u16 allowance,
+            u16& widest,
+            u16& height)
+        {
+            auto& drawn        = s_choices[s_choice_count];
+            drawn.session_slot = session_slot;
+            drawn.height       = text->uwActualHeight;
+            drawn.text_x       = column;  // Made absolute once the frame is placed.
+            if (text->uwActualWidth > widest) widest = text->uwActualWidth;
+
+            // Numbered by where it is drawn, not by where the session holds it,
+            // so every number the player can see belongs to a row that is there.
+            char label[3] = { to<char>('1' + s_choice_count), '.', '\0' };
+            drawn.number  = renderer->create_text(label, allowance, text_justify::LEFT);
+            drawn.text    = mtl::move(text);
+
+            if (s_choice_count) height = to<u16>(height + DIALOGUE_CHOICE_SPACING);
+            height = to<u16>(height + drawn.height);
+            ++s_choice_count;
+        }
+
+        /**
+         * @brief Renders the set of replies the session settled on.
+         *
+         * Nothing is put on screen yet: the frame has to be sized around them
+         * first, which is why this widens @p contentWidth when a reply is wider
+         * than the page text. The last slot goes to "More..." when the replies
+         * do not all fit at once, and picking it shows the next set.
+         *
+         * @return The height the replies add under the page text, zero for a
+         *         page that shows none - which is the page that advances on a
+         *         click instead.
+         */
+        u16 build_choices(
+            text_renderer* renderer, u16 column, u16 allowance, u16 choiceAllowance,
+            u16& contentWidth)
+        {
+            forget_choices();
+
+            u16 widest = 0;
+            u16 height = 0;
+
+            u8 const shown = s_session.shown_count();
+            for (u8 index = 0; index < shown; ++index)
+            {
+                u8 const slot = s_session.shown_slot(index);
+                auto string
+                    = g_pEngine->strings().get_string(s_session.choice_at(slot)->text_string_id);
+
                 auto text = renderer->create_text(string, choiceAllowance, text_justify::LEFT);
                 if (!text) continue;
 
-                auto& drawn        = s_choices[s_choice_count];
-                drawn.session_slot = slot;
-                drawn.height       = text->uwActualHeight;
-                drawn.text_x       = column;  // Made absolute once the frame is placed.
-                if (text->uwActualWidth > widest) widest = text->uwActualWidth;
+                push_choice(
+                    renderer, slot, mtl::move(text), column, allowance, widest, height);
+            }
 
-                // Numbered by where it is drawn, not by where the session holds
-                // it: a reply dropped for having no text takes its number with
-                // it, so what the player sees runs 1, 2, 3 with no gaps.
-                char label[3] = { to<char>('1' + s_choice_count), '.', '\0' };
-                drawn.number  = renderer->create_text(label, allowance, text_justify::LEFT);
-                drawn.text    = mtl::move(text);
+            if (s_session.has_more())
+            {
+                auto text = renderer->create_text(more_text(), choiceAllowance,
+                    text_justify::LEFT);
 
-                if (s_choice_count) height = to<u16>(height + DIALOGUE_CHOICE_SPACING);
-                height = to<u16>(height + drawn.height);
-                ++s_choice_count;
+                // Without it the sets after the first are out of reach, so this
+                // is worth saying even though the string is the editor's to
+                // provide and is always there in a sound pak.
+                if (!text) { NE_LOG("no \"More...\" to show; the rest of the replies are lost"); }
+                else
+                {
+                    push_choice(
+                        renderer, MORE_SLOT, mtl::move(text), column, allowance, widest, height);
+                }
             }
 
             if (s_choice_count == 0) return 0;
@@ -409,9 +477,70 @@ namespace NEONengine
             u16 const headingHeight
                 = heading ? to<u16>(heading->uwActualHeight + MESSAGE_CAPTION_GAP) : u16(0);
 
+            // The frame is pinned under the top margin and may not pass the
+            // bottom one, so this is everything it can ever hold: the heading,
+            // the page text, and the replies under them.
+            u16 const contentSpace = to<u16>(
+                SCREEN_HEIGHT - s_frameY - DIALOGUE_MARGIN - MESSAGE_MARGIN * 2);
+            u16 const textSpace
+                = contentSpace > headingHeight ? to<u16>(contentSpace - headingHeight) : u16(0);
+
+            u16 const column          = choice_column(renderer, allowance);
+            u16 const choiceAllowance = column < allowance ? to<u16>(allowance - column) : u16(0);
+
+            if (s_session.choice_count() && !choiceAllowance)
+            {
+                NE_LOG("no room beside the reply numbers; showing none");
+            }
+
+            u16 heights[dialogue_session::MAX_CHOICES]{};
+            u16 const tallestChoice
+                = choiceAllowance ? measure_choices(renderer, choiceAllowance, heights) : u16(0);
+            u16 const moreHeight
+                = tallestChoice ? renderer->measure_text(more_text(), choiceAllowance).height
+                                : u16(0);
+
+            // Room for one reply and a "More..." kept back before the text is
+            // placed. Without it a page whose text took everything would offer
+            // nothing to pick and fall straight through to its next page,
+            // making unreadable text look exactly like a page the author gave
+            // nothing to pick. Sized to the tallest reply the page has, so
+            // whichever one a set opens with fits under the text and the frame
+            // never grows past the bottom margin.
+            u16 const floorHeight = tallestChoice
+                ? to<u16>(DIALOGUE_CHOICE_GAP + tallestChoice + DIALOGUE_CHOICE_SPACING
+                    + moreHeight)
+                : u16(0);
+            u16 const textRoom
+                = textSpace > floorHeight ? to<u16>(textSpace - floorHeight) : u16(0);
+
+            if (text->uwActualHeight > textRoom)
+            {
+                NE_LOG("page %hu is taller than the box may be; its text is clipped to %hu",
+                    s_session.current_page_index(),
+                    textRoom);
+
+                // The bitmap is drawn to the height it declares, so shortening
+                // that is the clip.
+                text->uwActualHeight = textRoom;
+            }
+
+            u16 choiceSpace = textSpace > text->uwActualHeight
+                ? to<u16>(textSpace - text->uwActualHeight)
+                : u16(0);
+            choiceSpace = choiceSpace > DIALOGUE_CHOICE_GAP
+                ? to<u16>(choiceSpace - DIALOGUE_CHOICE_GAP)
+                : u16(0);
+
+            s_session.fit_choices(mtl::span<u16>(heights, s_session.choice_count()),
+                choiceSpace,
+                DIALOGUE_CHOICE_SPACING,
+                moreHeight);
+
             // Before the frame is sized: the replies live inside it, so what
             // they need is part of what it has to hold.
-            u16 const choicesHeight = build_choices(renderer, allowance, contentWidth);
+            u16 const choicesHeight
+                = build_choices(renderer, column, allowance, choiceAllowance, contentWidth);
 
             s_frameWidth = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
             s_frameHeight = to<u16>(
@@ -466,12 +595,17 @@ namespace NEONengine
                     FONT_COOKIE);
             }
 
-            screenTextCopy(g_mainScreen,
-                text.get(),
-                contentX,
-                to<u16>(contentY + headingHeight),
-                DIALOGUE_TEXT_COLOR,
-                FONT_COOKIE);
+            // Clipped to nothing when the replies took everything: the blitter
+            // is asked for a rectangle, and one with no rows in it is not one.
+            if (text->uwActualHeight)
+            {
+                screenTextCopy(g_mainScreen,
+                    text.get(),
+                    contentX,
+                    to<u16>(contentY + headingHeight),
+                    DIALOGUE_TEXT_COLOR,
+                    FONT_COOKIE);
+            }
 
             // Under the page text, indented and numbered from 1. The rectangles
             // are settled here rather than while measuring, because where the
@@ -523,10 +657,34 @@ namespace NEONengine
             }
         }
 
+        /**
+         * @brief Puts the set of replies the page now stands on up.
+         *
+         * What "More..." does. The page has not changed, so its portrait stays
+         * where it is; the frame is sized to what it holds and every set is a
+         * different height, so its rectangle is painted back and drawn again.
+         */
+        void show_current_set()
+        {
+            forget_choices();
+            erase_frame();
+
+            if (!draw_current_page(false)) statePop(g_gameStateManager);
+        }
+
         /** @brief Takes the reply drawn in @p slot and shows where it leads. */
         void take_choice(u8 slot)
         {
-            s_session.take_choice(s_choices[slot].session_slot);
+            u8 const session_slot = s_choices[slot].session_slot;
+
+            if (session_slot == MORE_SLOT)
+            {
+                s_session.rotate_choices();
+                show_current_set();
+                return;
+            }
+
+            s_session.take_choice(session_slot);
             show_current_page();
         }
     }  // namespace
