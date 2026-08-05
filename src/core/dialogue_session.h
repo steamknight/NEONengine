@@ -102,14 +102,17 @@ namespace NEONengine
          */
         u8 choice_count() const noexcept { return _choice_count; }
 
-        /** @brief The global CHOC index in @p slot, or NO_ID past the end. */
-        u16 choice_index(u8 slot) const noexcept;
+        /**
+         * @brief The global CHOC index at @p available_index, or NO_ID past the
+         *        last available choice.
+         */
+        u16 choice_index(u8 available_index) const noexcept;
 
-        /** @brief The choice in @p slot, or null past the end. */
-        data::choice const* choice_at(u8 slot) const noexcept;
+        /** @brief The choice at @p available_index, or null past the end. */
+        data::choice const* choice_at(u8 available_index) const noexcept;
 
         /**
-         * @brief Takes the choice in @p slot and follows where it leads.
+         * @brief Takes the choice at @p available_index and follows where it leads.
          *
          * The choice is marked taken first, so a one-time choice pointing back
          * at its own page is gone by the time that page is laid out again -
@@ -120,16 +123,16 @@ namespace NEONengine
          * dialogue's page range; an unavailable destination is replaced by the
          * next available page by index, exactly as advance() does. A script
          * that changed scene ends the conversation there and then, abandoning
-         * the destination entirely. A slot past the last available choice does
-         * nothing.
+         * the destination entirely. An @p available_index past the last
+         * available choice does nothing.
          */
-        void take_choice(u8 slot) noexcept;
+        void take_choice(u8 available_index) noexcept;
 
         /**
-         * @brief The most choices one set may show, which is what the numbering
-         *        allows.
+         * @brief The most slots one choice set may fill, which is what the
+         *        numbering allows.
          *
-         * A set that rotates gives its last slot to "More...", so it shows one
+         * A set that rotates gives its last slot to "More...", so it holds one
          * choice fewer than a page whose choices all fit.
          */
         static constexpr u8 MAX_CHOICES_SHOWN = 9;
@@ -138,11 +141,11 @@ namespace NEONengine
          * @brief Divides the available choices into the sets the player sees.
          *
          * Measurement is the caller's: @p heights holds what each available
-         * choice would take on screen, one entry per slot in authored order,
-         * and @p space is what is left under the page text. A choice the caller
-         * could not measure - one whose text is missing - is passed as zero and
-         * is left out of every set, so the numbering the player reads has no
-         * gaps in it.
+         * choice would take on screen, one entry per available choice in
+         * authored order, and @p space is what is left under the page text. A
+         * choice the caller could not measure - one whose text is missing - is
+         * passed as zero and is left out of every set, so the numbering the
+         * player reads has no gaps in it.
          *
          * Fitting is two passes. Everything is tried first against the whole of
          * @p space, capped at MAX_CHOICES_SHOWN; when it all fits there is no
@@ -168,15 +171,20 @@ namespace NEONengine
             u16 more_height) noexcept;
 
         /**
-         * @brief How many choices the current set shows, "More..." aside.
+         * @brief How many slots the current set fills, "More..." aside.
          *
          * The whole of what is available until fit_choices() is called, so a
          * caller that never fits anything sees every choice the page offers.
          */
-        u8 shown_count() const noexcept { return _shown_count; }
+        u8 slot_count() const noexcept { return _slot_count; }
 
-        /** @brief Which available choice the set draws at @p index, or NO_SLOT. */
-        u8 shown_slot(u8 index) const noexcept;
+        /**
+         * @brief Which available choice the set draws in @p slot.
+         *
+         * @return The available-choice index the slot holds, or NO_CHOICE for a
+         *         slot past the end of the set.
+         */
+        u8 slot_choice(u8 slot) const noexcept;
 
         /** @brief Whether the current set ends with "More...". */
         bool has_more() const noexcept { return _has_more; }
@@ -189,8 +197,8 @@ namespace NEONengine
          */
         void rotate_choices() noexcept;
 
-        /** @brief What shown_slot() answers for an index past the set. */
-        static constexpr u8 NO_SLOT = 0xFF;
+        /** @brief What slot_choice() answers for a slot past the set. */
+        static constexpr u8 NO_CHOICE = 0xFF;
 
         /**
          * @brief The most choices one page may offer the player.
@@ -278,13 +286,16 @@ namespace NEONengine
          * @brief Fills the current set from @p start, and says where it ends.
          *
          * Walks the available choices from @p start, taking each that still
-         * fits in @p budget until @p cap of them are taken, and passing over
-         * the ones the caller could not measure. At least one measurable choice
-         * is always taken, however little room there is, so a page can never
+         * fits in @p budget until @p cap slots are filled, and passing over the
+         * ones the caller could not measure. At least one measurable choice is
+         * always taken, however little room there is, so a page can never
          * rotate through sets that show the player nothing.
          *
-         * @return The slot the next set starts at, past any choice that could
-         *         not be measured.
+         * @param start  The available-choice index the set begins at.
+         * @param budget What the set may take, in pixels.
+         * @param cap    The most slots the set may fill.
+         * @return The available-choice index the next set starts at, past any
+         *         choice that could not be measured.
          */
         u8 build_set(u8 start, u16 budget, u8 cap) noexcept;
 
@@ -308,7 +319,7 @@ namespace NEONengine
          * The page that is shown is marked read, has its authored set and clear
          * flags applied, and runs its display script - in that order, and all
          * of it before its choices are worked out, so a script that unlocks one
-         * of this page's own replies unlocks it on this visit rather than on
+         * of this page's own choices unlocks it on this visit rather than on
          * some later one, and has the last word over the flags the author set.
          */
         void go_to(u16 page_id) noexcept;
@@ -333,11 +344,11 @@ namespace NEONengine
         u16 _more_height{ 0 };  ///< What "More..." takes, in pixels.
 
         /// Slots into @ref _available the current set draws, in the order drawn.
-        u8 _shown[MAX_CHOICES]{};
-        u8 _shown_count{ 0 };
+        u8 _slots[MAX_CHOICES]{};
+        u8 _slot_count{ 0 };
 
-        u8 _set_start{ 0 };  ///< The slot the current set begins at.
-        u8 _set_end{ 0 };    ///< The slot the next set begins at.
+        u8 _set_start{ 0 };  ///< The available-choice index the set begins at.
+        u8 _set_end{ 0 };    ///< The available-choice index the next set begins at.
 
         /// Whether the sets rotate, and so whether each ends with "More...".
         bool _has_more{ false };

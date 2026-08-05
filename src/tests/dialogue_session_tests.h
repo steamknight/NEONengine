@@ -1303,10 +1303,10 @@ namespace NEONengine
         /// True when the current set draws exactly @p expected, in that order.
         bool set_was(dialogue_session const& session, u8 const* expected, u8 expected_count)
         {
-            if (session.shown_count() != expected_count) return false;
-            for (u8 index = 0; index < expected_count; ++index)
+            if (session.slot_count() != expected_count) return false;
+            for (u8 slot = 0; slot < expected_count; ++slot)
             {
-                if (session.shown_slot(index) != expected[index]) return false;
+                if (session.slot_choice(slot) != expected[slot]) return false;
             }
             return true;
         }
@@ -1351,7 +1351,7 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_dialogue_shown_slot_past_the_set_names_nothing)
+    TEST_IMPL(test_dialogue_slot_past_the_set_names_nothing)
     {
         data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
         data::page pages[2];
@@ -1365,8 +1365,8 @@ namespace NEONengine
         u16 heights[] = { 10, 10 };
         session.fit_choices(mtl::span<u16>(heights, 2), 100, 2, 10);
 
-        TEST_ASSERT(session.shown_slot(2) == dialogue_session::NO_SLOT,
-            "an index past the set names no choice");
+        TEST_ASSERT(session.slot_choice(2) == dialogue_session::NO_CHOICE,
+            "a slot past the set names no choice");
         TEST_SUCCESS;
     }
 
@@ -1607,7 +1607,7 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    /// The set says which of the page's choices it draws, so the reply the
+    /// The set says which of the page's choices it draws, so the choice the
     /// player picked in a rotated set is the one that gets taken.
     TEST_IMPL(test_dialogue_a_rotated_set_names_the_choices_it_draws)
     {
@@ -1625,7 +1625,7 @@ namespace NEONengine
         session.fit_choices(mtl::span<u16>(heights, 3), 22, 2, 10);
         session.rotate_choices();
 
-        session.take_choice(session.shown_slot(0));
+        session.take_choice(session.slot_choice(0));
 
         TEST_ASSERT(session.current_page_index() == 2,
             "the choice taken is the one the rotated set drew");
@@ -1713,9 +1713,9 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    /// The whole reason the script runs before the page is laid out: a reply the
+    /// The whole reason the script runs before the page is laid out: a choice the
     /// script unlocks is there on this visit, not on some later one.
-    TEST_IMPL(test_dialogue_page_script_unlocks_one_of_its_own_replies)
+    TEST_IMPL(test_dialogue_page_script_unlocks_one_of_its_own_choices)
     {
         data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
         data::page pages[] = { with_choices(running(a_page(10, data::NO_ID), 7), 0, 1),
@@ -1729,7 +1729,7 @@ namespace NEONengine
         session.begin(0);
 
         TEST_ASSERT(session.choice_count() == 1,
-            "the reply the display script unlocked is offered on this visit");
+            "the choice the display script unlocked is offered on this visit");
         TEST_SUCCESS;
     }
 
@@ -1745,11 +1745,11 @@ namespace NEONengine
         g_dlg_log.flags[4] = true;
         session.begin(0);
 
-        TEST_ASSERT(!g_dlg_log.flags[3], "showing a reply applies nothing");
+        TEST_ASSERT(!g_dlg_log.flags[3], "showing a choice applies nothing");
 
         session.take_choice(0);
 
-        TEST_ASSERT(g_dlg_log.flags[3], "the reply's set flag is set once it is taken");
+        TEST_ASSERT(g_dlg_log.flags[3], "the choice's set flag is set once it is taken");
         TEST_ASSERT(!g_dlg_log.flags[4], "and its clear flag is cleared");
         TEST_SUCCESS;
     }
@@ -1766,12 +1766,12 @@ namespace NEONengine
         session.begin(0);
 
         TEST_ASSERT(times_called(dlg_call_kind::run_script) == 0,
-            "showing a reply runs nothing");
+            "showing a choice runs nothing");
 
         session.take_choice(0);
 
         TEST_ASSERT(index_of(dlg_call_kind::run_script, 9) < dlg_mock_log::MAX_CALLS,
-            "the reply's click script runs when it is taken");
+            "the choice's click script runs when it is taken");
         TEST_SUCCESS;
     }
 
@@ -1801,7 +1801,7 @@ namespace NEONengine
     }
 
     /// A script that changed scene has left the scene the conversation was read
-    /// in, so the page the reply named belongs somewhere the player no longer is.
+    /// in, so the page the choice named belongs somewhere the player no longer is.
     TEST_IMPL(test_dialogue_choice_script_that_changes_scene_abandons_its_destination)
     {
         data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
@@ -1816,7 +1816,7 @@ namespace NEONengine
         session.take_choice(0);
 
         TEST_ASSERT(session.has_ended(), "the conversation is over at once");
-        TEST_ASSERT(!g_dlg_log.page_read[1], "the destination the reply named is abandoned");
+        TEST_ASSERT(!g_dlg_log.page_read[1], "the destination the choice named is abandoned");
         TEST_ASSERT(session.choice_count() == 0, "and nothing is left to pick");
         TEST_SUCCESS;
     }
@@ -1835,7 +1835,7 @@ namespace NEONengine
         TEST_ASSERT(!session.begin(0),
             "a conversation whose opening page leaves the scene never opens");
         TEST_ASSERT(session.has_ended(), "and has ended");
-        TEST_ASSERT(session.choice_count() == 0, "with no replies worked out for it");
+        TEST_ASSERT(session.choice_count() == 0, "with no choices worked out for it");
         TEST_SUCCESS;
     }
 
@@ -1873,7 +1873,7 @@ namespace NEONengine
         session.take_choice(0);
 
         TEST_ASSERT(!session.has_ended(), "the conversation carries on");
-        TEST_ASSERT(session.current_page_index() == 1, "at the page the reply named");
+        TEST_ASSERT(session.current_page_index() == 1, "at the page the choice named");
         TEST_SUCCESS;
     }
 
@@ -1908,11 +1908,11 @@ namespace NEONengine
         g_dlg_log.flags[4] = true;
         session.begin(0);
 
-        TEST_ASSERT(session.choice_count() == 1, "only the enabled reply is offered");
+        TEST_ASSERT(session.choice_count() == 1, "only the enabled choice is offered");
 
         session.take_choice(0);
 
-        TEST_ASSERT(!g_dlg_log.flags[3], "the reply that was never offered sets nothing");
+        TEST_ASSERT(!g_dlg_log.flags[3], "the choice that was never offered sets nothing");
         TEST_ASSERT(g_dlg_log.flags[4], "clears nothing");
         TEST_ASSERT(times_called(dlg_call_kind::run_script) == 0, "and runs no script");
         TEST_SUCCESS;
@@ -1977,7 +1977,7 @@ namespace NEONengine
 
         TEST(test_dialogue_shows_every_choice_until_they_are_fitted)
         TEST(test_dialogue_choices_that_all_fit_offer_no_more)
-        TEST(test_dialogue_shown_slot_past_the_set_names_nothing)
+        TEST(test_dialogue_slot_past_the_set_names_nothing)
         TEST(test_dialogue_one_choice_too_many_starts_a_rotation)
         TEST(test_dialogue_rotating_shows_the_next_set_then_wraps)
         TEST(test_dialogue_more_than_nine_choices_rotate)
@@ -1994,7 +1994,7 @@ namespace NEONengine
         TEST(test_dialogue_page_runs_its_display_script)
         TEST(test_dialogue_page_with_no_script_runs_none)
         TEST(test_dialogue_page_runs_its_script_after_its_flags)
-        TEST(test_dialogue_page_script_unlocks_one_of_its_own_replies)
+        TEST(test_dialogue_page_script_unlocks_one_of_its_own_choices)
         TEST(test_dialogue_choice_applies_its_flags_when_it_is_taken)
         TEST(test_dialogue_choice_runs_its_click_script)
         TEST(test_dialogue_choice_runs_its_script_after_its_flags)

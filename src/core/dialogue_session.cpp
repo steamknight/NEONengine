@@ -69,16 +69,16 @@ namespace NEONengine
         go_to(page->next_page_id);
     }
 
-    u16 dialogue_session::choice_index(u8 slot) const noexcept
+    u16 dialogue_session::choice_index(u8 available_index) const noexcept
     {
-        if (slot >= _choice_count) return data::NO_ID;
-        return _available[slot];
+        if (available_index >= _choice_count) return data::NO_ID;
+        return _available[available_index];
     }
 
-    u8 dialogue_session::shown_slot(u8 index) const noexcept
+    u8 dialogue_session::slot_choice(u8 slot) const noexcept
     {
-        if (index >= _shown_count) return NO_SLOT;
-        return _shown[index];
+        if (slot >= _slot_count) return NO_CHOICE;
+        return _slots[slot];
     }
 
     void dialogue_session::fit_choices(mtl::span<u16> heights,
@@ -90,9 +90,9 @@ namespace NEONengine
         _spacing     = spacing;
         _more_height = more_height;
 
-        for (u8 slot = 0; slot < _choice_count; ++slot)
+        for (u8 choice = 0; choice < _choice_count; ++choice)
         {
-            _heights[slot] = slot < heights.size() ? heights[slot] : u16(0);
+            _heights[choice] = choice < heights.size() ? heights[choice] : u16(0);
         }
 
         // The first pass, and the only one a page that fits ever needs: when
@@ -132,7 +132,7 @@ namespace NEONengine
         // The page keeps room for one choice and a "More..." back before its
         // text is placed, so a set that had to be forced on screen means that
         // reservation was not honoured.
-        if (_shown_count == 1 && _heights[_shown[0]] > budget)
+        if (_slot_count == 1 && _heights[_slots[0]] > budget)
         {
             NE_LOG("page %hu has no room for even one choice; showing it anyway", _current);
         }
@@ -140,41 +140,41 @@ namespace NEONengine
 
     u8 dialogue_session::build_set(u8 start, u16 budget, u8 cap) noexcept
     {
-        _shown_count = 0;
+        _slot_count = 0;
 
-        u16 used = 0;
-        u8 slot  = start;
-        for (; slot < _choice_count; ++slot)
+        u16 used   = 0;
+        u8 choice  = start;
+        for (; choice < _choice_count; ++choice)
         {
             // A choice the caller could not measure is not drawn, and so is
             // never the reason a set ends: it belongs to whichever set it falls
             // in and shows nothing there.
-            if (_heights[slot] == 0) continue;
+            if (_heights[choice] == 0) continue;
 
-            if (_shown_count >= cap) break;
+            if (_slot_count >= cap) break;
 
-            u16 const needed = to<u16>(_shown_count ? _spacing + _heights[slot] : _heights[slot]);
-            if (used + needed > budget && _shown_count > 0) break;
+            u16 const needed = to<u16>(_slot_count ? _spacing + _heights[choice] : _heights[choice]);
+            if (used + needed > budget && _slot_count > 0) break;
 
             // A set showing nothing at all would leave the player rotating
             // through it forever, so the first measurable choice goes in
             // however little room there is.
-            used                   = to<u16>(used + needed);
-            _shown[_shown_count++] = slot;
+            used                 = to<u16>(used + needed);
+            _slots[_slot_count++] = choice;
         }
 
         // Past the unmeasurable choices trailing the set, so the next set never
         // opens on a run of choices that draw nothing.
-        while (slot < _choice_count && _heights[slot] == 0) ++slot;
+        while (choice < _choice_count && _heights[choice] == 0) ++choice;
 
-        return slot;
+        return choice;
     }
 
     void dialogue_session::show_every_choice() noexcept
     {
-        for (u8 slot = 0; slot < _choice_count; ++slot) _shown[slot] = slot;
+        for (u8 choice = 0; choice < _choice_count; ++choice) _slots[choice] = choice;
 
-        _shown_count = _choice_count;
+        _slot_count  = _choice_count;
         _set_start   = 0;
         _set_end     = _choice_count;
         _has_more    = false;
@@ -183,18 +183,18 @@ namespace NEONengine
         _more_height = 0;
     }
 
-    data::choice const* dialogue_session::choice_at(u8 slot) const noexcept
+    data::choice const* dialogue_session::choice_at(u8 available_index) const noexcept
     {
-        if (slot >= _choice_count) return nullptr;
-        return &_choices[_available[slot]];
+        if (available_index >= _choice_count) return nullptr;
+        return &_choices[_available[available_index]];
     }
 
-    void dialogue_session::take_choice(u8 slot) noexcept
+    void dialogue_session::take_choice(u8 available_index) noexcept
     {
-        if (slot >= _choice_count) return;
+        if (available_index >= _choice_count) return;
 
-        u16 const choice_id  = _available[slot];
-        auto const& choice   = _choices[choice_id];
+        u16 const choice_id = _available[available_index];
+        auto const& choice  = _choices[choice_id];
 
         // Burnt before the destination is followed, so a choice pointing back at
         // its own page finds itself already gone when that page is laid out
@@ -297,7 +297,7 @@ namespace NEONengine
         auto const* page = current_page();
 
         // A range running past the loaded choices is truncated to what is there,
-        // so a malformed pak costs the player a reply rather than a read off the
+        // so a malformed pak costs the player a choice rather than a read off the
         // end of the chunk.
         u32 const start = page ? page->choice_range.start : 0;
         u32 end         = page ? start + page->choice_range.count : 0;
@@ -355,7 +355,7 @@ namespace NEONengine
             // After the page is on show and its script has run, so what is
             // offered is worked out from every burn and every flag this arrival
             // has just made - a one-time choice taken on the way here is gone by
-            // the time the player sees the page again, and a reply the script
+            // the time the player sees the page again, and a choice the script
             // unlocked is there on this visit rather than the next.
             collect_choices();
             return;
