@@ -207,6 +207,26 @@ namespace NEONengine
             return (_flags[byte] & to<u8>(1 << (flag_id & 7))) != 0;
         }
 
+        /**
+         * @brief Writes game state flag @p flag_id.
+         *
+         * Writes the buffer the VM borrows, so a flag authored data sets is the
+         * same flag a script goes on to read. An id past the end of that buffer
+         * is dropped: the data never declared it, and growing the buffer here
+         * would move the memory the VM holds.
+         */
+        void set_flag(u16 flag_id, bool value) noexcept
+        {
+            u32 const byte = to<u32>(flag_id) >> 3;
+            if (byte >= _flags.size()) return;
+
+            u8 const mask = to<u8>(1 << (flag_id & 7));
+            if (value)
+                _flags[byte] = to<u8>(_flags[byte] | mask);
+            else
+                _flags[byte] = to<u8>(_flags[byte] & ~mask);
+        }
+
         /** @brief The active language's strings. */
         string_table& strings() noexcept { return *_pStrings; }
 

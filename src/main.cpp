@@ -66,13 +66,23 @@ void genericProcess(void)
     // Pushed here rather than by whoever asked for it. A bridge call runs deep
     // inside the running state's own callback, and pushing from there would
     // draw the box and then let the rest of that callback paint over it. 
-    if (g_pEngine->has_pending_message())
+    //
+    // Never over an overlay that is already up, either: the freeze that holds a
+    // buffer back is not nested, so a box closing on top would resume the
+    // display out from under the one beneath and restore its rectangle from a
+    // buffer that never held it. A script that died inside a conversation says
+    // so once the conversation has come down, which is the frame the scene has
+    // the screen back.
+    tState const* const on_top = g_gameStateManager->pCurrent;
+    bool const overlay_up = on_top == &g_stateMessage || on_top == &g_stateDialogue;
+
+    if (!overlay_up && g_pEngine->has_pending_message())
     {
         statePush(g_gameStateManager, &g_stateMessage);
     }
     // Same reason, and never in the same frame as a message: two overlays would
     // freeze the display twice and the second would paint over the first.
-    else if (g_pEngine->has_pending_dialogue())
+    else if (!overlay_up && g_pEngine->has_pending_dialogue())
     {
         statePush(g_gameStateManager, &g_stateDialogue);
     }
@@ -84,6 +94,7 @@ void genericProcess(void)
     // both shorter and safe when something else - a message box - is on top.
     if (keyUse(KEY_F1))
     {
+        // Re-read: stateProcess() above may have pushed or popped since.
         tState const* current = g_gameStateManager->pCurrent;
         if (current == &g_stateScene)
         {

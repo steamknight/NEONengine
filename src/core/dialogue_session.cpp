@@ -204,7 +204,41 @@ namespace NEONengine
         // bit.
         if (_bridge && _bridge->mark_choice_taken) _bridge->mark_choice_taken(choice_id);
 
+        apply_flags(choice.set_flag_id, choice.clear_flag_id);
+
+        // The destination is abandoned rather than followed: the script has left
+        // the scene the conversation was read in, so the page it named belongs
+        // somewhere the player no longer is.
+        if (run_script(choice.click_function_id))
+        {
+            end();
+            return;
+        }
+
         go_to(choice.goto_page_id);
+    }
+
+    void dialogue_session::apply_flags(u16 set_flag_id, u16 clear_flag_id) noexcept
+    {
+        if (!_bridge || !_bridge->set_flag) return;
+
+        if (set_flag_id != data::NO_ID) _bridge->set_flag(set_flag_id, true);
+        if (clear_flag_id != data::NO_ID) _bridge->set_flag(clear_flag_id, false);
+    }
+
+    bool dialogue_session::run_script(u16 function_id) noexcept
+    {
+        if (function_id == data::NO_ID || !_bridge || !_bridge->run_script) return false;
+
+        _bridge->run_script(function_id);
+
+        return _bridge->is_terminated && _bridge->is_terminated();
+    }
+
+    void dialogue_session::end() noexcept
+    {
+        _current = data::NO_ID;
+        collect_choices();
     }
 
     bool dialogue_session::is_own_page(u16 page_id) const noexcept
@@ -293,30 +327,40 @@ namespace NEONengine
     {
         if (!is_own_page(page_id))
         {
-            _current = data::NO_ID;
-            collect_choices();
+            end();
             return;
         }
 
         // Forward by index, never along next_page_id: adjacency is what makes a
         // one-time page fall through to its replacement, and a scan bounded by
         // the page range cannot loop the way a walk through the graph could.
-        u16 const end = to<u16>(_page_range.start + _page_range.count);
-        for (u16 candidate = page_id; candidate < end; ++candidate)
+        u16 const end_index = to<u16>(_page_range.start + _page_range.count);
+        for (u16 candidate = page_id; candidate < end_index; ++candidate)
         {
             if (!is_available(candidate)) continue;
 
             _current = candidate;
             if (_bridge && _bridge->mark_page_read) _bridge->mark_page_read(candidate);
 
-            // After the page is on show, so what is offered is worked out from
-            // the burns this arrival has just made - a one-time choice taken on
-            // the way here is gone by the time the player sees the page again.
+            // The author's flags first, then the script, so the script has the
+            // last word over what the page was written to set.
+            apply_flags(_pages[candidate].set_flag_id, _pages[candidate].clear_flag_id);
+
+            if (run_script(_pages[candidate].display_function_id))
+            {
+                end();
+                return;
+            }
+
+            // After the page is on show and its script has run, so what is
+            // offered is worked out from every burn and every flag this arrival
+            // has just made - a one-time choice taken on the way here is gone by
+            // the time the player sees the page again, and a reply the script
+            // unlocked is there on this visit rather than the next.
             collect_choices();
             return;
         }
 
-        _current = data::NO_ID;
-        collect_choices();
+        end();
     }
 }  // namespace NEONengine

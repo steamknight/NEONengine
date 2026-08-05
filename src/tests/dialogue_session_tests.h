@@ -26,6 +26,9 @@ namespace NEONengine
         {
             mark_page_read,
             mark_choice_taken,
+            set_flag,
+            clear_flag,
+            run_script,
         };
 
         struct dlg_call
@@ -52,10 +55,20 @@ namespace NEONengine
             /// How many times the check flag of a page was asked for.
             u8 flag_reads;
 
+            /// The script whose run latches the VM terminated, as GOTO_SCENE does.
+            u16 terminating_script;
+
+            /// A flag this script sets as it runs, standing in for a script's effects.
+            u16 script_sets_flag;
+            u16 script_that_sets;
+
             void reset()
             {
-                count      = 0;
-                flag_reads = 0;
+                count              = 0;
+                flag_reads         = 0;
+                terminating_script = data::NO_ID;
+                script_sets_flag   = data::NO_ID;
+                script_that_sets   = data::NO_ID;
                 for (u16 i = 0; i < MAX_PAGES; ++i) page_read[i] = false;
                 for (u16 i = 0; i < MAX_CHOICES; ++i) choice_taken[i] = false;
                 for (u16 i = 0; i < MAX_FLAGS; ++i) flags[i] = false;
@@ -104,24 +117,62 @@ namespace NEONengine
             return g_dlg_log.flags[flag_id];
         }
 
+        void dlg_mock_set_flag(u16 flag_id, bool value)
+        {
+            g_dlg_log.record(value ? dlg_call_kind::set_flag : dlg_call_kind::clear_flag, flag_id);
+            if (flag_id < dlg_mock_log::MAX_FLAGS) g_dlg_log.flags[flag_id] = value;
+        }
+
+        void dlg_mock_run_script(u16 function_id)
+        {
+            g_dlg_log.record(dlg_call_kind::run_script, function_id);
+
+            // What a script's effects look like from out here: a flag the
+            // authored records never name, set by the script itself.
+            if (function_id == g_dlg_log.script_that_sets
+                && g_dlg_log.script_sets_flag < dlg_mock_log::MAX_FLAGS)
+            {
+                g_dlg_log.flags[g_dlg_log.script_sets_flag] = true;
+            }
+        }
+
+        bool dlg_mock_is_terminated()
+        {
+            if (g_dlg_log.terminating_script == data::NO_ID) return false;
+
+            // Latched, as the VM's is: once the terminal call has run, every
+            // later ask says so too.
+            for (u8 i = 0; i < g_dlg_log.count; ++i)
+            {
+                if (g_dlg_log.calls[i].kind != dlg_call_kind::run_script) continue;
+                if (g_dlg_log.calls[i].arg == g_dlg_log.terminating_script) return true;
+            }
+            return false;
+        }
+
         dialogue_bridge const g_dlg_mock_bridge = {
             .mark_page_read    = dlg_mock_mark_page_read,
             .is_page_read      = dlg_mock_is_page_read,
             .mark_choice_taken = dlg_mock_mark_choice_taken,
             .is_choice_taken   = dlg_mock_is_choice_taken,
             .get_flag          = dlg_mock_get_flag,
+            .set_flag          = dlg_mock_set_flag,
+            .run_script        = dlg_mock_run_script,
+            .is_terminated     = dlg_mock_is_terminated,
         };
 
         /// True when the pages read, in the order they were read, are @p expected.
         bool pages_read_were(u16 const* expected, u8 expected_count)
         {
-            if (g_dlg_log.count != expected_count) return false;
-            for (u8 i = 0; i < expected_count; ++i)
+            u8 seen = 0;
+            for (u8 i = 0; i < g_dlg_log.count; ++i)
             {
-                if (g_dlg_log.calls[i].kind != dlg_call_kind::mark_page_read) return false;
-                if (g_dlg_log.calls[i].arg != expected[i]) return false;
+                if (g_dlg_log.calls[i].kind != dlg_call_kind::mark_page_read) continue;
+                if (seen >= expected_count) return false;
+                if (g_dlg_log.calls[i].arg != expected[seen]) return false;
+                ++seen;
             }
-            return true;
+            return seen == expected_count;
         }
 
         /// True when every call the conversation made, in order, is @p expected.
@@ -134,6 +185,27 @@ namespace NEONengine
                 if (g_dlg_log.calls[i].arg != expected[i].arg) return false;
             }
             return true;
+        }
+
+        /// How many calls of @p kind the conversation made.
+        u8 times_called(dlg_call_kind kind)
+        {
+            u8 total = 0;
+            for (u8 i = 0; i < g_dlg_log.count; ++i)
+            {
+                if (g_dlg_log.calls[i].kind == kind) ++total;
+            }
+            return total;
+        }
+
+        /// Where @p kind with @p arg first appears in the log, or MAX_CALLS.
+        u8 index_of(dlg_call_kind kind, u16 arg)
+        {
+            for (u8 i = 0; i < g_dlg_log.count; ++i)
+            {
+                if (g_dlg_log.calls[i].kind == kind && g_dlg_log.calls[i].arg == arg) return i;
+            }
+            return dlg_mock_log::MAX_CALLS;
         }
 
         // ── Record builders ─────────────────────────────────────────────────────
@@ -172,6 +244,21 @@ namespace NEONengine
         data::page gated_on(data::page page, u16 flag_id)
         {
             page.check_flag_id = flag_id;
+            return page;
+        }
+
+        /// @p page that sets @p set_id and clears @p clear_id as it is displayed.
+        data::page changing_flags(data::page page, u16 set_id, u16 clear_id)
+        {
+            page.set_flag_id   = set_id;
+            page.clear_flag_id = clear_id;
+            return page;
+        }
+
+        /// @p page that runs script @p function_id as it is displayed.
+        data::page running(data::page page, u16 function_id)
+        {
+            page.display_function_id = function_id;
             return page;
         }
 
@@ -214,6 +301,21 @@ namespace NEONengine
         data::choice gated_on(data::choice choice, u16 flag_id)
         {
             choice.check_flag_id = flag_id;
+            return choice;
+        }
+
+        /// @p choice that sets @p set_id and clears @p clear_id when it is taken.
+        data::choice changing_flags(data::choice choice, u16 set_id, u16 clear_id)
+        {
+            choice.set_flag_id   = set_id;
+            choice.clear_flag_id = clear_id;
+            return choice;
+        }
+
+        /// @p choice that runs script @p function_id when it is taken.
+        data::choice running(data::choice choice, u16 function_id)
+        {
+            choice.click_function_id = function_id;
             return choice;
         }
 
@@ -1530,6 +1632,292 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Flags and scripts ───────────────────────────────────────────────────────
+
+    TEST_IMPL(test_dialogue_page_applies_its_flags_when_it_is_displayed)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { changing_flags(a_page(10, data::NO_ID), 3, 4) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1);
+        g_dlg_log.flags[4] = true;
+        session.begin(0);
+
+        TEST_ASSERT(g_dlg_log.flags[3], "the page's set flag is set");
+        TEST_ASSERT(!g_dlg_log.flags[4], "and its clear flag is cleared");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_page_with_no_flags_writes_none)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { a_page(10, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1);
+        session.begin(0);
+
+        TEST_ASSERT(times_called(dlg_call_kind::set_flag) == 0, "no flag is set");
+        TEST_ASSERT(times_called(dlg_call_kind::clear_flag) == 0, "and none is cleared");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_page_runs_its_display_script)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { running(a_page(10, data::NO_ID), 7) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1);
+        session.begin(0);
+
+        TEST_ASSERT(index_of(dlg_call_kind::run_script, 7) < dlg_mock_log::MAX_CALLS,
+            "the page's display script runs");
+        TEST_ASSERT(times_called(dlg_call_kind::run_script) == 1, "once");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_page_with_no_script_runs_none)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { a_page(10, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1);
+        session.begin(0);
+
+        TEST_ASSERT(times_called(dlg_call_kind::run_script) == 0,
+            "a page naming no script runs nothing");
+        TEST_SUCCESS;
+    }
+
+    /// The script has the last word over the flags the author wrote, so it runs
+    /// after them and never before.
+    TEST_IMPL(test_dialogue_page_runs_its_script_after_its_flags)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { running(changing_flags(a_page(10, data::NO_ID), 3, 4), 7) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1);
+        session.begin(0);
+
+        dlg_call const expected[] = {
+            { dlg_call_kind::mark_page_read, 0 },
+            { dlg_call_kind::set_flag, 3 },
+            { dlg_call_kind::clear_flag, 4 },
+            { dlg_call_kind::run_script, 7 },
+        };
+        TEST_ASSERT(calls_were(expected, 4), "read, then the flags, then the script");
+        TEST_SUCCESS;
+    }
+
+    /// The whole reason the script runs before the page is laid out: a reply the
+    /// script unlocks is there on this visit, not on some later one.
+    TEST_IMPL(test_dialogue_page_script_unlocks_one_of_its_own_replies)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(running(a_page(10, data::NO_ID), 7), 0, 1),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { gated_on(a_choice(20, 1), 5) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        g_dlg_log.script_that_sets = 7;
+        g_dlg_log.script_sets_flag = 5;
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 1,
+            "the reply the display script unlocked is offered on this visit");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choice_applies_its_flags_when_it_is_taken)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { with_choices(a_page(10, data::NO_ID), 0, 1), a_page(11, data::NO_ID) };
+        data::choice choices[] = { changing_flags(a_choice(20, 1), 3, 4) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        g_dlg_log.flags[4] = true;
+        session.begin(0);
+
+        TEST_ASSERT(!g_dlg_log.flags[3], "showing a reply applies nothing");
+
+        session.take_choice(0);
+
+        TEST_ASSERT(g_dlg_log.flags[3], "the reply's set flag is set once it is taken");
+        TEST_ASSERT(!g_dlg_log.flags[4], "and its clear flag is cleared");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choice_runs_its_click_script)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { with_choices(a_page(10, data::NO_ID), 0, 1), a_page(11, data::NO_ID) };
+        data::choice choices[] = { running(a_choice(20, 1), 9) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+
+        TEST_ASSERT(times_called(dlg_call_kind::run_script) == 0,
+            "showing a reply runs nothing");
+
+        session.take_choice(0);
+
+        TEST_ASSERT(index_of(dlg_call_kind::run_script, 9) < dlg_mock_log::MAX_CALLS,
+            "the reply's click script runs when it is taken");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choice_runs_its_script_after_its_flags)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { with_choices(a_page(10, data::NO_ID), 0, 1), a_page(11, data::NO_ID) };
+        data::choice choices[] = { running(changing_flags(a_choice(20, 1), 3, 4), 9) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+        session.take_choice(0);
+
+        dlg_call const expected[] = {
+            { dlg_call_kind::mark_page_read, 0 },
+            { dlg_call_kind::mark_choice_taken, 0 },
+            { dlg_call_kind::set_flag, 3 },
+            { dlg_call_kind::clear_flag, 4 },
+            { dlg_call_kind::run_script, 9 },
+            { dlg_call_kind::mark_page_read, 1 },
+        };
+        TEST_ASSERT(calls_were(expected, 6),
+            "taken, then the flags, then the script, then the destination");
+        TEST_SUCCESS;
+    }
+
+    /// A script that changed scene has left the scene the conversation was read
+    /// in, so the page the reply named belongs somewhere the player no longer is.
+    TEST_IMPL(test_dialogue_choice_script_that_changes_scene_abandons_its_destination)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { with_choices(a_page(10, data::NO_ID), 0, 1), a_page(11, data::NO_ID) };
+        data::choice choices[] = { running(a_choice(20, 1), 9) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        g_dlg_log.terminating_script = 9;
+        session.begin(0);
+        session.take_choice(0);
+
+        TEST_ASSERT(session.has_ended(), "the conversation is over at once");
+        TEST_ASSERT(!g_dlg_log.page_read[1], "the destination the reply named is abandoned");
+        TEST_ASSERT(session.choice_count() == 0, "and nothing is left to pick");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_page_script_that_changes_scene_ends_the_conversation)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(running(a_page(10, 1), 7), 0, 1),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        g_dlg_log.terminating_script = 7;
+
+        TEST_ASSERT(!session.begin(0),
+            "a conversation whose opening page leaves the scene never opens");
+        TEST_ASSERT(session.has_ended(), "and has ended");
+        TEST_ASSERT(session.choice_count() == 0, "with no replies worked out for it");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_page_script_that_changes_scene_stops_mid_conversation)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { a_page(10, 1), running(a_page(11, data::NO_ID), 7) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+        g_dlg_log.terminating_script = 7;
+        session.begin(0);
+
+        TEST_ASSERT(!session.has_ended(), "the first page has no script to leave on");
+
+        session.advance();
+
+        TEST_ASSERT(session.has_ended(), "the page whose script left the scene ends it");
+        TEST_SUCCESS;
+    }
+
+    /// A script the VM killed for an illegal call reports itself through the VM's
+    /// own error path; from here it is a script that ran and did not terminate,
+    /// so the conversation goes exactly where it was going.
+    TEST_IMPL(test_dialogue_a_script_that_did_not_terminate_changes_nothing)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { with_choices(a_page(10, data::NO_ID), 0, 1), a_page(11, data::NO_ID) };
+        data::choice choices[] = { running(a_choice(20, 1), 9) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+        session.take_choice(0);
+
+        TEST_ASSERT(!session.has_ended(), "the conversation carries on");
+        TEST_ASSERT(session.current_page_index() == 1, "at the page the reply named");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_skipped_pages_run_no_flags_and_no_scripts)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { disabled(running(changing_flags(a_page(10, data::NO_ID), 3, 4), 7)),
+            a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+        g_dlg_log.flags[4] = true;
+        session.begin(0);
+
+        TEST_ASSERT(session.current_page_index() == 1, "the skip lands on the page after it");
+        TEST_ASSERT(!g_dlg_log.flags[3], "the skipped page sets nothing");
+        TEST_ASSERT(g_dlg_log.flags[4], "clears nothing");
+        TEST_ASSERT(times_called(dlg_call_kind::run_script) == 0, "and runs no script");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_unavailable_choices_run_no_flags_and_no_scripts)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[]
+            = { with_choices(a_page(10, data::NO_ID), 0, 2), a_page(11, data::NO_ID) };
+        data::choice choices[] = { disabled(running(changing_flags(a_choice(20, 1), 3, 4), 9)),
+            a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        g_dlg_log.flags[4] = true;
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 1, "only the enabled reply is offered");
+
+        session.take_choice(0);
+
+        TEST_ASSERT(!g_dlg_log.flags[3], "the reply that was never offered sets nothing");
+        TEST_ASSERT(g_dlg_log.flags[4], "clears nothing");
+        TEST_ASSERT(times_called(dlg_call_kind::run_script) == 0, "and runs no script");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(dialogue_session)
         TEST(test_dialogue_starts_ended)
         TEST(test_dialogue_opens_on_its_first_page)
@@ -1600,6 +1988,22 @@ namespace NEONengine
         TEST(test_dialogue_fitting_again_keeps_the_set_the_player_is_on)
         TEST(test_dialogue_arriving_at_a_page_starts_on_its_first_set)
         TEST(test_dialogue_a_rotated_set_names_the_choices_it_draws)
+
+        TEST(test_dialogue_page_applies_its_flags_when_it_is_displayed)
+        TEST(test_dialogue_page_with_no_flags_writes_none)
+        TEST(test_dialogue_page_runs_its_display_script)
+        TEST(test_dialogue_page_with_no_script_runs_none)
+        TEST(test_dialogue_page_runs_its_script_after_its_flags)
+        TEST(test_dialogue_page_script_unlocks_one_of_its_own_replies)
+        TEST(test_dialogue_choice_applies_its_flags_when_it_is_taken)
+        TEST(test_dialogue_choice_runs_its_click_script)
+        TEST(test_dialogue_choice_runs_its_script_after_its_flags)
+        TEST(test_dialogue_choice_script_that_changes_scene_abandons_its_destination)
+        TEST(test_dialogue_page_script_that_changes_scene_ends_the_conversation)
+        TEST(test_dialogue_page_script_that_changes_scene_stops_mid_conversation)
+        TEST(test_dialogue_a_script_that_did_not_terminate_changes_nothing)
+        TEST(test_dialogue_skipped_pages_run_no_flags_and_no_scripts)
+        TEST(test_dialogue_unavailable_choices_run_no_flags_and_no_scripts)
     TEST_SUITE_END
 }  // namespace NEONengine
 

@@ -68,6 +68,35 @@ namespace NEONengine
          * available on that count without the engine being consulted.
          */
         bool (*get_flag)(u16 flag_id);
+
+        /**
+         * @brief Writes game state flag @p flag_id.
+         *
+         * How a page's or a choice's authored set and clear flags are applied,
+         * as it is displayed or taken. Never called for the no-flag sentinel:
+         * a record that sets or clears nothing asks the engine for nothing.
+         */
+        void (*set_flag)(u16 flag_id, bool value);
+
+        /**
+         * @brief Runs script @p function_id here and now, to its end.
+         *
+         * The VM's immediate path, which bypasses time slices - the dialogue
+         * owns the frame, so there is no slice for a script to be given. That
+         * path refuses every deferred modal call and kills the session, which
+         * reports itself; see ADR-0001. Never called for the no-function
+         * sentinel.
+         */
+        void (*run_script)(u16 function_id);
+
+        /**
+         * @brief Whether the VM has latched terminated.
+         *
+         * Asked after every script the conversation runs. A terminal call -
+         * changing scene - carries no modal guard, so it does fire from a
+         * dialogue script, and the conversation it was read in is over.
+         */
+        bool (*is_terminated)();
     };
 
     /**

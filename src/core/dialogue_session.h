@@ -113,11 +113,15 @@ namespace NEONengine
          *
          * The choice is marked taken first, so a one-time choice pointing back
          * at its own page is gone by the time that page is laid out again -
-         * which is how "ask about each topic, then leave" is written. The
-         * no-destination sentinel ends the conversation, as does a destination
-         * outside the dialogue's page range; an unavailable destination is
-         * replaced by the next available page by index, exactly as advance()
-         * does. A slot past the last available choice does nothing.
+         * which is how "ask about each topic, then leave" is written. Its
+         * authored set and clear flags are applied next and its click script
+         * runs after them, so the script has the last word. The no-destination
+         * sentinel ends the conversation, as does a destination outside the
+         * dialogue's page range; an unavailable destination is replaced by the
+         * next available page by index, exactly as advance() does. A script
+         * that changed scene ends the conversation there and then, abandoning
+         * the destination entirely. A slot past the last available choice does
+         * nothing.
          */
         void take_choice(u8 slot) noexcept;
 
@@ -242,6 +246,35 @@ namespace NEONengine
         void collect_choices() noexcept;
 
         /**
+         * @brief Applies the set and clear flags a page or a choice authored.
+         *
+         * Set before clear, so a record naming the same flag for both leaves it
+         * clear - one order had to be chosen and this is it. The no-flag
+         * sentinel asks the engine for nothing.
+         */
+        void apply_flags(u16 set_flag_id, u16 clear_flag_id) noexcept;
+
+        /**
+         * @brief Runs @p function_id, and says whether the conversation is over.
+         *
+         * The script goes through the VM's immediate path, which refuses every
+         * deferred modal call and kills the session that made one - that script
+         * reports itself and the conversation carries on, because a script
+         * dying is not a reason to take the screen away from the player.
+         * Changing scene is the exception: it is terminal rather than modal, so
+         * it fires, and the page the player would read next belongs to a scene
+         * the script has already left.
+         *
+         * @return True when the VM has latched terminated and the caller must
+         *         end the conversation at once, abandoning wherever it was
+         *         going.
+         */
+        bool run_script(u16 function_id) noexcept;
+
+        /** @brief Ends the conversation, showing nothing and offering nothing. */
+        void end() noexcept;
+
+        /**
          * @brief Fills the current set from @p start, and says where it ends.
          *
          * Walks the available choices from @p start, taking each that still
@@ -271,6 +304,12 @@ namespace NEONengine
          * nothing and their own next-page field is never consulted. See
          * ADR-0002 for why the scan is by index rather than along next-page
          * links.
+         *
+         * The page that is shown is marked read, has its authored set and clear
+         * flags applied, and runs its display script - in that order, and all
+         * of it before its choices are worked out, so a script that unlocks one
+         * of this page's own replies unlocks it on this visit rather than on
+         * some later one, and has the last word over the flags the author set.
          */
         void go_to(u16 page_id) noexcept;
 

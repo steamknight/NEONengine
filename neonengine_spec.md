@@ -650,9 +650,18 @@ it starts at the left margin instead.
 
 ### Script Integration (Dialogue)
 
-- Page `on_display_script` runs when page is shown
-- Choice `on_click_script` runs when selected
-- Scripts execute and return control to dialogue manager (VM is re-entrant)
+- Page `on_display_script` runs when the page is shown, after the page's authored
+  set and clear flags and before its choices are worked out, so a script may
+  unlock one of that same page's choices
+- Choice `on_click_script` runs when the choice is taken, after the choice's
+  authored set and clear flags and before its destination is followed
+- Scripts run through the VM's immediate path, which bypasses time slices and
+  refuses every deferred modal call — `SAY`, `SHOW_DIALOG`, `FADE_IN`, `FADE_OUT`,
+  `SAVE_GAME` — killing the session with a reported error. See ADR-0001
+- `GOTO_SCENE` is terminal rather than modal and does fire. The dialogue checks
+  the VM's terminated latch after every script and ends at once when it is set,
+  abandoning any destination the choice carried; the scene then applies the
+  pending change
 
 Portrait bitmap only updates if speaker changes from previous page.
 
