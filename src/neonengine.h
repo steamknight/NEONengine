@@ -42,6 +42,9 @@ namespace NEONengine
     /// Palette index a dialogue page's text uses.
     constexpr u8 DIALOGUE_TEXT_COLOR = MESSAGE_TEXT_COLOR;
 
+    /// Palette index a dialogue speaker's name uses, as a message caption does.
+    constexpr u8 DIALOGUE_NAME_COLOR = MESSAGE_TEXT_COLOR;
+
     /** @brief Where a message box sits on the screen. */
     enum class message_align : u8
     {

@@ -623,19 +623,22 @@ Dialogue (container)
 
 ### Display Layout
 
+One frame, not two — see ADR-0003. The frame is pinned to the top-left beside the
+portrait and holds the speaker name, the page text and the choices together. A page
+with no speaker, or a speaker with no portrait, gives the frame that column too and
+it starts at the left margin instead.
+
 ```text
 ┌─────────────────────────────────────────┐
 │ ┌────────┐  ┌─────────────────────────┐ │
-│ │        │  │ Speaker Name            │ │
+│ │        │  │      Speaker Name       │ │
 │ │ 96×96  │  │ Page text here...       │ │
 │ │portrait│  │ wrapped as needed...    │ │
-│ └────────┘  └─────────────────────────┘ │
-│                                         │
-│ ┌─────────────────────────────────────┐ │
-│ │ 1. Choice one                       │ │
-│ │ 2. Choice two                       │ │
-│ │ 3. Choice three          ▼ more     │ │
-│ └─────────────────────────────────────┘ │
+│ └────────┘  │                         │ │
+│             │ 1. Choice one           │ │
+│             │ 2. Choice two           │ │
+│             │ 3. More...              │ │
+│             └─────────────────────────┘ │
 └─────────────────────────────────────────┘
 ```
 

@@ -38,6 +38,12 @@ namespace NEONengine
         }
 
         go_to(dialogue.first_page_id);
+
+        // A conversation that could not open owns no pages: a caller reading
+        // ahead over them - for the portraits its speakers name, say - would
+        // otherwise work through a dialogue that is never put on screen.
+        if (has_ended()) _page_range = data::range{};
+
         return !has_ended();
     }
 

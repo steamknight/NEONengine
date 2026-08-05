@@ -67,6 +67,17 @@ namespace NEONengine
         data::page const* current_page() const noexcept;
 
         /**
+         * @brief The pages the running dialogue owns, as global PAGS indices.
+         *
+         * Truncated to the pages actually loaded, so walking it is safe on a
+         * malformed pak. This is what a caller wanting everything the
+         * conversation could name - the portraits its speakers use, say - reads
+         * ahead over. Empty until begin() succeeds, and empty again once it
+         * fails.
+         */
+        data::range page_range() const noexcept { return _page_range; }
+
+        /**
          * @brief Moves to the page the current one names as next.
          *
          * The no-destination sentinel ends the conversation, as does a next page

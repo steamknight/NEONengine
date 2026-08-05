@@ -279,6 +279,63 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    /// What the caller loads portraits for: the pages the conversation can show.
+    TEST_IMPL(test_dialogue_reports_the_pages_it_can_show)
+    {
+        data::dialogue dialogues[] = { a_dialogue(2, 3, 2) };
+        data::page pages[] = { a_page(10, data::NO_ID),
+            a_page(11, data::NO_ID),
+            a_page(12, data::NO_ID),
+            a_page(13, data::NO_ID),
+            a_page(14, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 5);
+        session.begin(0);
+
+        TEST_ASSERT(session.page_range().start == 2, "the range starts where the dialogue's does");
+        TEST_ASSERT(session.page_range().count == 3, "and holds every page the dialogue owns");
+        TEST_SUCCESS;
+    }
+
+    /// The truncation begin() applies is what the caller has to see, or it would
+    /// read records past the end of the chunk looking for portraits.
+    TEST_IMPL(test_dialogue_reports_its_range_truncated_to_the_loaded_pages)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 9, 0) };
+        data::page pages[] = { a_page(10, 1), a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.page_range().count == 2, "the range stops at the last loaded page");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_that_never_started_reports_no_pages)
+    {
+        dialogue_session session;
+
+        TEST_ASSERT(session.page_range().count == 0, "a session with no dialogue owns no pages");
+        TEST_SUCCESS;
+    }
+
+    /// A conversation that could not start owns nothing, or its caller would go
+    /// on to load the portraits of a dialogue that is never put on screen.
+    TEST_IMPL(test_dialogue_that_could_not_start_reports_no_pages)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 5) };
+        data::page pages[] = { a_page(10, data::NO_ID), a_page(11, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2);
+
+        TEST_ASSERT(!session.begin(0), "a first page outside the dialogue's pages cannot start");
+        TEST_ASSERT(session.page_range().count == 0, "and the pages it named are not on offer");
+        TEST_SUCCESS;
+    }
+
     TEST_IMPL(test_dialogue_starting_over_forgets_the_previous_one)
     {
         data::dialogue dialogues[] = { a_dialogue(0, 2, 0), a_dialogue(2, 1, 2) };
@@ -685,6 +742,10 @@ namespace NEONengine
         TEST(test_dialogue_with_a_first_page_outside_its_range_does_not_start)
         TEST(test_dialogue_with_no_pages_does_not_start)
         TEST(test_dialogue_range_past_the_pages_is_truncated)
+        TEST(test_dialogue_reports_the_pages_it_can_show)
+        TEST(test_dialogue_reports_its_range_truncated_to_the_loaded_pages)
+        TEST(test_dialogue_that_never_started_reports_no_pages)
+        TEST(test_dialogue_that_could_not_start_reports_no_pages)
         TEST(test_dialogue_starting_over_forgets_the_previous_one)
 
         TEST(test_dialogue_advances_to_the_named_next_page)

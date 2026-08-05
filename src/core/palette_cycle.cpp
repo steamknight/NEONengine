@@ -81,20 +81,6 @@ namespace NEONengine
         // hardware palette a second time for nothing.
         if (screenFadeOwnsPalette(g_mainScreen)) return;
 
-        auto const* reference = force_to<ULONG const*>(screenGetPalette(g_mainScreen));
-        auto* display = force_to<ULONG*>(screenGetView(g_mainScreen)->pFirstVPort->pPalette);
-
-        // Scaled to whatever brightness the screen currently stands at, not
-        // copied straight across. A fade leaves the display wherever it
-        // finished, so a screen faded down to black and left there still has a
-        // bright reference behind it; copying raw would light the turned band up
-        // on its own against the black.
-        UBYTE const ratio = screenPaletteRatio(g_mainScreen);
-        for (u16 entry = first; entry <= last; ++entry)
-        {
-            display[entry] = paletteColorDimAga(reference[entry], ratio);
-        }
-
-        viewUpdateGlobalPalette(screenGetView(g_mainScreen));
+        screenPublishPalette(g_mainScreen, first, to<u16>(last - first + 1));
     }
 }  // namespace NEONengine

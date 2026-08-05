@@ -8,6 +8,7 @@
 #include <ace/managers/mouse.h>
 #include <ace/managers/viewport/simplebuffer.h>
 #include <ace/utils/font.h>
+#include <ace/utils/palette.h>
 
 #include <bartman/gcc8_c_support.h>
 
@@ -194,6 +195,20 @@ namespace NEONengine
         return screen->pFade->ubRatio;
     }
 
+    void screenPublishPalette(Screen* screen, u16 first, u16 count)
+    {
+        auto const* pRef = force_to<ULONG const*>(screen->pFade->pPaletteRef);
+        auto* pLive      = force_to<ULONG*>(screen->pView->pFirstVPort->pPalette);
+
+        UBYTE const ratio = screen->pFade->ubRatio;
+        for (u16 entry = first; entry < first + count; ++entry)
+        {
+            pLive[entry] = paletteColorDimAga(pRef[entry], ratio);
+        }
+
+        viewUpdateGlobalPalette(screen->pView);
+    }
+
     void screenFadeFromBlack(Screen* screen,
         UBYTE ubDuration,
         UBYTE ubFadeMusic,
@@ -293,6 +308,27 @@ namespace NEONengine
             wWidth,
             wHeight,
             ubMinterm);
+    }
+
+    void screenBlitMask(Screen* screen,
+        tBitMap const* pSrc,
+        WORD wSrcX,
+        WORD wSrcY,
+        WORD wDstX,
+        WORD wDstY,
+        WORD wWidth,
+        WORD wHeight,
+        UBYTE const* pMsk)
+    {
+        blitCopyMask(pSrc,
+            wSrcX,
+            wSrcY,
+            screen->pBuffer->pBack,
+            wDstX,
+            wDstY + screen->uwOffset,
+            wWidth,
+            wHeight,
+            pMsk);
     }
 
     void screenTextCopy(Screen* screen,

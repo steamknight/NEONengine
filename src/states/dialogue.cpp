@@ -12,6 +12,7 @@
 #include <ace++/bitmap.h>
 
 #include "core/dialogue_bridge.h"
+#include "core/dialogue_portraits.h"
 #include "core/dialogue_session.h"
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
@@ -36,6 +37,42 @@ namespace NEONengine
         u16 s_frameHeight = 0;
 
         /**
+         * @brief The portrait on screen now, in scene space.
+         *
+         * Kept apart from the frame's rectangle because the two come and go at
+         * different times: the frame is redrawn on every page, the portrait
+         * only when the speaker changes. Zero-sized when none is up.
+         */
+        u16 s_portraitX      = 0;
+        u16 s_portraitY      = 0;
+        u16 s_portraitWidth  = 0;
+        u16 s_portraitHeight = 0;
+
+        /// Who the portrait on screen belongs to, or NO_ID when nobody speaks.
+        u16 s_speaker = data::NO_ID;
+
+        /** @brief Who the page on show is spoken by, or NO_ID. */
+        u16 current_speaker()
+        {
+            auto const* page = s_session.current_page();
+            return page ? page->speaker_id : data::NO_ID;
+        }
+
+        /** @brief What @p speaker_id is called, or an empty view when nothing. */
+        bstr_view speaker_name(u16 speaker_id)
+        {
+            if (speaker_id == data::NO_ID) return bstr_view();
+
+            auto const speakers = g_pEngine->data().speakers();
+            if (speaker_id >= speakers.size()) return bstr_view();
+
+            u16 const name_id = speakers[speaker_id].name_string_id;
+            if (name_id == data::NO_ID) return bstr_view();
+
+            return g_pEngine->strings().get_string(name_id);
+        }
+
+        /**
          * @brief Paints the frame's rectangle back to the scene behind it.
          *
          * The freeze held a buffer back with the scene as it was, so the frame
@@ -57,15 +94,44 @@ namespace NEONengine
         }
 
         /**
-         * @brief Draws the page on show in a frame sized to what it holds.
+         * @brief Paints the portrait's rectangle back to the scene behind it.
          *
-         * Pinned to the top-left, since the portrait that will share that corner
-         * is not drawn yet and the frame is where it will be either way.
+         * Called whenever the speaker changes, including to nobody: a page
+         * without a portrait widens the frame across the column the last one
+         * stood in, and the part of the column the frame does not reach would
+         * otherwise still show the previous speaker.
+         */
+        void erase_portrait()
+        {
+            if (!s_portraitWidth || !s_portraitHeight) return;
+
+            screenRestoreRect(g_mainScreen,
+                to<WORD>(s_portraitX),
+                to<WORD>(s_portraitY),
+                to<WORD>(s_portraitWidth),
+                to<WORD>(s_portraitHeight));
+
+            s_portraitWidth  = 0;
+            s_portraitHeight = 0;
+        }
+
+        /**
+         * @brief Draws the page on show, and the speaker it belongs to.
          *
+         * The portrait sits in the top-left corner and the frame beside it,
+         * holding the speaker's name above the page text. A page whose speaker
+         * has no portrait - or which has no speaker at all - gives the frame
+         * that column too, which is what makes narrator prose full width.
+         *
+         * @param draw_portrait Whether the portrait has to be put on screen.
+         *                      False when the speaker has not changed, in which
+         *                      case theirs is already there and untouched: a
+         *                      portrait costs far more to blit than a frame,
+         *                      and only the frame changes on the common page.
          * @return False when there was nothing to draw, which leaves the screen
          *         as it was and is the caller's cue to close the box.
          */
-        bool draw_current_page()
+        bool draw_current_page(bool draw_portrait)
         {
             auto const* page = s_session.current_page();
             if (!page) return false;
@@ -83,12 +149,21 @@ namespace NEONengine
 
             auto* renderer = g_pEngine->default_text_renderer();
 
-            // The frame is drawn around the text, so what the text may use is the
-            // screen less the margin the frame is inset by and the margin
-            // between the frame and its contents, on both sides.
-            constexpr u16 CHROME = to<u16>(DIALOGUE_MARGIN * 2 + MESSAGE_MARGIN * 2);
-            auto text = renderer->create_text(
-                text_string, to<u16>(SCREEN_WIDTH - CHROME), text_justify::LEFT);
+            bool const has_portrait = dialogue_portraits_has(page->speaker_id);
+
+            s_frameX = has_portrait
+                ? to<u16>(DIALOGUE_MARGIN * 2 + PORTRAIT_WIDTH)
+                : DIALOGUE_MARGIN;
+            s_frameY = DIALOGUE_MARGIN;
+
+            // The frame is drawn around the text, so what the text may use is
+            // what is left of the screen beside the portrait, less the margin
+            // the frame is inset by on the far side and the margin between the
+            // frame and its contents on both.
+            u16 const allowance
+                = to<u16>(SCREEN_WIDTH - s_frameX - DIALOGUE_MARGIN - MESSAGE_MARGIN * 2);
+
+            auto text = renderer->create_text(text_string, allowance, text_justify::LEFT);
             if (!text)
             {
                 // Reachable only with no font to draw with. A box the player
@@ -97,16 +172,36 @@ namespace NEONengine
                 return false;
             }
 
-            s_frameWidth  = to<u16>(text->uwActualWidth + MESSAGE_MARGIN * 2);
-            s_frameHeight = to<u16>(text->uwActualHeight + MESSAGE_MARGIN * 2);
+            auto const name = speaker_name(page->speaker_id);
+            auto heading    = name.is_empty()
+                   ? ace::text_bitmap_ptr(nullptr)
+                   : renderer->create_text(name, allowance, text_justify::CENTER);
+
+            u16 contentWidth = text->uwActualWidth;
+            if (heading && heading->uwActualWidth > contentWidth)
+            {
+                contentWidth = heading->uwActualWidth;
+            }
+
+            u16 const headingHeight
+                = heading ? to<u16>(heading->uwActualHeight + MESSAGE_CAPTION_GAP) : u16(0);
+
+            s_frameWidth  = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
+            s_frameHeight = to<u16>(headingHeight + text->uwActualHeight + MESSAGE_MARGIN * 2);
 
             // The frame can only be drawn well at certain widths, so it takes one
             // of those and the text sits in the middle of whatever that leaves.
             auto* frame = g_pEngine->default_nine_patch();
             if (frame) s_frameWidth = frame->width_for(s_frameWidth);
 
-            s_frameX = DIALOGUE_MARGIN;
-            s_frameY = DIALOGUE_MARGIN;
+            if (draw_portrait && has_portrait)
+            {
+                s_portraitX      = DIALOGUE_MARGIN;
+                s_portraitY      = DIALOGUE_MARGIN;
+                s_portraitWidth  = PORTRAIT_WIDTH;
+                s_portraitHeight = PORTRAIT_HEIGHT;
+                dialogue_portraits_draw(page->speaker_id, s_portraitX, s_portraitY);
+            }
 
             if (frame)
             {
@@ -126,11 +221,27 @@ namespace NEONengine
 
             // Centred in the frame rather than at a fixed margin: the frame's
             // width is whatever it could be drawn at, a little more than asked.
-            u16 const textX = to<u16>(s_frameX + (s_frameWidth - text->uwActualWidth) / 2);
+            u16 const contentX = to<u16>(s_frameX + (s_frameWidth - contentWidth) / 2);
+            u16 const contentY = to<u16>(s_frameY + MESSAGE_MARGIN);
+
+            if (heading)
+            {
+                // Centred over the text rather than over its own width, which is
+                // only as wide as the name itself.
+                u16 const headingX
+                    = to<u16>(contentX + (contentWidth - heading->uwActualWidth) / 2);
+                screenTextCopy(g_mainScreen,
+                    heading.get(),
+                    headingX,
+                    contentY,
+                    DIALOGUE_NAME_COLOR,
+                    FONT_COOKIE);
+            }
+
             screenTextCopy(g_mainScreen,
                 text.get(),
-                textX,
-                to<u16>(s_frameY + MESSAGE_MARGIN),
+                contentX,
+                to<u16>(contentY + headingHeight),
                 DIALOGUE_TEXT_COLOR,
                 FONT_COOKIE);
 
@@ -142,8 +253,10 @@ namespace NEONengine
     {
         u16 const dialogue_id = g_pEngine->take_pending_dialogue();
 
-        s_frameWidth  = 0;
-        s_frameHeight = 0;
+        s_frameWidth     = 0;
+        s_frameHeight    = 0;
+        s_portraitWidth  = 0;
+        s_portraitHeight = 0;
 
         s_session.create(g_pEngine->data().dialogues(),
             g_pEngine->data().pages(),
@@ -158,12 +271,19 @@ namespace NEONengine
             return;
         }
 
+        // Every portrait the conversation could reach, in one go: each one
+        // reads the pak and blocks, and a pause as the box appears reads as
+        // normal where one between two pages would read as a stall.
+        dialogue_portraits_load(s_session.page_range());
+
         // Held from here until the box comes down. Every draw below lands on the
         // buffer being displayed, and the one held back keeps the scene as it
         // was for erase_frame to paint back.
         screenFreezeDisplay(g_mainScreen);
 
-        if (!draw_current_page())
+        s_speaker = current_speaker();
+
+        if (!draw_current_page(true))
         {
             statePop(g_gameStateManager);
             return;
@@ -190,11 +310,17 @@ namespace NEONengine
 
         s_session.advance();
 
-        // Erased before the next page is drawn, so a frame that shrinks leaves
-        // no part of the taller one behind it.
-        erase_frame();
+        u16 const speaker      = current_speaker();
+        bool const new_speaker = speaker != s_speaker;
+        s_speaker              = speaker;
 
-        if (s_session.has_ended() || !draw_current_page())
+        // Both erased before either is drawn, so a frame that reclaims the
+        // portrait's column finds nothing of the old portrait under it, and a
+        // frame that shrinks leaves no part of the taller one behind.
+        erase_frame();
+        if (new_speaker) erase_portrait();
+
+        if (s_session.has_ended() || !draw_current_page(new_speaker))
         {
             statePop(g_gameStateManager);
         }
@@ -203,6 +329,13 @@ namespace NEONengine
     void dialogueDestroy(void)
     {
         erase_frame();
+        erase_portrait();
+
+        // After the erase: it hands the palette band back to the scene's bobs,
+        // and the pixels underneath have to be the scene's again by then.
+        dialogue_portraits_unload();
+        s_speaker = data::NO_ID;
+
         screenResumeDisplay(g_mainScreen);
 
         // The scene has not seen the button since before the box went up, so

@@ -178,6 +178,18 @@ namespace NEONengine
     UBYTE screenPaletteRatio(Screen* screen);
 
     /**
+     * @brief Repaints display entries [@p first, @p first + @p count) from the reference.
+     *
+     * The palette has two layers, and writing screenGetPalette() only touches
+     * the reference one; this is what carries a change through to the hardware.
+     * Entries are scaled by @ref screenPaletteRatio on the way, so a band
+     * written while the screen stands faded down does not light up on its own.
+     *
+     * @param screen The screen whose palette to publish.
+     */
+    void screenPublishPalette(Screen* screen, u16 first, u16 count);
+
+    /**
      * @brief Fades the screen to black
      *
      * @param screen The screen to fade
@@ -273,6 +285,26 @@ namespace NEONengine
                         WORD wWidth,
                         WORD wHeight,
                         UBYTE ubMinterm);
+
+    /**
+     * @brief Copies a region through @p pMsk, leaving masked-out pixels alone.
+     *
+     * The cookie-cut @ref screenBlitCopy cannot do: what the mask clears keeps
+     * whatever was underneath it. The mask is read with the source's own
+     * stride, so it has to carry its bits in every bitplane, which is how the
+     * exported mask bitmaps are built.
+     *
+     * Takes scene-space coordinates, as screenBlitCopy does.
+     */
+    void screenBlitMask(Screen* screen,
+                        tBitMap const* pSrc,
+                        WORD wSrcX,
+                        WORD wSrcY,
+                        WORD wDstX,
+                        WORD wDstY,
+                        WORD wWidth,
+                        WORD wHeight,
+                        UBYTE const* pMsk);
 
     void screenTextCopy(Screen* screen,
                         tTextBitMap* pTextBitMap,
