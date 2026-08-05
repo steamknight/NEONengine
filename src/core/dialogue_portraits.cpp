@@ -100,7 +100,11 @@ namespace NEONengine
          * or rather than an addition.
          *
          * Doing it once here rather than per blit is what lets the portrait be
-         * drawn with a plain cookie-cut, exactly as a bob's frames are.
+         * drawn with a plain cookie-cut, exactly as a bob's frames are. It
+         * belongs in the exporter, which has every fact it needs and already
+         * does this for bob strips - see issue 08. Until then the engine pays
+         * for it, in the Chip RAM the deeper copy takes and the time the rebuild
+         * costs as the box appears.
          *
          * @param source A portrait-sized bitmap, in any memory.
          * @param base   The palette index the artwork's index 0 becomes.
