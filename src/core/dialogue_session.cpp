@@ -2,23 +2,31 @@
 
 #include "types.h"
 
+#include "core/logger.h"
+
+NE_LOG_DOMAIN(Dialogue);
+
 namespace NEONengine
 {
     void dialogue_session::create(mtl::span<data::dialogue> dialogues,
         mtl::span<data::page> pages,
+        mtl::span<data::choice> choices,
         dialogue_bridge const* bridge) noexcept
     {
-        _dialogues  = dialogues;
-        _pages      = pages;
-        _bridge     = bridge;
-        _page_range = data::range{};
-        _current    = data::NO_ID;
+        _dialogues     = dialogues;
+        _pages         = pages;
+        _choices       = choices;
+        _bridge        = bridge;
+        _page_range    = data::range{};
+        _current       = data::NO_ID;
+        _choice_count  = 0;
     }
 
     bool dialogue_session::begin(u16 dialogue_id) noexcept
     {
-        _page_range = data::range{};
-        _current    = data::NO_ID;
+        _page_range   = data::range{};
+        _current      = data::NO_ID;
+        _choice_count = 0;
 
         if (dialogue_id >= _dialogues.size()) return false;
 
@@ -61,6 +69,36 @@ namespace NEONengine
         go_to(page->next_page_id);
     }
 
+    u16 dialogue_session::choice_index(u8 slot) const noexcept
+    {
+        if (slot >= _choice_count) return data::NO_ID;
+        return _available[slot];
+    }
+
+    data::choice const* dialogue_session::choice_at(u8 slot) const noexcept
+    {
+        if (slot >= _choice_count) return nullptr;
+        return &_choices[_available[slot]];
+    }
+
+    void dialogue_session::take_choice(u8 slot) noexcept
+    {
+        if (slot >= _choice_count) return;
+
+        u16 const choice_id  = _available[slot];
+        auto const& choice   = _choices[choice_id];
+
+        // Burnt before the destination is followed, so a choice pointing back at
+        // its own page finds itself already gone when that page is laid out
+        // again - which is what "ask about each topic, then leave" is built out
+        // of. Recorded whether or not the one-time bit is set, as a page's read
+        // bit is: taking it is the fact, and only availability cares about the
+        // bit.
+        if (_bridge && _bridge->mark_choice_taken) _bridge->mark_choice_taken(choice_id);
+
+        go_to(choice.goto_page_id);
+    }
+
     bool dialogue_session::is_own_page(u16 page_id) const noexcept
     {
         if (page_id == data::NO_ID) return false;
@@ -89,11 +127,65 @@ namespace NEONengine
         return true;
     }
 
+    bool dialogue_session::is_choice_available(u16 choice_id) const noexcept
+    {
+        auto const& choice = _choices[choice_id];
+
+        if ((choice.flags & data::CHOICE_FLAG_ENABLED) == 0) return false;
+
+        if (choice.check_flag_id != data::NO_ID && _bridge && _bridge->get_flag
+            && !_bridge->get_flag(choice.check_flag_id))
+        {
+            return false;
+        }
+
+        if ((choice.flags & data::CHOICE_FLAG_ONE_TIME) != 0 && _bridge && _bridge->is_choice_taken
+            && _bridge->is_choice_taken(choice_id))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    void dialogue_session::collect_choices() noexcept
+    {
+        _choice_count = 0;
+
+        auto const* page = current_page();
+        if (!page) return;
+
+        // A range running past the loaded choices is truncated to what is there,
+        // so a malformed pak costs the player a reply rather than a read off the
+        // end of the chunk.
+        u32 const start = page->choice_range.start;
+        if (start >= _choices.size()) return;
+
+        u32 end = start + page->choice_range.count;
+        if (end > _choices.size()) end = _choices.size();
+
+        for (u32 candidate = start; candidate < end; ++candidate)
+        {
+            if (!is_choice_available(to<u16>(candidate))) continue;
+
+            if (_choice_count >= MAX_CHOICES)
+            {
+                NE_LOG("page %hu offers more than %hhu choices; the rest are dropped",
+                    _current,
+                    MAX_CHOICES);
+                return;
+            }
+
+            _available[_choice_count++] = to<u16>(candidate);
+        }
+    }
+
     void dialogue_session::go_to(u16 page_id) noexcept
     {
         if (!is_own_page(page_id))
         {
-            _current = data::NO_ID;
+            _current      = data::NO_ID;
+            _choice_count = 0;
             return;
         }
 
@@ -107,9 +199,15 @@ namespace NEONengine
 
             _current = candidate;
             if (_bridge && _bridge->mark_page_read) _bridge->mark_page_read(candidate);
+
+            // After the page is on show, so what is offered is worked out from
+            // the burns this arrival has just made - a one-time choice taken on
+            // the way here is gone by the time the player sees the page again.
+            collect_choices();
             return;
         }
 
-        _current = data::NO_ID;
+        _current      = data::NO_ID;
+        _choice_count = 0;
     }
 }  // namespace NEONengine

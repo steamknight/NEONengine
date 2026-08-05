@@ -658,7 +658,10 @@ Portrait bitmap only updates if speaker changes from previous page.
 
 ### Persistence (Dialogue)
 
-Page and choice "read once" state tracked in separate bitfields, persisted in save game.
+Page and choice state is tracked in separate bitfields, persisted in save game. A
+page is **read** when it is displayed; a choice is **taken** when the player picks
+it, not when it is merely shown. A record marked one-time is burnt at that moment
+and is not available again.
 
 ---
 

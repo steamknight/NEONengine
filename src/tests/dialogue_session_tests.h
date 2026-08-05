@@ -25,6 +25,7 @@ namespace NEONengine
         enum class dlg_call_kind : u8
         {
             mark_page_read,
+            mark_choice_taken,
         };
 
         struct dlg_call
@@ -37,13 +38,15 @@ namespace NEONengine
         {
             static constexpr u8 MAX_CALLS = 32;
             static constexpr u16 MAX_PAGES = 64;
+            static constexpr u16 MAX_CHOICES = 64;
             static constexpr u16 MAX_FLAGS = 16;
 
             dlg_call calls[MAX_CALLS];
             u8 count;
 
-            /// What the engine would remember: one bit per page, one per flag.
+            /// What the engine would remember: one bit per page, choice and flag.
             bool page_read[MAX_PAGES];
+            bool choice_taken[MAX_CHOICES];
             bool flags[MAX_FLAGS];
 
             /// How many times the check flag of a page was asked for.
@@ -54,6 +57,7 @@ namespace NEONengine
                 count      = 0;
                 flag_reads = 0;
                 for (u16 i = 0; i < MAX_PAGES; ++i) page_read[i] = false;
+                for (u16 i = 0; i < MAX_CHOICES; ++i) choice_taken[i] = false;
                 for (u16 i = 0; i < MAX_FLAGS; ++i) flags[i] = false;
             }
 
@@ -78,6 +82,21 @@ namespace NEONengine
             return g_dlg_log.page_read[page_index];
         }
 
+        void dlg_mock_mark_choice_taken(u16 choice_index)
+        {
+            g_dlg_log.record(dlg_call_kind::mark_choice_taken, choice_index);
+            if (choice_index < dlg_mock_log::MAX_CHOICES)
+            {
+                g_dlg_log.choice_taken[choice_index] = true;
+            }
+        }
+
+        bool dlg_mock_is_choice_taken(u16 choice_index)
+        {
+            if (choice_index >= dlg_mock_log::MAX_CHOICES) return false;
+            return g_dlg_log.choice_taken[choice_index];
+        }
+
         bool dlg_mock_get_flag(u16 flag_id)
         {
             ++g_dlg_log.flag_reads;
@@ -86,9 +105,11 @@ namespace NEONengine
         }
 
         dialogue_bridge const g_dlg_mock_bridge = {
-            .mark_page_read = dlg_mock_mark_page_read,
-            .is_page_read   = dlg_mock_is_page_read,
-            .get_flag       = dlg_mock_get_flag,
+            .mark_page_read    = dlg_mock_mark_page_read,
+            .is_page_read      = dlg_mock_is_page_read,
+            .mark_choice_taken = dlg_mock_mark_choice_taken,
+            .is_choice_taken   = dlg_mock_is_choice_taken,
+            .get_flag          = dlg_mock_get_flag,
         };
 
         /// True when the pages read, in the order they were read, are @p expected.
@@ -99,6 +120,18 @@ namespace NEONengine
             {
                 if (g_dlg_log.calls[i].kind != dlg_call_kind::mark_page_read) return false;
                 if (g_dlg_log.calls[i].arg != expected[i]) return false;
+            }
+            return true;
+        }
+
+        /// True when every call the conversation made, in order, is @p expected.
+        bool calls_were(dlg_call const* expected, u8 expected_count)
+        {
+            if (g_dlg_log.count != expected_count) return false;
+            for (u8 i = 0; i < expected_count; ++i)
+            {
+                if (g_dlg_log.calls[i].kind != expected[i].kind) return false;
+                if (g_dlg_log.calls[i].arg != expected[i].arg) return false;
             }
             return true;
         }
@@ -142,6 +175,48 @@ namespace NEONengine
             return page;
         }
 
+        /// @p page offering the choices [@p start, @p start + @p count).
+        data::page with_choices(data::page page, u16 start, u16 count)
+        {
+            page.choice_range = data::range{ start, count };
+            return page;
+        }
+
+        /// A choice reading string @p text_string_id that leads to @p goto_page.
+        data::choice a_choice(u16 text_string_id, u16 goto_page)
+        {
+            data::choice choice{};
+            choice.text_string_id    = text_string_id;
+            choice.set_flag_id       = data::NO_ID;
+            choice.clear_flag_id     = data::NO_ID;
+            choice.check_flag_id     = data::NO_ID;
+            choice.goto_page_id      = goto_page;
+            choice.click_function_id = data::NO_ID;
+            choice.flags             = data::CHOICE_FLAG_ENABLED;
+            return choice;
+        }
+
+        /// @p choice with the authored enable bit its author never set.
+        data::choice disabled(data::choice choice)
+        {
+            choice.flags = to<u16>(choice.flags & ~data::CHOICE_FLAG_ENABLED);
+            return choice;
+        }
+
+        /// @p choice burnt by its one-time bit once it has been taken.
+        data::choice one_time(data::choice choice)
+        {
+            choice.flags = to<u16>(choice.flags | data::CHOICE_FLAG_ONE_TIME);
+            return choice;
+        }
+
+        /// @p choice offered only while flag @p flag_id is true.
+        data::choice gated_on(data::choice choice, u16 flag_id)
+        {
+            choice.check_flag_id = flag_id;
+            return choice;
+        }
+
         /// A dialogue over pages [@p start, @p start + @p count), entered at @p first.
         data::dialogue a_dialogue(u16 start, u16 count, u16 first)
         {
@@ -151,16 +226,19 @@ namespace NEONengine
             return dialogue;
         }
 
-        /// A session over @p dialogues and @p pages, wired to the mock bridge.
+        /// A session over @p dialogues, @p pages and @p choices, on the mock bridge.
         void wire(dialogue_session& session,
             data::dialogue const* dialogues,
             u32 dialogue_count,
             data::page const* pages,
-            u32 page_count)
+            u32 page_count,
+            data::choice const* choices = nullptr,
+            u32 choice_count            = 0)
         {
             g_dlg_log.reset();
             session.create(mtl::span<data::dialogue>(dialogues, dialogue_count),
                 mtl::span<data::page>(pages, page_count),
+                mtl::span<data::choice>(choices, choice_count),
                 &g_dlg_mock_bridge);
         }
     }  // namespace
@@ -733,6 +811,377 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Choices ─────────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_dialogue_page_authored_with_no_choices_offers_none)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { a_page(10, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 0, "a page written with no choices offers none");
+        TEST_ASSERT(session.choice_at(0) == nullptr, "and holds nothing in its first slot");
+        TEST_ASSERT(session.choice_index(0) == data::NO_ID, "which names no choice either");
+        TEST_SUCCESS;
+    }
+
+    /// Choices are addressed globally, as pages are: the page names a range into
+    /// the whole CHOC chunk, not into a list of its own.
+    TEST_IMPL(test_dialogue_offers_the_choices_its_page_names)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 1, 2),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1), a_choice(21, 1), a_choice(22, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 3);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 2, "both choices in the page's range are offered");
+        TEST_ASSERT(session.choice_index(0) == 1, "the first slot holds the range's first choice");
+        TEST_ASSERT(session.choice_index(1) == 2, "and the second the one after it");
+        TEST_ASSERT(session.choice_at(0)->text_string_id == 21,
+            "the record in a slot is the one that index names");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_never_offers_a_choice_its_author_disabled)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 2),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { disabled(a_choice(20, 1)), a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 1, "the disabled choice is not offered");
+        TEST_ASSERT(session.choice_index(0) == 1, "and the one after it takes the first slot");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_skips_a_choice_whose_check_flag_is_false)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 2),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { gated_on(a_choice(20, 1), 3), a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 1, "a choice gated on a false flag is not offered");
+        TEST_ASSERT(session.choice_index(0) == 1, "only the ungated one is");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_offers_a_gated_choice_once_its_flag_is_true)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 2),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { gated_on(a_choice(20, 1), 3), a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        g_dlg_log.flags[3] = true;
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 2, "the same choice is offered once its flag is true");
+        TEST_ASSERT(session.choice_index(0) == 0, "in the place it was authored in");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choice_with_no_check_flag_needs_no_flag)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 2),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1), a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 2, "a choice with no check flag is offered");
+        TEST_ASSERT(g_dlg_log.flag_reads == 0, "without the engine being asked about any flag");
+        TEST_SUCCESS;
+    }
+
+    /// Burning on display would retire the choice the first time the player laid
+    /// eyes on it, so it could never be picked.
+    TEST_IMPL(test_dialogue_showing_a_one_time_choice_does_not_burn_it)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, 1), 0, 1), a_page(11, 0) };
+        data::choice choices[] = { one_time(a_choice(20, 1)) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+        TEST_ASSERT(session.choice_count() == 1, "the one-time choice is offered on arrival");
+
+        session.advance();
+        session.advance();
+
+        TEST_ASSERT(session.current_page_index() == 0, "the conversation comes back to the page");
+        TEST_ASSERT(session.choice_count() == 1, "and the choice merely displayed is offered again");
+        u16 const expected[] = { 0, 1, 0 };
+        TEST_ASSERT(pages_read_were(expected, 3), "nothing was ever taken");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_burns_a_one_time_choice_when_it_is_taken)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, 1), 0, 1), a_page(11, 0) };
+        data::choice choices[] = { one_time(a_choice(20, 1)) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+
+        session.take_choice(0);
+        TEST_ASSERT(session.current_page_index() == 1, "taking it leads to the page it names");
+
+        session.advance();
+        TEST_ASSERT(session.current_page_index() == 0, "the conversation comes back to the page");
+        TEST_ASSERT(session.choice_count() == 0, "and the choice taken is gone on the next visit");
+        TEST_SUCCESS;
+    }
+
+    /// The bit is burnt before the destination is followed, so a choice pointing
+    /// at its own page finds itself already gone when that page is laid out.
+    TEST_IMPL(test_dialogue_marks_a_choice_taken_before_it_moves_on)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 1),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+
+        session.take_choice(0);
+
+        dlg_call const expected[] = { { dlg_call_kind::mark_page_read, 0 },
+            { dlg_call_kind::mark_choice_taken, 0 },
+            { dlg_call_kind::mark_page_read, 1 } };
+        TEST_ASSERT(calls_were(expected, 3),
+            "the choice is taken after its page was read and before the next one is");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_taking_a_choice_goes_to_the_page_it_names)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 2),
+            a_page(11, data::NO_ID),
+            a_page(12, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 2), a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3, choices, 2);
+        session.begin(0);
+
+        session.take_choice(1);
+
+        TEST_ASSERT(session.current_page_index() == 1,
+            "the destination is the one the chosen slot names, not the first");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choice_with_no_destination_ends_the_conversation)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, 1), 0, 1), a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+
+        session.take_choice(0);
+
+        TEST_ASSERT(session.has_ended(), "a goodbye ends the conversation");
+        TEST_ASSERT(session.choice_count() == 0, "and offers nothing further");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_choice_pointing_outside_the_dialogue_ends_it)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, 1), 0, 1),
+            a_page(11, data::NO_ID),
+            a_page(12, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 2) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3, choices, 1);
+        session.begin(0);
+
+        session.take_choice(0);
+
+        TEST_ASSERT(session.has_ended(),
+            "a destination outside the dialogue's pages ends the conversation");
+        TEST_SUCCESS;
+    }
+
+    /// How "ask about each topic, then leave" is written: one-time choices that
+    /// point back at their own page, burning away until none is left.
+    TEST_IMPL(test_dialogue_choice_pointing_at_its_own_page_returns_with_itself_gone)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, 1), 0, 2), a_page(11, data::NO_ID) };
+        data::choice choices[] = { one_time(a_choice(20, 0)), one_time(a_choice(21, 0)) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        session.take_choice(0);
+        TEST_ASSERT(session.current_page_index() == 0, "the page it points at is its own");
+        TEST_ASSERT(session.choice_count() == 1, "and the topic just asked about is gone");
+        TEST_ASSERT(session.choice_index(0) == 1, "leaving the one still unasked");
+
+        session.take_choice(0);
+        TEST_ASSERT(session.current_page_index() == 0, "the last topic returns to the page too");
+        TEST_ASSERT(session.choice_count() == 0, "with nothing left to ask");
+        TEST_SUCCESS;
+    }
+
+    /// A choice's destination obeys the same skip a next-page field does.
+    TEST_IMPL(test_dialogue_replaces_an_unavailable_choice_destination_by_index)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 3, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 1),
+            disabled(a_page(11, data::NO_ID)),
+            a_page(12, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 3, choices, 1);
+        session.begin(0);
+
+        session.take_choice(0);
+
+        TEST_ASSERT(session.current_page_index() == 2,
+            "an unavailable destination is replaced by the next available page");
+        TEST_SUCCESS;
+    }
+
+    /// What lets a character show the player out: a page whose every choice is
+    /// used up is a page with no choices, and advances on its own.
+    TEST_IMPL(test_dialogue_page_whose_choices_are_all_unavailable_falls_through)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, 1), 0, 2), a_page(11, data::NO_ID) };
+        data::choice choices[] = { disabled(a_choice(20, 0)), gated_on(a_choice(21, 0), 3) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 0, "a page with nothing available offers nothing");
+
+        session.advance();
+
+        TEST_ASSERT(session.current_page_index() == 1,
+            "and behaves exactly like a page written with no choices at all");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_taking_a_slot_past_the_end_does_nothing)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 1),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+
+        session.take_choice(1);
+        session.take_choice(200);
+
+        u16 const expected[] = { 0 };
+        TEST_ASSERT(session.current_page_index() == 0, "the conversation has not moved");
+        TEST_ASSERT(pages_read_were(expected, 1), "and nothing was taken");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_dialogue_that_has_ended_offers_no_choices)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 1, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 1) };
+        data::choice choices[] = { a_choice(20, data::NO_ID) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 1, choices, 1);
+        session.begin(0);
+        session.advance();
+
+        TEST_ASSERT(session.has_ended(), "the conversation is over");
+        TEST_ASSERT(session.choice_count() == 0, "so it offers nothing");
+
+        session.take_choice(0);
+        TEST_ASSERT(session.has_ended(), "and taking a choice after the end does nothing");
+        TEST_SUCCESS;
+    }
+
+    /// A range running past the loaded choices must not be read off the end.
+    TEST_IMPL(test_dialogue_choice_range_past_the_choices_is_truncated)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 1, 9),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { a_choice(20, 1), a_choice(21, 1) };
+
+        dialogue_session session;
+        wire(session, dialogues, 1, pages, 2, choices, 2);
+        session.begin(0);
+
+        TEST_ASSERT(session.choice_count() == 1, "only the choices that are there are offered");
+        TEST_ASSERT(session.choice_index(0) == 1, "and they are the ones the range reaches");
+        TEST_SUCCESS;
+    }
+
+    /// All three conditions on one choice: only the combination lets it through.
+    TEST_IMPL(test_dialogue_choice_availability_conditions_combine)
+    {
+        data::dialogue dialogues[] = { a_dialogue(0, 2, 0) };
+        data::page pages[] = { with_choices(a_page(10, data::NO_ID), 0, 1),
+            a_page(11, data::NO_ID) };
+        data::choice choices[] = { one_time(gated_on(a_choice(20, 1), 4)) };
+
+        dialogue_session session;
+
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        session.begin(0);
+        TEST_ASSERT(session.choice_count() == 0, "a false check flag alone keeps it off");
+
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        g_dlg_log.flags[4]        = true;
+        g_dlg_log.choice_taken[0] = true;
+        session.begin(0);
+        TEST_ASSERT(session.choice_count() == 0, "being already taken alone keeps it off");
+
+        wire(session, dialogues, 1, pages, 2, choices, 1);
+        g_dlg_log.flags[4] = true;
+        session.begin(0);
+        TEST_ASSERT(session.choice_count() == 1,
+            "enabled, flagged true and untaken together let it through");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(dialogue_session)
         TEST(test_dialogue_starts_ended)
         TEST(test_dialogue_opens_on_its_first_page)
@@ -769,6 +1218,26 @@ namespace NEONengine
         TEST(test_dialogue_with_every_page_unavailable_does_not_start)
         TEST(test_dialogue_greeting_variant_needs_no_extra_wiring)
         TEST(test_dialogue_availability_conditions_combine)
+
+        TEST(test_dialogue_page_authored_with_no_choices_offers_none)
+        TEST(test_dialogue_offers_the_choices_its_page_names)
+        TEST(test_dialogue_never_offers_a_choice_its_author_disabled)
+        TEST(test_dialogue_skips_a_choice_whose_check_flag_is_false)
+        TEST(test_dialogue_offers_a_gated_choice_once_its_flag_is_true)
+        TEST(test_dialogue_choice_with_no_check_flag_needs_no_flag)
+        TEST(test_dialogue_showing_a_one_time_choice_does_not_burn_it)
+        TEST(test_dialogue_burns_a_one_time_choice_when_it_is_taken)
+        TEST(test_dialogue_marks_a_choice_taken_before_it_moves_on)
+        TEST(test_dialogue_taking_a_choice_goes_to_the_page_it_names)
+        TEST(test_dialogue_choice_with_no_destination_ends_the_conversation)
+        TEST(test_dialogue_choice_pointing_outside_the_dialogue_ends_it)
+        TEST(test_dialogue_choice_pointing_at_its_own_page_returns_with_itself_gone)
+        TEST(test_dialogue_replaces_an_unavailable_choice_destination_by_index)
+        TEST(test_dialogue_page_whose_choices_are_all_unavailable_falls_through)
+        TEST(test_dialogue_taking_a_slot_past_the_end_does_nothing)
+        TEST(test_dialogue_that_has_ended_offers_no_choices)
+        TEST(test_dialogue_choice_range_past_the_choices_is_truncated)
+        TEST(test_dialogue_choice_availability_conditions_combine)
     TEST_SUITE_END
 }  // namespace NEONengine
 

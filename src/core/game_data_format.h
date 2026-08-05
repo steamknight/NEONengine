@@ -598,9 +598,15 @@ namespace NEONengine::data
         u16 check_flag_id;    ///< 6:  Check flag id, or 0xFFFF.
         u16 goto_page_id;     ///< 8:  Goto global PAGS id, or 0xFFFF.
         u16 click_function_id;///< 10: On-click FUNC id, or 0xFFFF.
-        u16 flags;            ///< 12: bit0 enabled; bit1 disable-after-read.
+        u16 flags;            ///< 12: bit0 enabled; bit1 disable-after-taken.
         u16 reserved0;        ///< 14: Reserved, zero.
     };
+
+    /// choice::flags bit 0: the author enabled this choice. Never changes at runtime.
+    constexpr u16 CHOICE_FLAG_ENABLED = 1 << 0;
+
+    /// choice::flags bit 1: the choice is burnt once it has been taken.
+    constexpr u16 CHOICE_FLAG_ONE_TIME = 1 << 1;
 
     static_assert(sizeof(choice) == 16, "choice must be exactly 16 bytes");
     static_assert(__builtin_offsetof(choice, goto_page_id) == 8, "goto_page_id must be at offset 8");

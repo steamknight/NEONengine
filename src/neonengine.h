@@ -45,6 +45,37 @@ namespace NEONengine
     /// Palette index a dialogue speaker's name uses, as a message caption does.
     constexpr u8 DIALOGUE_NAME_COLOR = MESSAGE_TEXT_COLOR;
 
+    /// Palette index a reply uses while the player is not about to pick it.
+    constexpr u8 DIALOGUE_CHOICE_COLOR = MESSAGE_TEXT_COLOR;
+
+    /// Palette index the reply about to be acted on uses.
+    constexpr u8 DIALOGUE_CHOICE_HIGHLIGHT_COLOR = 8;
+
+    /// How far a reply is indented past the page text, in pixels.
+    constexpr u16 DIALOGUE_CHOICE_INDENT = 8;
+
+    /// Gap between a reply's number and its text, in pixels.
+    constexpr u16 DIALOGUE_CHOICE_NUMBER_GAP = 4;
+
+    /// Gap between the page text and the first reply under it, in pixels.
+    constexpr u16 DIALOGUE_CHOICE_GAP = 6;
+
+    /// Gap between one reply and the next, in pixels.
+    constexpr u16 DIALOGUE_CHOICE_SPACING = 2;
+
+    /// Most replies one page can show, which is as many as the numbering allows.
+    constexpr u8 DIALOGUE_MAX_CHOICES_SHOWN = 9;
+
+    /**
+     * @brief How long a reply picked by its number is held highlighted, in frames.
+     *
+     * Long enough for the player to read what they picked before the
+     * conversation moves on, short enough not to feel like a stall. A reply
+     * picked with the mouse needs none of this: it was highlighted for as long
+     * as the pointer sat on it.
+     */
+    constexpr u8 DIALOGUE_CHOICE_HOLD_FRAMES = 12;
+
     /** @brief Where a message box sits on the screen. */
     enum class message_align : u8
     {

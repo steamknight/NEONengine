@@ -51,6 +51,55 @@ namespace NEONengine
         /// Who the portrait on screen belongs to, or NO_ID when nobody speaks.
         u16 s_speaker = data::NO_ID;
 
+        /// No reply: no slot is highlighted, or the pointer is over none.
+        constexpr u8 NO_CHOICE = 0xFF;
+
+        /**
+         * @brief The cursor a reply puts up.
+         *
+         * The engine's clickable role, reused rather than a hand of its own:
+         * the roles are a closed set matching the authored cursor sheet.
+         */
+        constexpr mouse_pointer CHOICE_CURSOR = mouse_pointer::USE;
+
+        /**
+         * @brief One reply as it stands on screen.
+         *
+         * The rendered text is kept rather than the string it came from, so
+         * moving the highlight costs one blit instead of laying the reply out
+         * again. Its rectangle is what the pointer is tested against, and runs
+         * the full width of the frame's contents so that a click beside a short
+         * reply still takes it.
+         */
+        struct drawn_choice
+        {
+            ace::text_bitmap_ptr number{ nullptr };  ///< "1.", "2.", and so on.
+            ace::text_bitmap_ptr text{ nullptr };    ///< What the reply says.
+
+            /// Which of the session's available choices this is.
+            u8 session_slot;
+
+            u16 x;       ///< Left edge of the number, in scene space.
+            u16 text_x;  ///< Left edge of the text, shared by every reply.
+            u16 y;
+            u16 width;
+            u16 height;
+        };
+
+        drawn_choice s_choices[DIALOGUE_MAX_CHOICES_SHOWN];
+
+        /// How many replies are on screen. Zero on a page that advances instead.
+        u8 s_choice_count = 0;
+
+        /// The reply about to be acted on, or NO_CHOICE when none is.
+        u8 s_highlight = NO_CHOICE;
+
+        /// Frames left of the pause that shows off a reply picked by its number.
+        u8 s_hold_frames = 0;
+
+        /// The reply that pause is showing off, taken when it runs out.
+        u8 s_pending = NO_CHOICE;
+
         /** @brief Who the page on show is spoken by, or NO_ID. */
         u16 current_speaker()
         {
@@ -113,6 +162,180 @@ namespace NEONengine
 
             s_portraitWidth  = 0;
             s_portraitHeight = 0;
+        }
+
+        /**
+         * @brief Drops the replies on screen, without erasing them.
+         *
+         * The frame they stand in is painted back separately, so this only lets
+         * go of what was rendered for them.
+         */
+        void forget_choices()
+        {
+            for (u8 slot = 0; slot < s_choice_count; ++slot)
+            {
+                s_choices[slot].number.reset(nullptr);
+                s_choices[slot].text.reset(nullptr);
+            }
+
+            s_choice_count = 0;
+            s_highlight    = NO_CHOICE;
+            s_hold_frames  = 0;
+            s_pending      = NO_CHOICE;
+        }
+
+        /** @brief Puts the reply in @p slot on screen in @p color. */
+        void draw_choice(u8 slot, u8 color)
+        {
+            auto& drawn = s_choices[slot];
+
+            if (drawn.number)
+            {
+                screenTextCopy(
+                    g_mainScreen, drawn.number.get(), drawn.x, drawn.y, color, FONT_COOKIE);
+            }
+
+            screenTextCopy(
+                g_mainScreen, drawn.text.get(), drawn.text_x, drawn.y, color, FONT_COOKIE);
+        }
+
+        /**
+         * @brief Moves the highlight to @p slot, or clears it with NO_CHOICE.
+         *
+         * Both replies are drawn again in their new colour rather than erased:
+         * the glyphs land on the same pixels either way, so the colour is all
+         * that changes.
+         */
+        void set_highlight(u8 slot)
+        {
+            if (slot == s_highlight) return;
+
+            if (s_highlight != NO_CHOICE) draw_choice(s_highlight, DIALOGUE_CHOICE_COLOR);
+            s_highlight = slot;
+            if (s_highlight != NO_CHOICE)
+            {
+                draw_choice(s_highlight, DIALOGUE_CHOICE_HIGHLIGHT_COLOR);
+            }
+        }
+
+        /** @brief Which reply the pointer stands on, or NO_CHOICE. */
+        u8 choice_under_pointer()
+        {
+            // Replies are laid out in scene space while the pointer reports
+            // display space, so the pointer is shifted rather than every reply.
+            auto const offset_y = screenGetOffset(g_mainScreen).y;
+            auto const pointerY = mouseGetY(MOUSE_PORT_1);
+            if (pointerY < offset_y) return NO_CHOICE;
+
+            u16 const x = to<u16>(mouseGetX(MOUSE_PORT_1));
+            u16 const y = to<u16>(pointerY - offset_y);
+
+            for (u8 slot = 0; slot < s_choice_count; ++slot)
+            {
+                auto const& drawn = s_choices[slot];
+                if (x < drawn.x || x >= drawn.x + drawn.width) continue;
+                if (y < drawn.y || y >= drawn.y + drawn.height) continue;
+                return slot;
+            }
+
+            return NO_CHOICE;
+        }
+
+        /**
+         * @brief Renders the replies the page offers and measures what they need.
+         *
+         * Nothing is put on screen yet: the frame has to be sized around them
+         * first, which is why this widens @p contentWidth when a reply is wider
+         * than the page text.
+         *
+         * A reply the string table has nothing for is dropped and the rest
+         * renumber, so every number the player can see belongs to a reply that
+         * is actually there.
+         *
+         * @return The height the replies add under the page text, zero for a
+         *         page that offers none - which is the page that advances on a
+         *         click instead.
+         */
+        u16 build_choices(text_renderer* renderer, u16 allowance, u16& contentWidth)
+        {
+            forget_choices();
+
+            u8 count = s_session.choice_count();
+            if (count == 0) return 0;
+
+            if (count > DIALOGUE_MAX_CHOICES_SHOWN)
+            {
+                // The numbering runs 1 to 9, and this ticket's pages fit on one
+                // screen; the rest wait for the choice sets that rotate.
+                NE_LOG("page %hu offers %hhu replies; showing the first %hhu",
+                    s_session.current_page_index(),
+                    count,
+                    DIALOGUE_MAX_CHOICES_SHOWN);
+                count = DIALOGUE_MAX_CHOICES_SHOWN;
+            }
+
+            // Every reply's text starts at the same column, so a number narrower
+            // than the widest still leaves the text beside it aligned - and a
+            // reply that wraps hangs under its own text rather than its number.
+            u16 numberWidth = 0;
+            for (u8 slot = 0; slot < count; ++slot)
+            {
+                char label[3]  = { to<char>('1' + slot), '.', '\0' };
+                auto measuring = renderer->create_text(label, allowance, text_justify::LEFT);
+                if (measuring && measuring->uwActualWidth > numberWidth)
+                {
+                    numberWidth = measuring->uwActualWidth;
+                }
+            }
+
+            u16 const column
+                = to<u16>(DIALOGUE_CHOICE_INDENT + numberWidth + DIALOGUE_CHOICE_NUMBER_GAP);
+            if (column >= allowance)
+            {
+                NE_LOG("no room beside the reply numbers; showing none");
+                return 0;
+            }
+
+            u16 const choiceAllowance = to<u16>(allowance - column);
+            u16 widest                = 0;
+            u16 height                = 0;
+
+            for (u8 slot = 0; slot < count; ++slot)
+            {
+                auto string
+                    = g_pEngine->strings().get_string(s_session.choice_at(slot)->text_string_id);
+                if (string.is_empty())
+                {
+                    NE_LOG("reply %hu has no text to show", s_session.choice_index(slot));
+                    continue;
+                }
+
+                auto text = renderer->create_text(string, choiceAllowance, text_justify::LEFT);
+                if (!text) continue;
+
+                auto& drawn        = s_choices[s_choice_count];
+                drawn.session_slot = slot;
+                drawn.height       = text->uwActualHeight;
+                drawn.text_x       = column;  // Made absolute once the frame is placed.
+                if (text->uwActualWidth > widest) widest = text->uwActualWidth;
+
+                // Numbered by where it is drawn, not by where the session holds
+                // it: a reply dropped for having no text takes its number with
+                // it, so what the player sees runs 1, 2, 3 with no gaps.
+                char label[3] = { to<char>('1' + s_choice_count), '.', '\0' };
+                drawn.number  = renderer->create_text(label, allowance, text_justify::LEFT);
+                drawn.text    = mtl::move(text);
+
+                if (s_choice_count) height = to<u16>(height + DIALOGUE_CHOICE_SPACING);
+                height = to<u16>(height + drawn.height);
+                ++s_choice_count;
+            }
+
+            if (s_choice_count == 0) return 0;
+
+            if (column + widest > contentWidth) contentWidth = to<u16>(column + widest);
+
+            return to<u16>(height + DIALOGUE_CHOICE_GAP);
         }
 
         /**
@@ -186,8 +409,13 @@ namespace NEONengine
             u16 const headingHeight
                 = heading ? to<u16>(heading->uwActualHeight + MESSAGE_CAPTION_GAP) : u16(0);
 
-            s_frameWidth  = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
-            s_frameHeight = to<u16>(headingHeight + text->uwActualHeight + MESSAGE_MARGIN * 2);
+            // Before the frame is sized: the replies live inside it, so what
+            // they need is part of what it has to hold.
+            u16 const choicesHeight = build_choices(renderer, allowance, contentWidth);
+
+            s_frameWidth = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
+            s_frameHeight = to<u16>(
+                headingHeight + text->uwActualHeight + choicesHeight + MESSAGE_MARGIN * 2);
 
             // The frame can only be drawn well at certain widths, so it takes one
             // of those and the text sits in the middle of whatever that leaves.
@@ -245,7 +473,61 @@ namespace NEONengine
                 DIALOGUE_TEXT_COLOR,
                 FONT_COOKIE);
 
+            // Under the page text, indented and numbered from 1. The rectangles
+            // are settled here rather than while measuring, because where the
+            // frame ended up is what puts them on the screen.
+            u16 choiceY = to<u16>(contentY + headingHeight + text->uwActualHeight
+                + DIALOGUE_CHOICE_GAP);
+            for (u8 slot = 0; slot < s_choice_count; ++slot)
+            {
+                auto& drawn  = s_choices[slot];
+                drawn.x      = to<u16>(contentX + DIALOGUE_CHOICE_INDENT);
+                drawn.text_x = to<u16>(contentX + drawn.text_x);
+                drawn.y      = choiceY;
+
+                // The whole width of the frame's contents, so a click beside a
+                // short reply still lands on it.
+                drawn.width = to<u16>(contentWidth - DIALOGUE_CHOICE_INDENT);
+
+                draw_choice(slot, DIALOGUE_CHOICE_COLOR);
+                choiceY = to<u16>(choiceY + drawn.height + DIALOGUE_CHOICE_SPACING);
+            }
+
             return true;
+        }
+
+        /**
+         * @brief Puts the page the conversation now stands on up, or closes the box.
+         *
+         * The way out of every navigation: whatever moved the conversation -
+         * advancing, or a reply being taken - the screen catches up the same
+         * way, and the box comes down when there is nothing left to show.
+         */
+        void show_current_page()
+        {
+            u16 const speaker      = current_speaker();
+            bool const new_speaker = speaker != s_speaker;
+            s_speaker              = speaker;
+
+            forget_choices();
+
+            // Both erased before either is drawn, so a frame that reclaims the
+            // portrait's column finds nothing of the old portrait under it, and
+            // a frame that shrinks leaves no part of the taller one behind.
+            erase_frame();
+            if (new_speaker) erase_portrait();
+
+            if (s_session.has_ended() || !draw_current_page(new_speaker))
+            {
+                statePop(g_gameStateManager);
+            }
+        }
+
+        /** @brief Takes the reply drawn in @p slot and shows where it leads. */
+        void take_choice(u8 slot)
+        {
+            s_session.take_choice(s_choices[slot].session_slot);
+            show_current_page();
         }
     }  // namespace
 
@@ -257,9 +539,11 @@ namespace NEONengine
         s_frameHeight    = 0;
         s_portraitWidth  = 0;
         s_portraitHeight = 0;
+        forget_choices();
 
         s_session.create(g_pEngine->data().dialogues(),
             g_pEngine->data().pages(),
+            g_pEngine->data().choices(),
             &engine_dialogue_bridge());
 
         if (!s_session.begin(dialogue_id))
@@ -289,8 +573,9 @@ namespace NEONengine
             return;
         }
 
-        // The pointer keeps its own role while the box is up, so nothing has to
-        // be put back on the way out.
+        // The pointer takes a role of its own while the box is up - the
+        // clickable one over a reply - so the scene's is put back on the way
+        // out.
         mousePointerUpdate();
 
         // The press that started the script that spoke is still unspent - the
@@ -302,34 +587,79 @@ namespace NEONengine
 
     void dialogueProcess(void)
     {
+        // The role the pointer shows is settled before the sprite moves: the
+        // move applies the role's own click offset, so a role changed after it
+        // would be a frame late.
+        if (s_hold_frames == 0)
+        {
+            u8 const hovered = s_choice_count ? choice_under_pointer() : NO_CHOICE;
+            set_highlight(hovered);
+            mousePointerSwitch(hovered == NO_CHOICE ? mouse_pointer::DEFAULT : CHOICE_CURSOR);
+        }
+
         // Nothing else runs while the box is up, so the sprite would sit where
         // it was until the box came down.
         mousePointerUpdate();
 
-        if (!mouseUse(MOUSE_PORT_1, MOUSE_LMB) && !keyUse(KEY_SPACE)) return;
-
-        s_session.advance();
-
-        u16 const speaker      = current_speaker();
-        bool const new_speaker = speaker != s_speaker;
-        s_speaker              = speaker;
-
-        // Both erased before either is drawn, so a frame that reclaims the
-        // portrait's column finds nothing of the old portrait under it, and a
-        // frame that shrinks leaves no part of the taller one behind.
-        erase_frame();
-        if (new_speaker) erase_portrait();
-
-        if (s_session.has_ended() || !draw_current_page(new_speaker))
+        if (s_hold_frames > 0)
         {
-            statePop(g_gameStateManager);
+            // The reply the player picked with the keyboard is being shown to
+            // them. Every press that arrives during it is spent rather than
+            // left for the next page to act on.
+            (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
+            (void)keyUse(KEY_SPACE);
+            for (u8 key = KEY_1; key < KEY_1 + DIALOGUE_MAX_CHOICES_SHOWN; ++key)
+            {
+                (void)keyUse(key);
+            }
+
+            if (--s_hold_frames > 0) return;
+
+            u8 const slot = s_pending;
+            s_pending     = NO_CHOICE;
+            take_choice(slot);
+            return;
+        }
+
+        // A page with nothing to pick - written with no replies, or with every
+        // one gated off or already taken - is what lets a character show the
+        // player out, so it advances on a click anywhere or on space.
+        if (s_choice_count == 0)
+        {
+            if (!mouseUse(MOUSE_PORT_1, MOUSE_LMB) && !keyUse(KEY_SPACE)) return;
+
+            s_session.advance();
+            show_current_page();
+            return;
+        }
+
+        for (u8 slot = 0; slot < s_choice_count; ++slot)
+        {
+            if (!keyUse(to<u8>(KEY_1 + slot))) continue;
+
+            // The highlight moves to what the number named before anything is
+            // done about it, so it always marks the reply about to be acted on.
+            set_highlight(slot);
+            s_pending     = slot;
+            s_hold_frames = DIALOGUE_CHOICE_HOLD_FRAMES;
+            return;
+        }
+
+        if (mouseUse(MOUSE_PORT_1, MOUSE_LMB) && s_highlight != NO_CHOICE)
+        {
+            take_choice(s_highlight);
         }
     }
 
     void dialogueDestroy(void)
     {
+        forget_choices();
         erase_frame();
         erase_portrait();
+
+        // The box put the clickable role up over a reply; the scene decides
+        // what the pointer shows from its own hotspots, and starts from here.
+        mousePointerSwitch(mouse_pointer::DEFAULT);
 
         // After the erase: it hands the palette band back to the scene's bobs,
         // and the pixels underneath have to be the scene's again by then.

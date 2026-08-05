@@ -43,11 +43,29 @@ namespace NEONengine
         bool (*is_page_read)(u16 page_index);
 
         /**
+         * @brief Records that the choice at global CHOC @p choice_index was taken.
+         *
+         * Called as a choice is taken - when the player picks it, not when it
+         * was merely put on screen. Burning it on display would retire the
+         * choice the first time the player laid eyes on it, so it could never
+         * be picked.
+         */
+        void (*mark_choice_taken)(u16 choice_index);
+
+        /**
+         * @brief Whether the choice at global CHOC @p choice_index was taken.
+         *
+         * Asked of every choice the page on show could offer, because a
+         * one-time choice that has been taken is no longer available.
+         */
+        bool (*is_choice_taken)(u16 choice_index);
+
+        /**
          * @brief The current value of game state flag @p flag_id.
          *
-         * Asked of a page's check flag before it is shown. Never asked for the
-         * no-flag sentinel: a page with no check flag is available on that
-         * count without the engine being consulted.
+         * Asked of a page's or a choice's check flag before it is offered.
+         * Never asked for the no-flag sentinel: a record with no check flag is
+         * available on that count without the engine being consulted.
          */
         bool (*get_flag)(u16 flag_id);
     };
