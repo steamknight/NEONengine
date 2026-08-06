@@ -5,11 +5,12 @@
  * What the player has done, as opposed to what the game data says. The engine
  * creates one at boot and holds it for as long as the playthrough lasts.
  *
- * This is declared the home for all persistent game state, but holds only two
- * things for now: which pages have been read and which choices have been taken.
- * Flags and values stay where the VM has them, because the VM borrows the
- * engine's buffers for its lifetime and moving them is not a change this can
- * make on its own.
+ * This is declared the home for all persistent game state, but holds only three
+ * things for now: which pages have been read, which choices have been taken,
+ * and how many of each authored inventory item the player owns. Flags and
+ * values stay where the VM has them, because the VM borrows the engine's
+ * buffers for its lifetime and moving them is not a change this can make on
+ * its own.
  *
  * Nothing writes any of this to disk. The save format is its own work.
  */
@@ -43,14 +44,14 @@ namespace NEONengine
         public:  //////////////////////////////////////////////////////////////////////////////////
 
         /**
-         * @brief Sizes the session for @p page_count pages and @p choice_count
-         *        choices, with nothing read and nothing taken.
+         * @brief Sizes the session for @p page_count pages, @p choice_count
+         *        choices and @p item_count inventory items, with all state clear.
          *
          * Sizing from the loaded game data means an index that came from a
          * record in that data is always addressable. Calling this again starts
          * the playthrough's memory over, which is what a new game wants.
          */
-        void create(u32 page_count, u32 choice_count);
+        void create(u32 page_count, u32 choice_count, u32 item_count = 0);
 
         /**
          * @brief Sizes the session from what @p data holds.
@@ -65,6 +66,9 @@ namespace NEONengine
 
         /** @brief How many choices this session can remember. */
         u32 choice_count() const noexcept { return m_choice_count; }
+
+        /** @brief How many inventory items this session can remember. */
+        u32 item_count() const noexcept { return m_item_count; }
 
         /**
          * @brief Whether the page at global @p index has been read.
@@ -92,6 +96,47 @@ namespace NEONengine
         /** @brief Records that the choice at global @p index has been taken. */
         void mark_choice_taken(u32 index) noexcept { set(m_choices_taken, m_choice_count, index); }
 
+        /** @brief Adds one of inventory item @p id, saturating at 65535. */
+        void add_item(u16 id) noexcept
+        {
+            if (!validate_item_id(id)) return;
+
+            u16& owned = m_item_counts[to<u32>(id)];
+            if (owned < 0xFFFFu) ++owned;
+        }
+
+        /** @brief Removes one of inventory item @p id, flooring at zero. */
+        void remove_item(u16 id) noexcept
+        {
+            if (!validate_item_id(id)) return;
+
+            u16& owned = m_item_counts[to<u32>(id)];
+            if (owned > 0) --owned;
+        }
+
+        /** @brief Whether inventory item @p id is currently owned. */
+        bool has(u16 id) const noexcept { return count(id) > 0; }
+
+        /** @brief Current owned count for inventory item @p id, or zero when unknown. */
+        u16 count(u16 id) const noexcept
+        {
+            if (!validate_item_id(id)) return 0;
+            return m_item_counts[to<u32>(id)];
+        }
+
+        /** @brief Sets inventory item @p id to zero owned. */
+        void clear_item(u16 id) noexcept
+        {
+            if (!validate_item_id(id)) return;
+            m_item_counts[to<u32>(id)] = 0;
+        }
+
+        using invalid_item_id_reporter = void (*)(u16 item_id);
+        void set_invalid_item_id_reporter(invalid_item_id_reporter reporter) noexcept
+        {
+            m_invalid_item_id_reporter = reporter;
+        }
+
         private:  /////////////////////////////////////////////////////////////////////////////////
 
         /** @brief Bytes needed to hold @p count bits. */
@@ -111,14 +156,36 @@ namespace NEONengine
             bits[index >> 3] |= to<u8>(1 << (index & 7));
         }
 
+        bool validate_item_id(u16 id) const noexcept
+        {
+            if (to<u32>(id) < m_item_count) return true;
+            report_invalid_item_id(id);
+            return false;
+        }
+
+        void report_invalid_item_id(u16 id) const noexcept
+        {
+#ifdef GAME_DEBUG
+            if (m_invalid_item_id_reporter) m_invalid_item_id_reporter(id);
+#else
+            (void)id;
+#endif
+        }
+
         /// One bit per page, in PAGS order: whether the player has read it.
         mtl::vector<u8> m_pages_read;
 
         /// One bit per choice, in CHOC order: whether the player has taken it.
         mtl::vector<u8> m_choices_taken;
 
+        /// One count per inventory item, in INVT order.
+        mtl::vector<u16> m_item_counts;
+
         u32 m_page_count{ 0 };    ///< Pages the bit array was sized for.
         u32 m_choice_count{ 0 };  ///< Choices the bit array was sized for.
+        u32 m_item_count{ 0 };    ///< Inventory items the count array was sized for.
+
+        invalid_item_id_reporter m_invalid_item_id_reporter{ nullptr };
     };
 }  // namespace NEONengine
 

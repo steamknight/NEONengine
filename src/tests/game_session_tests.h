@@ -13,13 +13,24 @@ namespace NEONengine
 {
     namespace
     {
-        /// A session sized for @p pages pages and @p choices choices.
-        game_session sized_session(u32 pages, u32 choices)
+        /// A session sized for @p pages pages, @p choices choices and @p items items.
+        game_session sized_session(u32 pages, u32 choices, u32 items = 0)
         {
             game_session session;
-            session.create(pages, choices);
+            session.create(pages, choices, items);
             return session;
         }
+
+#ifdef GAME_DEBUG
+        u16 s_last_invalid_item_id = 0;
+        u32 s_invalid_item_reports = 0;
+
+        void on_invalid_item_id(u16 item_id)
+        {
+            s_last_invalid_item_id = item_id;
+            ++s_invalid_item_reports;
+        }
+#endif
     }  // namespace
 
     // ── Creation ────────────────────────────────────────────────────────────────
@@ -235,6 +246,131 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── Inventory ───────────────────────────────────────────────────────────────
+
+    TEST_IMPL(test_session_inventory_starts_empty)
+    {
+        auto session = sized_session(0, 0, 6);
+
+        for (u16 id = 0; id < 6; ++id)
+        {
+            TEST_ASSERT(session.count(id) == 0, "every item should start at zero");
+            TEST_ASSERT(!session.has(id), "an item at zero should not be owned");
+        }
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_session_inventory_add_increments_one_item)
+    {
+        auto session = sized_session(0, 0, 4);
+
+        session.add_item(2);
+
+        TEST_ASSERT(session.count(2) == 1, "add should increment the addressed item");
+        TEST_ASSERT(session.has(2), "the addressed item should now be owned");
+        TEST_ASSERT(session.count(1) == 0, "other items should stay unchanged");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_session_inventory_add_saturates_at_u16_max)
+    {
+        auto session = sized_session(0, 0, 1);
+
+        for (u32 i = 0; i < 65535; ++i) session.add_item(0);
+        session.add_item(0);
+
+        TEST_ASSERT(session.count(0) == 65535, "add should cap at 65535");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_session_inventory_remove_decrements_one_item)
+    {
+        auto session = sized_session(0, 0, 3);
+        session.add_item(1);
+        session.add_item(1);
+
+        session.remove_item(1);
+
+        TEST_ASSERT(session.count(1) == 1, "remove should decrement the addressed item");
+        TEST_ASSERT(session.count(0) == 0, "other items should stay unchanged");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_session_inventory_remove_floors_at_zero)
+    {
+        auto session = sized_session(0, 0, 1);
+
+        session.remove_item(0);
+
+        TEST_ASSERT(session.count(0) == 0, "remove should not underflow below zero");
+        TEST_ASSERT(!session.has(0), "an item floored at zero should not be owned");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_session_inventory_clear_item_sets_count_to_zero)
+    {
+        auto session = sized_session(0, 0, 2);
+        session.add_item(1);
+        session.add_item(1);
+
+        session.clear_item(1);
+
+        TEST_ASSERT(session.count(1) == 0, "clear_item should reset that item to zero");
+        TEST_ASSERT(!session.has(1), "a cleared item should not be owned");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_session_inventory_out_of_range_is_safe_and_unchanged)
+    {
+        auto session = sized_session(0, 0, 3);
+        session.add_item(0);
+        session.add_item(2);
+
+        session.add_item(3);
+        session.remove_item(3);
+        session.clear_item(3);
+
+        TEST_ASSERT(!session.has(3), "an unknown item id should never be owned");
+        TEST_ASSERT(session.count(3) == 0, "an unknown item id should count as zero");
+        TEST_ASSERT(session.count(0) == 1, "out-of-range operations should not touch other items");
+        TEST_ASSERT(session.count(2) == 1, "out-of-range operations should not touch other items");
+        TEST_SUCCESS;
+    }
+
+#ifdef GAME_DEBUG
+    TEST_IMPL(test_session_inventory_reports_out_of_range_in_debug)
+    {
+        auto session = sized_session(0, 0, 2);
+        s_last_invalid_item_id = 0;
+        s_invalid_item_reports = 0;
+        session.set_invalid_item_id_reporter(on_invalid_item_id);
+
+        session.add_item(9);
+        session.remove_item(9);
+        session.clear_item(9);
+        (void)session.has(9);
+        (void)session.count(9);
+
+        TEST_ASSERT(s_invalid_item_reports == 5,
+            "every out-of-range inventory operation should report in debug");
+        TEST_ASSERT(s_last_invalid_item_id == 9, "the reported id should match the invalid call");
+        TEST_SUCCESS;
+    }
+#endif
+
+    TEST_IMPL(test_session_inventory_create_again_resets_counts)
+    {
+        auto session = sized_session(0, 0, 2);
+        session.add_item(0);
+        session.add_item(1);
+
+        session.create(0, 0, 2);
+
+        TEST_ASSERT(session.count(0) == 0, "creating again should clear item 0");
+        TEST_ASSERT(session.count(1) == 0, "creating again should clear item 1");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(game_session)
         TEST(test_session_starts_empty)
         TEST(test_session_takes_its_size_from_the_counts)
@@ -253,6 +389,18 @@ namespace NEONengine
         TEST(test_session_writing_past_the_end_changes_nothing)
         TEST(test_session_of_no_records_answers_everything_no)
         TEST(test_session_holds_the_last_index_of_a_ragged_size)
+
+        TEST(test_session_inventory_starts_empty)
+        TEST(test_session_inventory_add_increments_one_item)
+        TEST(test_session_inventory_add_saturates_at_u16_max)
+        TEST(test_session_inventory_remove_decrements_one_item)
+        TEST(test_session_inventory_remove_floors_at_zero)
+        TEST(test_session_inventory_clear_item_sets_count_to_zero)
+        TEST(test_session_inventory_out_of_range_is_safe_and_unchanged)
+#ifdef GAME_DEBUG
+        TEST(test_session_inventory_reports_out_of_range_in_debug)
+#endif
+        TEST(test_session_inventory_create_again_resets_counts)
     TEST_SUITE_END
 }  // namespace NEONengine
 
