@@ -367,8 +367,8 @@ Single-byte opcodes, no inline operands. Arguments in D0–D3 prior to call.
 | `INV_ADD` | D0=item | Add item |
 | `INV_REMOVE` | D0=item | Remove item |
 | `INV_HAS` | D0=item → Z | Has item (Z=0 = yes) |
-| `INV_COUNT` | → D0 | Get count |
-| `INV_CLEAR` | — | Clear all |
+| `INV_COUNT` | D0=item → D0=count | Get count for one item |
+| `INV_CLEAR` | D0=item | Clear one item |
 
 **Timeline:**
 

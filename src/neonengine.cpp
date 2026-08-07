@@ -140,6 +140,7 @@ namespace NEONengine
         // The playthrough's memory of what the player has read and taken, sized
         // from the data just loaded. Nothing reads or writes it yet.
         result->_session.create_from(*result->_pGameData);
+        result->_session.set_invalid_item_id_reporter(report_invalid_inventory_item_id);
 
         // Seed the runtime game-state buffers from the loaded initial state, then
         // build the one persistent script VM over them. FLAGS/VALUES are copied so

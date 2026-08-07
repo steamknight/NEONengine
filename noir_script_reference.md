@@ -472,8 +472,8 @@ scene runs them in.
 | 0x80 | INV_ADD | D0=item_id | `inv_add(d[0])` | Add item to inventory |
 | 0x81 | INV_REMOVE | D0=item_id | `inv_remove(d[0])` | Remove item |
 | 0x82 | INV_HAS | D0=item_id → Z | `inv_has(d[0])` | Test if has item; Z=0 = yes |
-| 0x83 | INV_COUNT | → D0 | `inv_count()` | Get inventory count |
-| 0x84 | INV_CLEAR | — | `inv_clear()` | Clear entire inventory |
+| 0x83 | INV_COUNT | D0=item_id → D0 | `inv_count(d[0])` | Get owned count for one item |
+| 0x84 | INV_CLEAR | D0=item_id | `inv_clear_item(d[0])` | Clear one item's owned count |
 | 0x85–0x8F | — | — | — | Reserved |
 
 ### Timeline (0x90–0x9F)

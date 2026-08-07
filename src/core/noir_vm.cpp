@@ -1153,9 +1153,9 @@ namespace NEONengine
 
             case INV_HAS: return call_flag(_bridge->inv_has, _current_session.d[0]);
 
-            case INV_COUNT: return call_result(_bridge->inv_count);
+            case INV_COUNT: return call_result(_bridge->inv_count, _current_session.d[0]);
 
-            case INV_CLEAR: return call(_bridge->inv_clear);
+            case INV_CLEAR: return call(_bridge->inv_clear_item, _current_session.d[0]);
 
             default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }

@@ -162,8 +162,8 @@ namespace NEONengine
         immediate<void(u16 item_id)> inv_add;
         immediate<void(u16 item_id)> inv_remove;
         immediate<bool(u16 item_id)> inv_has;  ///< true = has item
-        immediate<u16()> inv_count;
-        immediate<void()> inv_clear;
+        immediate<u16(u16 item_id)> inv_count;
+        immediate<void(u16 item_id)> inv_clear_item;
 
         // Scenes
         deferred_terminal<void(u16 scene_id)> goto_scene;

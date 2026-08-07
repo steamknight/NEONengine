@@ -20,6 +20,9 @@ namespace NEONengine
      * declares which calls those are.
      */
     noir_bridge const& engine_bridge() noexcept;
+
+    /// Reports an out-of-range inventory item id through the VM error channel.
+    void report_invalid_inventory_item_id(u16 item_id) noexcept;
 }  // namespace NEONengine
 
 #endif  // __NOIR_BRIDGE_H__INCLUDED__

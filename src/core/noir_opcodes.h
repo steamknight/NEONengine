@@ -106,8 +106,8 @@ namespace NEONengine
         constexpr u8 INV_ADD    = 0x80;  // D0=item_id
         constexpr u8 INV_REMOVE = 0x81;  // D0=item_id
         constexpr u8 INV_HAS    = 0x82;  // D0=item_id → Z
-        constexpr u8 INV_COUNT  = 0x83;  // → D0
-        constexpr u8 INV_CLEAR  = 0x84;
+        constexpr u8 INV_COUNT  = 0x83;  // D0=item_id → D0=count
+        constexpr u8 INV_CLEAR  = 0x84;  // D0=item_id
 
         // ── Game Calls — Timeline (0x90–0x9F) ──────────────────────────────────
 

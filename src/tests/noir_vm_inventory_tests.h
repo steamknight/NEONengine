@@ -5,10 +5,52 @@
 
 #include "types.h"
 
+#include "core/game_session.h"
 #include "tests/noir_vm_test_utils.h"
+
+#include <stdio.h>
 
 namespace NEONengine
 {
+    namespace
+    {
+        game_session s_session_bridge_inventory;
+
+        void session_bridge_inv_add(u16 item_id) { s_session_bridge_inventory.add_item(item_id); }
+        void session_bridge_inv_remove(u16 item_id) { s_session_bridge_inventory.remove_item(item_id); }
+        bool session_bridge_inv_has(u16 item_id) { return s_session_bridge_inventory.has(item_id); }
+        u16 session_bridge_inv_count(u16 item_id) { return s_session_bridge_inventory.count(item_id); }
+        void session_bridge_inv_clear_item(u16 item_id)
+        {
+            s_session_bridge_inventory.clear_item(item_id);
+        }
+
+#ifdef GAME_DEBUG
+        void session_bridge_report_invalid_item(u16 item_id)
+        {
+            char message[NOIR_ERROR_MESSAGE_SIZE];
+            snprintf(message, sizeof(message), "inventory item %hu is out of range", item_id);
+            mock_report_error(message);
+        }
+#endif
+
+        noir_bridge session_inventory_bridge(u32 item_count)
+        {
+            s_session_bridge_inventory.create(0, 0, item_count);
+#ifdef GAME_DEBUG
+            s_session_bridge_inventory.set_invalid_item_id_reporter(session_bridge_report_invalid_item);
+#endif
+
+            noir_bridge bridge = g_mock_bridge;
+            bridge.inv_add     = {session_bridge_inv_add};
+            bridge.inv_remove  = {session_bridge_inv_remove};
+            bridge.inv_has     = {session_bridge_inv_has};
+            bridge.inv_count   = {session_bridge_inv_count};
+            bridge.inv_clear_item = {session_bridge_inv_clear_item};
+            return bridge;
+        }
+    }  // namespace
+
     // ═════════════════════════════════════════════════════════════════════════════
     // Game Calls — Inventory opcodes (0x80–0x8F)
     //   INV_ADD, INV_REMOVE, INV_HAS, INV_COUNT, INV_CLEAR
@@ -19,8 +61,8 @@ namespace NEONengine
     // INV_ADD    (0x80): D0=item_id → bridge->inv_add(D0)
     // INV_REMOVE (0x81): D0=item_id → bridge->inv_remove(D0)
     // INV_HAS    (0x82): D0=item_id → bridge->inv_has(D0) → Z (Z=0=yes, Z=1=no)
-    // INV_COUNT  (0x83): bridge->inv_count() → D0
-    // INV_CLEAR  (0x84): bridge->inv_clear()
+    // INV_COUNT  (0x83): D0=item_id → bridge->inv_count(D0) → D0=count
+    // INV_CLEAR  (0x84): D0=item_id → bridge->inv_clear_item(D0)
     // 0x85–0x8F: Reserved → err_invalid_opcode
     //
     // SR:
@@ -534,9 +576,13 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_inv_count_basic)
     {
-        // bridge returns 5 → D0 = 5
+        // bridge->inv_count(12) returns 5 → D0 = 5
         bytecode_builder bc;
         u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(12);
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -547,15 +593,20 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 12, "inv_count queried item_id 12");
         TEST_ASSERT(vm.exit_code() == 5, "D0 = inv_count result (5)");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_inv_count_zero)
     {
-        // Empty inventory: bridge returns 0
+        // Empty inventory for item 2: bridge returns 0
         bytecode_builder bc;
         u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(2);
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -566,15 +617,20 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 2, "count queried item_id 2");
         TEST_ASSERT(vm.exit_code() == 0, "D0 = 0 (empty inventory)");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_inv_count_large)
     {
-        // Large count value
+        // Large count value for one item
         bytecode_builder bc;
         u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(77);
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -585,19 +641,20 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 77, "count queried item_id 77");
         TEST_ASSERT(vm.exit_code() == 1000, "D0 = 1000");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_inv_count_overwrites_d0)
     {
-        // D0 had a previous value — INV_COUNT should overwrite it
+        // D0 carries the item id in, then receives the count out.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(9999);
+        bc.emit_u16(9999);  // item id
 
         bc.emit(noir_op::INV_COUNT);
 
@@ -608,6 +665,7 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 9999, "count queried the incoming D0 item id");
         TEST_ASSERT(vm.exit_code() == 3, "D0 overwritten with count (3)");
         TEST_SUCCESS;
     }
@@ -630,6 +688,10 @@ namespace NEONengine
         bc.emit_mode(noir_mode::REG_D3, noir_mode::IMM16);
         bc.emit_u16(333);
 
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(88);
+
         bc.emit(noir_op::INV_COUNT);
 
         bc.emit(noir_op::RET);
@@ -639,6 +701,7 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 88, "count queried item_id from D0");
         TEST_ASSERT(vm.exit_code() == 7, "D0 = count");
         TEST_ASSERT(vm.reg_d(1) == 111, "D1 unchanged");
         TEST_ASSERT(vm.reg_d(2) == 222, "D2 unchanged");
@@ -654,7 +717,7 @@ namespace NEONengine
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(10);
+        bc.emit_u16(10);  // item id
 
         bc.emit(noir_op::CMP);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
@@ -670,15 +733,20 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 10, "count queried item_id 10");
         TEST_ASSERT((vm.sr() & noir_sr::Z) != 0, "Z preserved after INV_COUNT");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_inv_count_with_cmp)
     {
-        // Common pattern: INV_COUNT + CMP to check if inventory has enough items
+        // Common pattern: INV_COUNT + CMP to check if one item has enough copies
         bytecode_builder bc;
         u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(3);  // queried item id
 
         bc.emit(noir_op::INV_COUNT);  // D0 = 3
 
@@ -694,6 +762,7 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_count_query == 3, "count queried item_id 3");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N=1 (3 < 5)");
         TEST_ASSERT((vm.sr() & noir_sr::Z) == 0, "Z=0 (3 != 5)");
         TEST_SUCCESS;
@@ -706,6 +775,10 @@ namespace NEONengine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(9);
+
         bc.emit(noir_op::INV_CLEAR);
 
         bc.emit(noir_op::RET);
@@ -714,7 +787,8 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
-        TEST_ASSERT(g_mock_log.inv_cleared, "inv_clear called");
+        TEST_ASSERT(g_mock_log.inv_clear_called, "inv_clear_item called");
+        TEST_ASSERT(g_mock_log.inv_cleared_item_id == 9, "clear_item queried item_id 9");
         TEST_SUCCESS;
     }
 
@@ -726,7 +800,7 @@ namespace NEONengine
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
-        bc.emit_u16(10);
+        bc.emit_u16(10);  // item id
 
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
@@ -748,6 +822,7 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_cleared_item_id == 10, "clear_item queried item_id from D0");
         TEST_ASSERT(vm.exit_code() == 10, "D0 unchanged");
         TEST_ASSERT(vm.reg_d(1) == 20, "D1 unchanged");
         TEST_ASSERT(vm.reg_d(2) == 30, "D2 unchanged");
@@ -760,13 +835,18 @@ namespace NEONengine
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
-        // Set N=1: CMP 0, 100
+        // Set D0 to the queried item id.
         bc.emit(noir_op::MOV16);
         bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(4);
+
+        // Set N=1 using D1 so D0 keeps that item id.
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
         bc.emit_u16(0);
 
         bc.emit(noir_op::CMP);
-        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::IMM16);
         bc.emit_u16(100);
         // N=1, C=1
 
@@ -778,10 +858,70 @@ namespace NEONengine
         auto status = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(g_mock_log.inv_cleared_item_id == 4, "clear_item queried item_id 4");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N preserved after INV_CLEAR");
         TEST_ASSERT((vm.sr() & noir_sr::C) != 0, "C preserved after INV_CLEAR");
         TEST_SUCCESS;
     }
+
+    TEST_IMPL(test_noir_inventory_ops_use_session_store_bridge)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
+        bc.emit(noir_op::INV_ADD);
+        bc.emit(noir_op::INV_ADD);
+        bc.emit(noir_op::INV_HAS);
+        bc.emit(noir_op::INV_COUNT);
+        bc.emit(noir_op::INV_REMOVE);
+        bc.emit(noir_op::INV_CLEAR);
+        bc.emit(noir_op::RET);
+
+        auto bridge = session_inventory_bridge(3);
+        auto vm     = bc.build_vm(256, &bridge);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == 2, "INV_COUNT should return the per-item count");
+        TEST_ASSERT(s_session_bridge_inventory.count(1) == 0, "remove+clear should leave item 1 at zero");
+        TEST_SUCCESS;
+    }
+
+#ifdef GAME_DEBUG
+    TEST_IMPL(test_noir_inventory_out_of_range_reports_and_preserves_state)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(9);
+        bc.emit(noir_op::INV_ADD);
+        bc.emit(noir_op::INV_REMOVE);
+        bc.emit(noir_op::INV_HAS);
+        bc.emit(noir_op::INV_COUNT);
+        bc.emit(noir_op::INV_CLEAR);
+        bc.emit(noir_op::RET);
+
+        auto bridge = session_inventory_bridge(2);
+        s_session_bridge_inventory.add_item(0);
+
+        auto vm     = bc.build_vm(256, &bridge);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_result::completed, "out-of-range ids should not kill the session");
+        TEST_ASSERT(message_has("inventory item 9 is out of range"),
+            "invalid item id should report through the VM error channel");
+        TEST_ASSERT(s_session_bridge_inventory.count(0) == 1,
+            "out-of-range inventory opcodes should not change owned items");
+        TEST_ASSERT(s_session_bridge_inventory.count(1) == 0,
+            "out-of-range inventory opcodes should not touch other items");
+        TEST_SUCCESS;
+    }
+#endif
 
     // ── Combined patterns ───────────────────────────────────────────────────────
 
@@ -843,7 +983,7 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_inv_add_count_sequence)
     {
-        // Add several items, then count
+        // Add several items, then count one specific item id
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -857,6 +997,10 @@ namespace NEONengine
         bc.emit_u16(2);
         bc.emit(noir_op::INV_ADD);
 
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(2);  // query count for item 2
+
         bc.emit(noir_op::INV_COUNT);
 
         bc.emit(noir_op::RET);
@@ -867,15 +1011,20 @@ namespace NEONengine
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.inv_add_count == 2, "add called twice");
+        TEST_ASSERT(g_mock_log.inv_count_query == 2, "count queried item 2");
         TEST_ASSERT(vm.exit_code() == 2, "D0 = count (2)");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_noir_inv_clear_then_count)
     {
-        // Clear inventory, then count → 0
+        // Clear one item, then count that same item → 0
         bytecode_builder bc;
         u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(5);
 
         bc.emit(noir_op::INV_CLEAR);
 
@@ -888,7 +1037,9 @@ namespace NEONengine
         auto status                 = bc.run_to_completion(vm, fn);
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
-        TEST_ASSERT(g_mock_log.inv_cleared, "clear was called");
+        TEST_ASSERT(g_mock_log.inv_clear_called, "clear was called");
+        TEST_ASSERT(g_mock_log.inv_cleared_item_id == 5, "clear targeted item 5");
+        TEST_ASSERT(g_mock_log.inv_count_query == 5, "count queried item 5");
         TEST_ASSERT(vm.exit_code() == 0, "D0 = 0 after clear + count");
         TEST_SUCCESS;
     }
@@ -1025,6 +1176,10 @@ namespace NEONengine
     TEST(test_noir_inv_clear_basic)
     TEST(test_noir_inv_clear_preserves_regs)
     TEST(test_noir_inv_clear_preserves_sr)
+    TEST(test_noir_inventory_ops_use_session_store_bridge)
+#ifdef GAME_DEBUG
+    TEST(test_noir_inventory_out_of_range_reports_and_preserves_state)
+#endif
     // Combined patterns
     TEST(test_noir_inv_add_then_has)
     TEST(test_noir_inv_add_remove_sequence)

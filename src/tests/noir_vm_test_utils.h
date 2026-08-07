@@ -23,9 +23,11 @@ namespace NEONengine
         u16 inv_removed[16];
         u8 inv_add_count;
         u8 inv_remove_count;
-        bool inv_cleared;
+        bool inv_clear_called;
+        u16 inv_cleared_item_id;
         u16 inv_has_query;
         bool inv_has_result;
+        u16 inv_count_query;
         u16 inv_count_result;
 
         // Scene
@@ -85,9 +87,11 @@ namespace NEONengine
         {
             inv_add_count    = 0;
             inv_remove_count = 0;
-            inv_cleared      = false;
+            inv_clear_called = false;
+            inv_cleared_item_id = 0;
             inv_has_query    = 0;
             inv_has_result   = false;
+            inv_count_query  = 0;
             inv_count_result = 0;
 
             goto_scene_id     = 0;
@@ -155,13 +159,15 @@ namespace NEONengine
         g_mock_log.inv_has_query = id;
         return g_mock_log.inv_has_result;
     }
-    static u16 mock_inv_count()
+    static u16 mock_inv_count(u16 id)
     {
+        g_mock_log.inv_count_query = id;
         return g_mock_log.inv_count_result;
     }
-    static void mock_inv_clear()
+    static void mock_inv_clear_item(u16 id)
     {
-        g_mock_log.inv_cleared = true;
+        g_mock_log.inv_clear_called = true;
+        g_mock_log.inv_cleared_item_id = id;
     }
 
     static void mock_goto_scene(u16 id)
@@ -302,7 +308,7 @@ namespace NEONengine
         .inv_remove = {mock_inv_remove},
         .inv_has    = {mock_inv_has},
         .inv_count  = {mock_inv_count},
-        .inv_clear  = {mock_inv_clear},
+        .inv_clear_item = {mock_inv_clear_item},
 
         .goto_scene  = {mock_goto_scene},
         .get_scene   = {mock_get_scene},
