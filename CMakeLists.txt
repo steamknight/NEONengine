@@ -5,6 +5,40 @@ cmake_minimum_required(VERSION 3.14.0)
 # updates the cache but leaves the already-initialised flags on 68000.
 set(M68K_CPU "68020" CACHE STRING "Target CPU model" FORCE)
 
+# Pin binutils to the same toolchain as the compiler.
+if(TOOLCHAIN_PATH AND TOOLCHAIN_PREFIX)
+    file(TO_CMAKE_PATH "${TOOLCHAIN_PATH}" _NE_TOOLCHAIN_PATH)
+    set(_NE_TOOL_PREFIX "${_NE_TOOLCHAIN_PATH}/bin/${TOOLCHAIN_PREFIX}-")
+
+    if(CMAKE_HOST_WIN32)
+        set(_NE_TOOL_SUFFIX ".exe")
+    else()
+        set(_NE_TOOL_SUFFIX "")
+    endif()
+
+    # Only if this tree actually has the prefixed binutils next to the
+    # compiler, which is where Bartman's toolchain puts them.
+    if(EXISTS "${_NE_TOOL_PREFIX}ar${_NE_TOOL_SUFFIX}")
+        foreach(_ne_tool AR RANLIB NM OBJCOPY OBJDUMP STRIP READELF ADDR2LINE LINKER)
+            string(TOLOWER "${_ne_tool}" _ne_tool_lower)
+
+            if(_ne_tool STREQUAL "LINKER")
+                set(_ne_tool_lower "ld")
+            endif()
+
+            set(CMAKE_${_ne_tool} "${_NE_TOOL_PREFIX}${_ne_tool_lower}${_NE_TOOL_SUFFIX}"
+                CACHE FILEPATH "${_ne_tool_lower} from TOOLCHAIN_PATH" FORCE)
+        endforeach()
+
+        unset(_ne_tool)
+        unset(_ne_tool_lower)
+    endif()
+
+    unset(_NE_TOOLCHAIN_PATH)
+    unset(_NE_TOOL_PREFIX)
+    unset(_NE_TOOL_SUFFIX)
+endif()
+
 project(NEONengine VERSION 1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -58,6 +92,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msoft-float")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -msoft-float")
 
 set(ACE_TEST_RUNNER OFF CACHE BOOL "Enable the test runner")
+
 # ACE declares these with set(... CACHE BOOL ...) in cmake/ace_config.cmake,
 # which ignores a normal variable, so a plain set() here silently did nothing.
 # FORCE because the engine calls AGA-only ACE functions; it is not a choice.
@@ -76,6 +111,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 # it. It costs a 1KB opcode histogram and a count on every instruction, so a
 # release build turns it off.
 set(GAME_DEBUG ON CACHE BOOL "Enable NoirVM debug diagnostics")
+
 if(GAME_DEBUG)
     add_compile_definitions(GAME_DEBUG)
 endif()
@@ -90,6 +126,7 @@ endif()
 # this one keeps engine lines in an optimised build while ACE says nothing.
 # Off, every NE_LOG expands to nothing and its format string leaves the binary.
 set(NE_LOGGING ON CACHE BOOL "Enable NEONengine domain logging")
+
 if(NE_LOGGING)
     add_compile_definitions(NE_LOGGING)
 endif()
@@ -109,6 +146,7 @@ set(TARGET_NAME ${PROJECT_NAME_LOWER})
 # extension still does this, so tail calls stay off unless this points at a
 # build of github.com/BartmanAbyss/elf2hunk at 057526f or later.
 set(NE_ELF2HUNK "" CACHE FILEPATH "elf2hunk that leaves PC-relative relocations alone")
+
 if(NE_ELF2HUNK)
     set(ELF2HUNK "${NE_ELF2HUNK}")
 endif()
@@ -201,6 +239,7 @@ file(GLOB LANG_FILES RELATIVE ${RES_DIR} ${RES_DIR}/lang/*.noir)
 list(APPEND DATA_FILES ${LANG_FILES})
 
 set(COPIED_DATA_FILES "")
+
 foreach(rel IN LISTS DATA_FILES)
     add_custom_command(
         OUTPUT ${DATA_DIR}/${rel}
