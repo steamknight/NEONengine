@@ -129,6 +129,33 @@ namespace NEONengine
         }
 
         /**
+         * @brief Points DIALOGUE_TEXT_COLOR at what @p speaker_id speaks in.
+         *
+         * The entry is the conversation's alone, so it simply takes the
+         * speaker's authored color. A page with no speaker - or one whose
+         * speaker is unknown - takes the normal text color, which leaves a
+         * narrator's prose reading like any other message.
+         */
+        void apply_speaker_color(u16 speaker_id)
+        {
+            // AGA palette entries are ULONG; screenGetPalette() types the
+            // buffer as UWORD* for the ACE API, so index it with ULONG stride.
+            auto* palette = force_to<ULONG*>(screenGetPalette(g_mainScreen));
+
+            ULONG color = palette[MESSAGE_TEXT_COLOR];
+
+            auto const speakers = g_pEngine->data().speakers();
+            if (speaker_id != data::NO_ID && speaker_id < speakers.size())
+            {
+                // Authored 0xRRGGBB00; an AGA entry is 0x00RRGGBB.
+                color = to<ULONG>(speakers[speaker_id].dialogue_color >> 8);
+            }
+
+            palette[DIALOGUE_TEXT_COLOR] = color;
+            screenPublishPalette(g_mainScreen, DIALOGUE_TEXT_COLOR, 1);
+        }
+
+        /**
          * @brief Paints the frame's rectangle back to the scene behind it.
          *
          * The freeze held a buffer back with the scene as it was, so the frame
@@ -669,6 +696,8 @@ namespace NEONengine
             bool const new_speaker = speaker != s_speaker;
             s_speaker              = speaker;
 
+            if (new_speaker) apply_speaker_color(speaker);
+
             forget_slots();
 
             // Both erased before either is drawn, so a frame that reclaims the
@@ -750,6 +779,7 @@ namespace NEONengine
         screenFreezeDisplay(g_mainScreen);
 
         s_speaker = current_speaker();
+        apply_speaker_color(s_speaker);
 
         if (!draw_current_page(true))
         {
@@ -849,6 +879,7 @@ namespace NEONengine
         // and the pixels underneath have to be the scene's again by then.
         dialogue_portraits_unload();
         s_speaker = data::NO_ID;
+        apply_speaker_color(data::NO_ID);
 
         screenResumeDisplay(g_mainScreen);
 
