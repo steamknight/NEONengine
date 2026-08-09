@@ -39,8 +39,8 @@ namespace NEONengine
     /// Gap between the edge of the screen and the dialogue frame, in pixels.
     constexpr u16 DIALOGUE_MARGIN = 8;
 
-    /// Palette index a dialogue page's text uses.
-    constexpr u8 DIALOGUE_TEXT_COLOR = MESSAGE_TEXT_COLOR;
+    /// Palette index used for dialogue text. Changed to the speaker's color or the default text color when there's no speaker.
+    constexpr u8 DIALOGUE_TEXT_COLOR = 2;
 
     /// Palette index a dialogue speaker's name uses, as a message caption does.
     constexpr u8 DIALOGUE_NAME_COLOR = MESSAGE_TEXT_COLOR;
