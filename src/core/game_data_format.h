@@ -249,15 +249,16 @@ namespace NEONengine::data
     /**
      * @brief 'SPKR' element: a dialogue speaker's name and optional portrait.
      *
-     * A Collection element, 4 bytes.
+     * A Collection element, 8 bytes.
      */
     struct speaker
     {
         u16 name_string_id;     ///< 0: Display-name string id.
         u16 portrait_bitmap_id; ///< 2: Portrait BMPS id, or 0xFFFF.
+        u32 dialogue_color;     ///< 4: Dialogue text color, 0xRRGGBB00.
     };
 
-    static_assert(sizeof(speaker) == 4, "speaker must be exactly 4 bytes");
+    static_assert(sizeof(speaker) == 8, "speaker must be exactly 8 bytes");
 
     /**
      * @brief 'HOTS' element: a scene interaction region and its behavior.

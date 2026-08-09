@@ -142,7 +142,7 @@ namespace NEONengine
             // buffer as UWORD* for the ACE API, so index it with ULONG stride.
             auto* palette = force_to<ULONG*>(screenGetPalette(g_mainScreen));
 
-            ULONG color = palette[MESSAGE_TEXT_COLOR];
+            ULONG color = palette[DIALOGUE_TEXT_COLOR];
 
             auto const speakers = g_pEngine->data().speakers();
             if (speaker_id != data::NO_ID && speaker_id < speakers.size())

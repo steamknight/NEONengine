@@ -35,7 +35,8 @@ namespace NEONengine
         EN,
         IT,
         DE,
-        COUNT
+        COUNT,
+        NONE = 0xFFFFu,
     };
 
     /**

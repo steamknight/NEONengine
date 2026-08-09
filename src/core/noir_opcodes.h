@@ -1,9 +1,9 @@
 #ifndef __NOIR_OPCODES_H__INCLUDED__
 #define __NOIR_OPCODES_H__INCLUDED__
 
-#include "types.h"
-
 #include <stdint.h>
+
+#include "types.h"
 
 namespace NEONengine
 {
@@ -103,11 +103,12 @@ namespace NEONengine
         // ── Game Calls — Inventory (0x80–0x8F) ─────────────────────────────────
         // 1-byte opcodes, args in D0–D3.
 
-        constexpr u8 INV_ADD    = 0x80;  // D0=item_id
-        constexpr u8 INV_REMOVE = 0x81;  // D0=item_id
-        constexpr u8 INV_HAS    = 0x82;  // D0=item_id → Z
-        constexpr u8 INV_COUNT  = 0x83;  // D0=item_id → D0=count
-        constexpr u8 INV_CLEAR  = 0x84;  // D0=item_id
+        constexpr u8 INV_ADD      = 0x80;  // D0=item_id
+        constexpr u8 INV_REMOVE   = 0x81;  // D0=item_id
+        constexpr u8 INV_HAS      = 0x82;  // D0=item_id → Z
+        constexpr u8 INV_COUNT    = 0x83;  // D0=item_id → D0=count
+        constexpr u8 INV_CLEAR    = 0x84;  // D0=item_id
+        constexpr u8 INV_SELECTED = 0x85;  // → D0=selected item_id, 0xFFFF if none
 
         // ── Game Calls — Timeline (0x90–0x9F) ──────────────────────────────────
 

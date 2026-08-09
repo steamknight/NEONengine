@@ -1,17 +1,18 @@
 #include "core/noir_bridge.h"
 
-#include "types.h"
-
 #include "neonengine.h"
+
+#include <stdio.h>
+
+#include <mtl/utility.h>
+
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/scene_hotspots.h"
 #include "core/scene_timeline.h"
 #include "core/screen.h"
 #include "core/string_table.h"
-
-#include <mtl/utility.h>
-#include <stdio.h>
+#include "types.h"
 
 NE_LOG_DOMAIN(Script);
 
@@ -105,6 +106,10 @@ namespace NEONengine
         {
             if (g_pEngine) g_pEngine->session().clear_item(item_id);
         }
+        u16 nb_inv_selected_item()
+        {
+            return g_pEngine ? g_pEngine->session().get_selected_inventory_item() : data::NO_ID;
+        }
 
         // ── Dialogue / Audio ─────────────────────────────────────────────────
         void nb_say(u16 string_id, u16)
@@ -142,8 +147,7 @@ namespace NEONengine
                 return;
             }
 
-            NE_LOG("SET_LANG %hu ('%s') requested", lang,
-                language_code(to<language>(lang)));
+            NE_LOG("SET_LANG %hu ('%s') requested", lang, language_code(to<language>(lang)));
             if (g_pEngine) g_pEngine->request_language(to<language>(lang));
         }
         void nb_save_game(u16 slot)
@@ -172,45 +176,46 @@ namespace NEONengine
 #endif
 
         noir_bridge const g_engine_bridge = {
-            .inv_add    = {nb_inv_add},
-            .inv_remove = {nb_inv_remove},
-            .inv_has    = {nb_inv_has},
-            .inv_count  = {nb_inv_count},
-            .inv_clear_item = {nb_inv_clear_item},
+            .inv_add           = { nb_inv_add },
+            .inv_remove        = { nb_inv_remove },
+            .inv_has           = { nb_inv_has },
+            .inv_count         = { nb_inv_count },
+            .inv_clear_item    = { nb_inv_clear_item },
+            .inv_selected_item = { nb_inv_selected_item },
 
-            .goto_scene  = {nb_goto_scene},
-            .get_scene   = {nb_get_scene},
-            .hotspot_on  = {nb_hotspot_on},
-            .hotspot_off = {nb_hotspot_off},
-            .set_pointer = {nb_set_pointer},
+            .goto_scene  = { nb_goto_scene },
+            .get_scene   = { nb_get_scene },
+            .hotspot_on  = { nb_hotspot_on },
+            .hotspot_off = { nb_hotspot_off },
+            .set_pointer = { nb_set_pointer },
 
-            .say         = {nb_say},
-            .show_dialog = {nb_show_dialog},
-            .show_text   = {nb_show_text},
-            .clear_text  = {nb_clear_text},
+            .say         = { nb_say },
+            .show_dialog = { nb_show_dialog },
+            .show_text   = { nb_show_text },
+            .clear_text  = { nb_clear_text },
 
-            .play_music = {nb_play_music},
-            .stop_music = {nb_stop_music},
-            .play_sfx   = {nb_play_sfx},
+            .play_music = { nb_play_music },
+            .stop_music = { nb_stop_music },
+            .play_sfx   = { nb_play_sfx },
 
-            .fade_out     = {nb_fade_out},
-            .fade_in      = {nb_fade_in},
-            .screen_clear = {nb_screen_clear},
+            .fade_out     = { nb_fade_out },
+            .fade_in      = { nb_fade_in },
+            .screen_clear = { nb_screen_clear },
 
-            .anim_play = {nb_anim_play},
-            .anim_stop = {nb_anim_stop},
+            .anim_play = { nb_anim_play },
+            .anim_stop = { nb_anim_stop },
 
-            .set_lang  = {nb_set_lang},
-            .save_game = {nb_save_game},
-            .load_game = {nb_load_game},
-            .new_game  = {nb_new_game},
-            .quit_game = {nb_quit_game},
+            .set_lang  = { nb_set_lang },
+            .save_game = { nb_save_game },
+            .load_game = { nb_load_game },
+            .new_game  = { nb_new_game },
+            .quit_game = { nb_quit_game },
 
             .report_error = nb_report_error,
 
 #ifdef GAME_DEBUG
-            .debug_log   = {nb_debug_log},
-            .debug_print = {nb_debug_print},
+            .debug_log   = { nb_debug_log },
+            .debug_print = { nb_debug_print },
 #endif
         };
     }  // namespace

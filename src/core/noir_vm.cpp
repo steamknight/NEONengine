@@ -1157,6 +1157,8 @@ namespace NEONengine
 
             case INV_CLEAR: return call(_bridge->inv_clear_item, _current_session.d[0]);
 
+            case INV_SELECTED: return call_result(_bridge->inv_selected_item);
+
             default: return fail(noir_error::invalid_opcode, "unknown opcode 0x%02X", op);
         }
     }

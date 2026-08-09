@@ -1,8 +1,6 @@
 #ifndef __NOIR_VM_H__INCLUDED__
 #define __NOIR_VM_H__INCLUDED__
 
-#include "types.h"
-
 #include <stdint.h>
 
 #include <ace/types.h>
@@ -11,6 +9,7 @@
 #include "mtl/memory.h"
 #include "mtl/utility.h"
 #include "mtl/vector.h"
+#include "types.h"
 
 namespace NEONengine
 {
@@ -93,7 +92,6 @@ namespace NEONengine
         terminated,  ///< A terminal call ran; nothing runs until reset_execution()
     };
 
-
     // ─── Debug statistics ───────────────────────────────────────────────────────
 
 #ifdef GAME_DEBUG
@@ -102,8 +100,8 @@ namespace NEONengine
      */
     struct noir_debug_stats
     {
-        u32 max_stack_used;    ///< Most stack any one session has used, in bytes
-        u16 max_stack_script;  ///< The script that used it
+        u32 max_stack_used;         ///< Most stack any one session has used, in bytes
+        u16 max_stack_script;       ///< The script that used it
         u32 opcode_histogram[256];  ///< Execution count per opcode
 
         /// Number of consecutive frames that ran out of frame budget. Back to 0 when one
@@ -164,6 +162,7 @@ namespace NEONengine
         immediate<bool(u16 item_id)> inv_has;  ///< true = has item
         immediate<u16(u16 item_id)> inv_count;
         immediate<void(u16 item_id)> inv_clear_item;
+        immediate<u16()> inv_selected_item;  ///< item id or 0xFFFF if none selected
 
         // Scenes
         deferred_terminal<void(u16 scene_id)> goto_scene;
@@ -610,8 +609,7 @@ namespace NEONengine
         /// True while a session can still be given instructions.
         static bool session_live(noir_session const& s) noexcept
         {
-            return s.state == noir_session_state::running
-                || s.state == noir_session_state::waiting;
+            return s.state == noir_session_state::running || s.state == noir_session_state::waiting;
         }
 
         /// Lowest stack slot no live session holds.
@@ -633,13 +631,13 @@ namespace NEONengine
         /// What one walk did, for report_saturation().
         struct walk_tally
         {
-            u16 live{0};       ///< Sessions running or waiting out a WAIT
-            u16 ready{0};      ///< Of those, the ones the walk could run
-            u16 ran_fully{0};  ///< Ready sessions given everything they asked for
-            u16 cut_short{0};  ///< Ready sessions given less, the frame having run out
+            u16 live{ 0 };       ///< Sessions running or waiting out a WAIT
+            u16 ready{ 0 };      ///< Of those, the ones the walk could run
+            u16 ran_fully{ 0 };  ///< Ready sessions given everything they asked for
+            u16 cut_short{ 0 };  ///< Ready sessions given less, the frame having run out
 
             /// The walk ended on an empty frame budget rather than a deferred call.
-            bool frame_ran_out{false};
+            bool frame_ran_out{ false };
         };
 
         /**
@@ -685,9 +683,9 @@ namespace NEONengine
         // ── Owned memory ─────────────────────────────────────────────────────
 
         mtl::vector<u8, mtl::MemF::Fast> _stack;
-        u8* _stack_base{nullptr};  ///< Base of the running session's stack
-        u16 _stack_bytes;          ///< Size of one session's stack
-        u16 _stack_slots;          ///< Stacks the allocation currently holds
+        u8* _stack_base{ nullptr };  ///< Base of the running session's stack
+        u16 _stack_bytes;            ///< Size of one session's stack
+        u16 _stack_slots;            ///< Stacks the allocation currently holds
 
         // ── The run list ─────────────────────────────────────────────────────
 
@@ -700,31 +698,31 @@ namespace NEONengine
         // ── Execution state ──────────────────────────────────────────────────
 
         /// Instructions one session may run in one frame.
-        u16 _session_budget{NOIR_SESSION_BUDGET};
+        u16 _session_budget{ NOIR_SESSION_BUDGET };
 
         /// Instructions all sessions together may run in one frame.
-        u16 _frame_budget{NOIR_FRAME_BUDGET};
+        u16 _frame_budget{ NOIR_FRAME_BUDGET };
 
         /// Instructions one execute_now run may spend.
-        u16 _immediate_cap{NOIR_IMMEDIATE_CAP};
+        u16 _immediate_cap{ NOIR_IMMEDIATE_CAP };
 
-        u16 _rotation{0};  ///< Run list position the next update starts at
+        u16 _rotation{ 0 };  ///< Run list position the next update starts at
 
-        run_mode _run_mode{run_mode::idle};              ///< What the VM is running
-        noir_vm_state _vm_state{noir_vm_state::ok};      ///< How this update ended, or the latch
+        run_mode _run_mode{ run_mode::idle };          ///< What the VM is running
+        noir_vm_state _vm_state{ noir_vm_state::ok };  ///< How this update ended, or the latch
 
         // ── Result ───────────────────────────────────────────────────────────
 
-        u16 _exit_code{0};
+        u16 _exit_code{ 0 };
 
         /// Why the last session died. update(), execute() and execute_now()
         /// report it.
-        noir_error _last_error{noir_error::none};
+        noir_error _last_error{ noir_error::none };
 
         // ── Cached destination for read-modify-write opcodes ─────────────────
 
-        u8 _cached_dst_mode{0};    ///< Mode of last read_operand_cached() call
-        u16 _cached_dst_param{0};  ///< Inline param (offset or index) from that call
+        u8 _cached_dst_mode{ 0 };    ///< Mode of last read_operand_cached() call
+        u16 _cached_dst_param{ 0 };  ///< Inline param (offset or index) from that call
 
         // ── Debug stats ──────────────────────────────────────────────────────
 

@@ -153,20 +153,13 @@ namespace NEONengine
             result->_flags.data()[i] = initialFlags[i];
         }
 
-        auto const initialValues = result->_pGameData->initial_values();
-        result->_values.resize(initialValues.size());
-        for (u32 i = 0; i < initialValues.size(); ++i)
-        {
-            result->_values.data()[i] = to<u16>(initialValues[i]);
-        }
-
         auto const scripts   = result->_pGameData->scripts();
         auto const functions = result->_pGameData->function_offsets();
         result->_vm          = noir_vm_ptr(new (mtl::MemF::Fast) noir_vm(  //
             result->_flags.data(),
             to<u16>(result->_flags.size()),
-            result->_values.data(),
-            to<u16>(result->_values.size()),
+            result->_session.get_values().data(),
+            to<u16>(result->_session.get_values().size()),
             scripts.data(),
             scripts.size(),
             functions.data(),
@@ -177,7 +170,7 @@ namespace NEONengine
             to<ULONG>(scripts.size()),
             to<UWORD>(functions.size()),
             to<UWORD>(result->_flags.size()),
-            to<UWORD>(result->_values.size()));
+            to<UWORD>(result->_session.get_values().size()));
 
         return result;
     }

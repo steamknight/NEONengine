@@ -371,8 +371,8 @@ namespace NEONengine
             auto const request = g_pEngine->take_pending_modal();
 
             auto fade_frames = [&] {
-                u16 const frames = request.a ? request.a
-                                             : g_pEngine->data().config().default_fade_frames;
+                u16 const frames = request.arg1 ? request.arg1
+                                                : g_pEngine->data().config().default_fade_frames;
                 return to<UBYTE>(frames > 255 ? 255 : frames);
             };
 
@@ -394,7 +394,7 @@ namespace NEONengine
                     // run - least of all the VM, whose parked session would
                     // otherwise resume past SHOW_DIALOG before a word was read.
                     s_modal = request;
-                    g_pEngine->request_dialogue(request.a);
+                    g_pEngine->request_dialogue(request.arg1);
                     return;
 
                 case modal_kind::none: return;
@@ -412,14 +412,14 @@ namespace NEONengine
         {
             switch (request.kind)
             {
-                case system_kind::load_scene: load_scene(request.a); return;
+                case system_kind::load_scene: load_scene(request.arg1); return;
 
                 case system_kind::save_game:
-                    NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.a);
+                    NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.arg1);
                     return;
 
                 case system_kind::load_game:
-                    NE_LOG("LOAD_GAME slot %hu: no save format yet", request.a);
+                    NE_LOG("LOAD_GAME slot %hu: no save format yet", request.arg1);
                     return;
 
                 case system_kind::new_game: NE_LOG("NEW_GAME: nothing to start yet"); return;

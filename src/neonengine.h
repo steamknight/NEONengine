@@ -34,12 +34,13 @@ namespace NEONengine
     constexpr u8 MESSAGE_TEXT_COLOR = 1;
 
     /// Palette index a dead script's report uses.
-    constexpr u8 MESSAGE_ERROR_COLOR = 2;
+    constexpr u8 MESSAGE_ERROR_COLOR = 3;
 
     /// Gap between the edge of the screen and the dialogue frame, in pixels.
     constexpr u16 DIALOGUE_MARGIN = 8;
 
     /// Palette index used for dialogue text. Changed to the speaker's color or the default text color when there's no speaker.
+
     constexpr u8 DIALOGUE_TEXT_COLOR = 2;
 
     /// Palette index a dialogue speaker's name uses, as a message caption does.
@@ -123,8 +124,8 @@ namespace NEONengine
     struct modal_request
     {
         modal_kind kind{ modal_kind::none };
-        u16 a{ 0 };
-        u16 b{ 0 };
+        u16 arg1{ 0 };
+        u16 arg2{ 0 };
     };
 
     /**
@@ -149,7 +150,7 @@ namespace NEONengine
     struct system_request
     {
         system_kind kind{ system_kind::none };
-        u16 a{ 0 };
+        u16 arg1{ 0 };
     };
 
     class engine;
@@ -251,9 +252,9 @@ namespace NEONengine
          * outright or drains the frame pool, so nothing runs to record a second
          * before the scene has answered this one.
          */
-        void request_system(system_kind kind, u16 a = 0) noexcept
+        void request_system(system_kind kind, u16 arg1 = 0) noexcept
         {
-            _pending_system = system_request{ kind, a };
+            _pending_system = system_request{ kind, arg1 };
         }
 
         /** @brief True when something has asked for a system change. */
@@ -282,18 +283,18 @@ namespace NEONengine
          */
         void request_language(language lang) noexcept
         {
-            _pending_language     = lang;
-            _has_pending_language = true;
+            _pending_language = lang;
         }
 
         /** @brief True when a script has requested a language change. */
-        bool has_pending_language() const noexcept { return _has_pending_language; }
+        bool has_pending_language() const noexcept { return _pending_language != language::NONE; }
 
         /** @brief Consume the pending language request, clearing it. */
         language take_pending_language() noexcept
         {
-            _has_pending_language = false;
-            return _pending_language;
+            language const taken = _pending_language;
+            _pending_language = language::NONE;
+            return taken;
         }
 
         /**
@@ -303,9 +304,9 @@ namespace NEONengine
          * no session runs again until the scene has put the modal up and taken
          * it down. One slot is enough: nothing else runs to record a second.
          */
-        void request_modal(modal_kind kind, u16 a, u16 b = 0) noexcept
+        void request_modal(modal_kind kind, u16 arg1, u16 arg2 = 0) noexcept
         {
-            _pending_modal = modal_request{ kind, a, b };
+            _pending_modal = modal_request{ kind, arg1, arg2 };
         }
 
         /** @brief True when a script has requested a modal. */
@@ -382,36 +383,30 @@ namespace NEONengine
         static result initialize();
 
         private:  //////////////////////////////////////////////////////////////////////////////////
-        game_data_ptr _pGameData{
-            nullptr
-        };  ///< The one loaded .neon, owned for the process lifetime.
-        ace::font_ptr _pUiFont{
-            nullptr
-        };  ///< The UI font, loaded from the pak via UIST; the engine's font.
-        text_renderer_ptr _pTextRenderer{ nullptr };
-        mtl::unique_ptr<nine_patch> _pNinePatch{ nullptr };  ///< The UI frame, from UIST.
-        string_table_ptr _pStrings{
-            nullptr
-        };  ///< The active language's strings, swapped by set_language.
 
-        game_session _session{};     ///< This playthrough's record of what the player has done.
-        noir_vm_ptr _vm{ nullptr };  ///< The one persistent script VM, over the buffers below.
-        mtl::vector<u8> _flags;      ///< Runtime game flags, seeded from FLGS (mutable, savable).
-        mtl::vector<u16> _values;    ///< Runtime game values, seeded from VALS (mutable, savable).
-        language _pending_language{
-            language::EN
-        };  ///< Language requested by a script, awaiting a swap.
-        bool _has_pending_language{ false };
-        modal_request _pending_modal{};  ///< Modal requested by a script, awaiting the next frame.
-        system_request _pending_system{};  ///< Scene change, save or new game, awaiting the next frame.
+        game_data_ptr                   _pGameData{ nullptr };
+        ace::font_ptr                   _pUiFont{ nullptr };
+        text_renderer_ptr               _pTextRenderer{ nullptr };
+        mtl::unique_ptr<nine_patch>     _pNinePatch{ nullptr };
+        string_table_ptr                _pStrings{ nullptr };
+        noir_vm_ptr                     _vm{ nullptr };
 
-        /// Box of text awaiting the next frame. Its text is empty when there is none.
-        message_request _pending_message{};
+        // Current game session, overwriten on new/save/load game.
+        game_session                    _session{};
 
-        u16 _pending_dialogue{ 0 };          ///< Dialogue awaiting the next frame.
+        // TODO: Move in to game session, and have the VM borrow it from there. 
+        mtl::vector<u8>                 _flags;
+
+        // Language requested by a script, awaiting a swap.
+        language                        _pending_language{ language::NONE };
+
+        modal_request                   _pending_modal{};
+        system_request                  _pending_system{};
+        message_request                 _pending_message{};
+        u16 _pending_dialogue           { 0 };
         bool _has_pending_dialogue{ false };
 
-        u16 _current_scene{ 0 };           ///< Scene the runtime is presenting.
+        u16 _current_scene{ 0 };  ///< Scene the runtime is presenting.
     };
 
     extern engine_ptr g_pEngine;
