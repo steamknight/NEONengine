@@ -153,6 +153,71 @@ namespace NEONengine
         u16 arg1{ 0 };
     };
 
+    /** @brief A slot for a pending engine request. */
+    template<typename T>
+    class pending_request
+    {
+        public:  ///////////////////////////////////////////////////////////////////////////////////
+        /**
+         * @brief Records @p request, replacing anything already waiting.
+         *
+         * The right default for a request whose sender stops the VM as it posts:
+         * nothing runs to post a second, and if something did, the newer one is
+         * the one with a caller still waiting on it.
+         */
+        void post(T request) noexcept { _request = mtl::move(request); _valid = true; }
+
+        /**
+         * @brief Records @p request only when the slot is free.
+         *
+         * For requests whose senders are not serialised, and where the first is
+         * the one worth keeping.
+         */
+        void post_if_empty(T request) noexcept
+        {
+            if (_valid) return;
+            post(mtl::move(request));
+        }
+
+        /** @brief True when something is waiting to be acted on. */
+        bool has() const noexcept { return _valid; }
+
+        /**
+         * @brief The waiting request, without consuming it.
+         *
+         * For a reader that must decide something from the request but is not
+         * the one that will answer it - the scene reading a system kind to know
+         * it is mid-transition, say.
+         *
+         * @return A default-constructed @c T when the slot is empty.
+         */
+        T const& peek() const noexcept { return _request; }
+
+        /**
+         * @brief Takes the waiting request and empties the slot.
+         *
+         * @return A default-constructed @c T when the slot is empty, so an
+         *         unguarded take is harmless rather than undefined.
+         */
+        T take() noexcept
+        {
+            T const taken = _request;
+            clear();
+            return taken;
+        }
+
+        /** @brief Drops whatever is waiting, unanswered. */
+        void clear() noexcept
+        {
+            _request = T{};
+            _valid   = false;
+        }
+
+        private: //////////////////////////////////////////////////////////////////////////////////
+        T    _request{};
+        bool _valid{ false };
+    };
+
     class engine;
     using engine_ptr = mtl::unique_ptr<engine>;
 
@@ -254,23 +319,22 @@ namespace NEONengine
          */
         void request_system(system_kind kind, u16 arg1 = 0) noexcept
         {
-            _pending_system = system_request{ kind, arg1 };
+            _pending_system.post(system_request{ kind, arg1 });
         }
 
         /** @brief True when something has asked for a system change. */
         bool has_pending_system() const noexcept
         {
-            return _pending_system.kind != system_kind::none;
+            return _pending_system.has();
         }
 
         /** @brief What the pending system request asks for, or @c none. */
-        system_kind pending_system_kind() const noexcept { return _pending_system.kind; }
-
+        system_kind pending_system_kind() const noexcept { return _pending_system.peek().kind; }
+        
         /** @brief Consume the pending system request, clearing it. */
         system_request take_pending_system() noexcept
         {
-            system_request const taken = _pending_system;
-            _pending_system            = system_request{};
+            system_request const taken = _pending_system.take();
             return taken;
         }
 
@@ -283,17 +347,16 @@ namespace NEONengine
          */
         void request_language(language lang) noexcept
         {
-            _pending_language = lang;
+            _pending_language.post(lang);
         }
 
         /** @brief True when a script has requested a language change. */
-        bool has_pending_language() const noexcept { return _pending_language != language::NONE; }
+        bool has_pending_language() const noexcept { return _pending_language.has(); }
 
         /** @brief Consume the pending language request, clearing it. */
         language take_pending_language() noexcept
         {
-            language const taken = _pending_language;
-            _pending_language = language::NONE;
+            auto const taken = _pending_language.take();
             return taken;
         }
 
@@ -306,18 +369,16 @@ namespace NEONengine
          */
         void request_modal(modal_kind kind, u16 arg1, u16 arg2 = 0) noexcept
         {
-            _pending_modal = modal_request{ kind, arg1, arg2 };
+            _pending_modal.post(modal_request{ kind, arg1, arg2 });
         }
 
         /** @brief True when a script has requested a modal. */
-        bool has_pending_modal() const noexcept { return _pending_modal.kind != modal_kind::none; }
+        bool has_pending_modal() const noexcept { return _pending_modal.has(); }
 
         /** @brief Consume the pending modal request, clearing it. */
         modal_request take_pending_modal() noexcept
         {
-            modal_request const taken = _pending_modal;
-            _pending_modal            = modal_request{};
-            return taken;
+            return _pending_modal.take();
         }
 
         /**
@@ -333,19 +394,17 @@ namespace NEONengine
          */
         void show_message(message_request const& request) noexcept
         {
-            if (request.text.is_empty() || has_pending_message()) return;
-            _pending_message = request;
+            if (has_pending_message()) return;
+            _pending_message.post_if_empty(request);
         }
 
         /** @brief True when something has a box of text waiting to be shown. */
-        bool has_pending_message() const noexcept { return !_pending_message.text.is_empty(); }
+        bool has_pending_message() const noexcept { return _pending_message.has(); }
 
         /** @brief Consume the waiting message, clearing the slot. */
         message_request take_pending_message() noexcept
         {
-            message_request const taken = _pending_message;
-            _pending_message            = message_request{};
-            return taken;
+            return _pending_message.take();
         }
 
         /**
@@ -362,18 +421,16 @@ namespace NEONengine
          */
         void request_dialogue(u16 dialogue_id) noexcept
         {
-            _pending_dialogue     = dialogue_id;
-            _has_pending_dialogue = true;
+            _pending_dialogue.post(dialogue_id);
         }
 
         /** @brief True when a conversation is waiting to be put on screen. */
-        bool has_pending_dialogue() const noexcept { return _has_pending_dialogue; }
+        bool has_pending_dialogue() const noexcept { return _pending_dialogue.has(); }
 
         /** @brief Consume the waiting conversation, clearing the slot. */
         u16 take_pending_dialogue() noexcept
         {
-            _has_pending_dialogue = false;
-            return _pending_dialogue;
+            return _pending_dialogue.take();
         }
 
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
@@ -384,27 +441,25 @@ namespace NEONengine
 
         private:  //////////////////////////////////////////////////////////////////////////////////
 
-        game_data_ptr                   _pGameData{ nullptr };
-        ace::font_ptr                   _pUiFont{ nullptr };
-        text_renderer_ptr               _pTextRenderer{ nullptr };
-        mtl::unique_ptr<nine_patch>     _pNinePatch{ nullptr };
-        string_table_ptr                _pStrings{ nullptr };
-        noir_vm_ptr                     _vm{ nullptr };
+        game_data_ptr                    _pGameData{ nullptr };
+        ace::font_ptr                    _pUiFont{ nullptr };
+        text_renderer_ptr                _pTextRenderer{ nullptr };
+        mtl::unique_ptr<nine_patch>      _pNinePatch{ nullptr };
+        string_table_ptr                 _pStrings{ nullptr };
+        noir_vm_ptr                      _vm{ nullptr };
 
         // Current game session, overwriten on new/save/load game.
-        game_session                    _session{};
+        game_session                     _session{};
 
         // TODO: Move in to game session, and have the VM borrow it from there. 
-        mtl::vector<u8>                 _flags;
+        mtl::vector<u8>                  _flags;
 
         // Language requested by a script, awaiting a swap.
-        language                        _pending_language{ language::NONE };
-
-        modal_request                   _pending_modal{};
-        system_request                  _pending_system{};
-        message_request                 _pending_message{};
-        u16 _pending_dialogue           { 0 };
-        bool _has_pending_dialogue{ false };
+        pending_request<language>        _pending_language{};
+        pending_request<modal_request>   _pending_modal{};
+        pending_request<system_request>  _pending_system{};
+        pending_request<message_request> _pending_message{};
+        pending_request<u16>             _pending_dialogue{};
 
         u16 _current_scene{ 0 };  ///< Scene the runtime is presenting.
     };
