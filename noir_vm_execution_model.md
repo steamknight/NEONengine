@@ -187,8 +187,8 @@ frame budget has room for.
 
 Two things can end a walk early:
 
-- A script called a deferred bridge function. The VM spends the rest of the
-  frame budget on purpose. This is normal and the VM says nothing.
+- A script called a deferred bridge function. The VM ends the walk on purpose.
+  This is normal and the VM says nothing.
 - Demand used the whole frame budget. Sessions still wanted instructions and did
   not get them.
 
@@ -264,7 +264,9 @@ Rules:
 The last two are the compiler's job. See [Compiler rules](#compiler-rules).
 
 A death here leaves the run list untouched, and a teardown a terminal call is
-still owed stays owed.
+still owed stays owed. So does the block a modal call put on. `execute_now`
+hands back the state it found, because the box that made the VM block is still
+on screen and the sessions parked behind it must stay parked.
 
 ---
 
@@ -278,7 +280,7 @@ treat a call as anything other than what it is.
 | Kind | What it does | Ends the walk | Allowed under `execute_now` |
 | --- | --- | --- | --- |
 | **Immediate** | Acts inside the opcode and returns | No | Yes |
-| **Deferred modal** | Records a request; the scene shows it and holds the VM | Yes | No |
+| **Deferred modal** | Records a request; blocks the VM until it is answered | Yes | No |
 | **Deferred terminal** | Records a request; the VM stops until it is torn down | Yes | Yes |
 
 `PLAY_MUSIC` is immediate. `SAY`, `SHOW_DIALOG` and `SAVE` are deferred modal.
@@ -287,10 +289,10 @@ treat a call as anything other than what it is.
 ### Deferred requests
 
 A deferred call does not act. It records what the script wants and returns. Then
-it spends the rest of the frame budget, which ends the walk at once. No session
-runs again this frame.
+it ends the walk at once, and latches the VM. No session runs again — not this
+frame and not the next — until the latch is lifted.
 
-Spending the frame budget is what makes speech work in order:
+The latch is what makes speech work in order:
 
 ```
 SAY #12
@@ -302,10 +304,35 @@ Without it, both lines would run in the same slice and the player would only
 ever see the second. With it, the session stops after `SAY #12` with its program
 counter on `SAY #13`, and stays there until the first box closes.
 
+Ending the walk alone would not do it. A box is on screen for as long as the
+player takes to read it, which is many frames, and a walk only ends one. The two
+kinds of deferred call differ in nothing but how the latch is lifted:
+
+| | Lifted by | The sessions |
+| --- | --- | --- |
+| **Modal** | `resume_execution()` | carry on, each on the instruction after its call |
+| **Terminal** | `reset_execution()` | go with it |
+
+`resume_execution()` is called by whoever answered the request: the fade's own
+callback, or an overlay state on its way down. Nothing else calls it. **A modal
+request that nothing answers stops every script for the rest of the scene, and
+says nothing about it.** A bridge call that records a request the engine cannot
+act on yet has to lift the latch itself.
+
+The VM keeps the latch rather than trusting the scene to remember one. There is
+one flag, in one place, and `noir_vm::blocked()` is the only answer to "is
+something on screen": no second copy to fall out of step with it.
+
 `GOTO_SCENE` is safe from `execute_now` for the same reason it is deferred. A
 conversation choice can leave the room: the request is recorded during the
 dialogue's update, and the scene tears down at the top of the next frame, with
 nothing on the call stack that is about to be destroyed.
+
+`execute_now` runs whether the VM is blocked or not — that is the point of it.
+A dialogue choice script runs while the box that is holding the VM is still on
+screen. It hands back the state it found, so a choice script that dies does not
+set the parked sessions running behind the open box. A terminal call it makes is
+the one exception, and stands: the scene is over either way.
 
 ### Terminal requests
 
@@ -333,27 +360,39 @@ The scene decides what runs. The VM does not know whether anything is on screen.
       teardown the VM if a terminal call is still owed one
       modal   → put it on screen
 1.  Update modals
-2.  Update the timeline     skipped if a modal is up
+2.  Update the timeline     skipped while the VM is blocked
                             or a scene change is waiting
-3.  Update the UI
-4.  Update the VM           skipped if a modal is up
-                            or a scene change is waiting
+3.  Update the UI           skipped while the VM is blocked
+4.  Update the VM           blocks itself; skipped if a scene change is waiting
 ```
 
-A box of text is not one of these. Anything with something to say posts it to a
-single slot, and the main loop puts the box up before it runs any state at all.
-The box then runs in the scene's place rather than inside it, so none of the
-steps above happen while it is on screen and the VM is held without anything
-having to remember that it is. The steps above see a box only in that they do
-not run.
+The scene asks `noir_vm::blocked()` rather than keeping a flag of its own. The
+VM latches itself the moment a script makes a modal call and stays latched until
+whoever answered it resumes it, so the two questions — "is the VM held" and "is
+a modal up" — have the same answer by construction.
+
+The scene stops with the VM for two reasons. A fade is the front half of a scene
+change, so anything a track moved is about to be thrown away, a keyframe running
+a script could queue a second scene change, and a hovered hotspot would put its
+role back over the WAIT pointer. An overlay adds a stronger one: it restores the
+pixels it covered from a buffer taken when it went up, so anything moving
+underneath would be painted back where it no longer is.
+
+A box of text is not one of these steps. Anything with something to say posts it
+to a single slot, and the main loop puts the box up before it runs any state at
+all. The box then runs in the scene's place rather than inside it, so none of
+the steps above happen while it is on screen. The steps above see a box only in
+that they do not run.
 
 This is why a script that fails before a scene exists still reaches the player.
 It is also why the box is drawn where it cannot be painted over: a bridge call
 runs inside step 4, and putting the box up from there would leave the rest of
 step 4, and the drawing that follows it, to cover what had just been drawn.
 
-Fades stay modals, because a fade runs inside the scene and the scene has to
-keep drawing for it to be seen.
+A fade is the one modal with nothing on the state stack to take it down, so its
+own callback is where it lifts the latch. That is the only difference between a
+fade and a box, and it is why the scene keeps drawing through a fade: the fade
+runs inside the scene, not in its place.
 
 A system request and a modal request are different things. A modal says what to
 put on screen; a system request says which game to play. `SAVE` records a system
@@ -364,7 +403,9 @@ The teardown in step 0 is unconditional and belongs to the VM, not to any one
 request. A terminal call stops the VM and is owed a `reset_execution()`; if
 acting on its request did not deliver one - the scene failed to load, or nothing
 implements that request yet - this is where it arrives. Without it a request
-nobody answers would stop scripting for the rest of the session.
+nobody answers would stop scripting for the rest of the session. A modal request
+nothing can answer yet has no such backstop: whoever drops one lifts the latch
+where it drops it.
 
 Modals update before the timeline so that a modal closing in step 1 lets both
 the timeline and the VM run in the same frame. They stop together and start
@@ -383,9 +424,10 @@ the replayer does not depend on the timeline.
 
 `WAIT n` stops a session for `n` VM updates.
 
-It counts VM updates, not frames. A frame where the scene skips the VM does not
-count. A script that waits fifty and sits through a conversation resumes fifty
-VM updates after the conversation ends, not fifty frames after it started.
+It counts VM updates, not frames. A frame where the VM is blocked does not
+count: `update()` returns without handing out budgets or ageing anything. A
+script that waits fifty and sits through a conversation resumes fifty VM updates
+after the conversation ends, not fifty frames after it started.
 
 `WAIT 0` is a mistake and the compiler rejects it.
 
@@ -434,8 +476,8 @@ and forgets it. A death does not end the walk, so a session further along the
 same walk can speak, or die in turn, before anything has drawn the first
 message; the bridge therefore settles whether the message is wanted before it
 copies the text, and the first one to arrive is the one shown. A deferred `SAY`
-spends the rest of the frame budget, so at most one can be recorded per update
-and it can only ever follow a death, never precede one. One slot is enough for
+ends the walk, so at most one can be recorded per update and it can only ever
+follow a death, never precede one. One slot is enough for
 both, and the death is what the player sees.
 
 The line is written in every build, whether or not logging is compiled in. A
