@@ -73,7 +73,7 @@ namespace NEONengine
         auto status = vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_result::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::blocked, "the modal call latches the VM");
         TEST_SUCCESS;
     }
 
@@ -106,6 +106,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.fade_out_called, "the fade was asked for");
         TEST_ASSERT(!g_mock_log.goto_scene_called, "and the scene change was not");
 
+        vm.resume_execution();
         vm.update();
         TEST_ASSERT(g_mock_log.goto_scene_called, "which waited for its own update");
         TEST_ASSERT(g_mock_log.goto_scene_id == 4, "and carried the right scene");
@@ -136,6 +137,7 @@ namespace NEONengine
 
         TEST_ASSERT(vm.session_count() == 1, "parked at FADE_OUT");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");
@@ -172,6 +174,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -205,6 +208,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -296,7 +300,7 @@ namespace NEONengine
         auto status = vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_result::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::blocked, "the modal call latches the VM");
         TEST_SUCCESS;
     }
 
@@ -359,6 +363,7 @@ namespace NEONengine
 
         TEST_ASSERT(vm.session_count() == 1, "parked at FADE_IN");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");
@@ -395,6 +400,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 55, "D0 preserved");
@@ -428,6 +434,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -756,8 +763,12 @@ namespace NEONengine
         bc.emit(noir_op::SAVE_GAME);
         bc.emit(noir_op::RET);
 
-        auto vm     = bc.build_vm();
-        auto status = bc.run_to_completion(vm, fn);
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.resume_execution();
+        auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.save_slot == 1, "save_game received slot 1");
@@ -766,8 +777,8 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_save_game_defers_then_carries_on)
     {
-        // SAVE_GAME is deferred modal: it ends the update it runs in, and the
-        // script picks up on the opcode after it once the save is done with.
+        // SAVE_GAME is deferred modal: it latches the VM, and the script picks
+        // up on the opcode after it once resume_execution() answers the save.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -789,9 +800,10 @@ namespace NEONengine
 
         auto first = vm.update();
         TEST_ASSERT(g_mock_log.save_slot == 2, "the save was asked for");
-        TEST_ASSERT(first == noir_result::yielded, "and the update ended there");
+        TEST_ASSERT(first == noir_result::blocked, "and the VM latched there");
         TEST_ASSERT(vm.reg_d(0) != 444, "the opcode after it did not run");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
@@ -824,8 +836,12 @@ namespace NEONengine
         bc.emit(noir_op::SAVE_GAME);
         bc.emit(noir_op::RET);
 
-        auto vm     = bc.build_vm();
-        auto status = bc.run_to_completion(vm, fn);
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.resume_execution();
+        auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(vm.reg_d(0) == 3, "D0 preserved");
@@ -855,8 +871,12 @@ namespace NEONengine
         bc.emit(noir_op::SAVE_GAME);
         bc.emit(noir_op::RET);
 
-        auto vm     = bc.build_vm();
-        auto status = bc.run_to_completion(vm, fn);
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.resume_execution();
+        auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved");
@@ -875,8 +895,12 @@ namespace NEONengine
         bc.emit(noir_op::SAVE_GAME);
         bc.emit(noir_op::RET);
 
-        auto vm     = bc.build_vm();
-        auto status = bc.run_to_completion(vm, fn);
+        auto vm = bc.build_vm();
+        vm.execute(fn);
+        vm.update();
+
+        vm.resume_execution();
+        auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "should complete");
         TEST_ASSERT(g_mock_log.save_slot == 0, "save_game received slot 0");
@@ -1008,6 +1032,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.fade_out_frames == 25, "fade_out(25)");
 
         // Second update — should defer on FADE_IN
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at FADE_IN");
@@ -1015,6 +1040,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.fade_in_frames == 30, "fade_in(30)");
 
         // Third update — should complete
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes after both");
@@ -1054,6 +1080,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.fade_out_frames == 20, "fade_out(20)");
 
         // Second update → SCREEN_CLR runs, then defers on FADE_IN
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(g_mock_log.screen_clr_color == 0, "screen_clear(0)");
@@ -1061,6 +1088,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.fade_in_frames == 20, "fade_in(20)");
 
         // Third update → completes
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes");
@@ -1069,8 +1097,9 @@ namespace NEONengine
 
     TEST_IMPL(test_noir_save_then_load)
     {
-        // Save, then load a different slot. Two deferred calls, so an update
-        // each, and the second stops the VM where the first only paused it.
+        // Save, then load a different slot. The save latches the VM until
+        // resume_execution() answers it; the load's terminal call then stops
+        // the VM for good, which resume_execution() cannot lift.
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
@@ -1091,9 +1120,10 @@ namespace NEONengine
         vm.execute(fn);
 
         auto first = vm.update();
-        TEST_ASSERT(first == noir_result::yielded, "the save only paused the session");
+        TEST_ASSERT(first == noir_result::blocked, "the save only latched the session");
         TEST_ASSERT(g_mock_log.save_slot == 1, "save_game(1)");
 
+        vm.resume_execution();
         auto second = vm.update();
         TEST_ASSERT(second == noir_result::terminated, "the load stopped the VM");
         TEST_ASSERT(g_mock_log.load_slot == 2, "load_game(2)");
@@ -1168,24 +1198,27 @@ namespace NEONengine
         g_mock_log.reset();
         vm.execute(fn);
 
-        // Each deferred call ends the update it runs in, so the flow takes one
-        // update per deferred call plus one for the RET. The immediate calls
-        // between them ride along in the same update as the deferred one that
-        // follows.
+        // Each deferred call latches the VM until resume_execution() answers
+        // it, so the flow takes one update per deferred call plus one for the
+        // RET. The immediate calls between them ride along in the same update
+        // as the deferred one that follows.
         vm.update();
         TEST_ASSERT(g_mock_log.fade_out_frames == 15, "fade_out(15)");
         TEST_ASSERT(g_mock_log.screen_clr_color != 7, "and nothing after it ran");
 
+        vm.resume_execution();
         vm.update();
         TEST_ASSERT(g_mock_log.screen_clr_color == 7, "screen_clear(7)");
         TEST_ASSERT(g_mock_log.set_lang_id == 2, "set_lang(2)");
         TEST_ASSERT(g_mock_log.save_slot == 0, "save_game(0)");
         TEST_ASSERT(!g_mock_log.fade_in_called, "save_game stopped it before the fade in");
 
+        vm.resume_execution();
         vm.update();
         TEST_ASSERT(g_mock_log.fade_in_frames == 15, "fade_in(15)");
         TEST_ASSERT(vm.session_count() == 1, "parked at the RET");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes");
@@ -1225,6 +1258,7 @@ namespace NEONengine
         TEST_ASSERT(vm.session_count() == 1, "parked inside fn1");
         TEST_ASSERT(g_mock_log.fade_out_frames == 10, "fade_out(10)");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");

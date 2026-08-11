@@ -40,7 +40,7 @@ namespace NEONengine
         {
             _page_range = data::range{};
         }
-        else if (_page_range.start + _page_range.count > _pages.size())
+        else if (_page_range.end() > _pages.size())
         {
             _page_range.count = to<u16>(_pages.size() - _page_range.start);
         }
@@ -202,7 +202,7 @@ namespace NEONengine
         // of. Recorded whether or not the one-time bit is set, as a page's read
         // bit is: taking it is the fact, and only availability cares about the
         // bit.
-        if (_bridge && _bridge->mark_choice_taken) _bridge->mark_choice_taken(choice_id);
+        _bridge->mark_choice_taken(choice_id);
 
         apply_flags(choice.set_flag_id, choice.clear_flag_id);
 
@@ -220,19 +220,17 @@ namespace NEONengine
 
     void dialogue_session::apply_flags(u16 set_flag_id, u16 clear_flag_id) noexcept
     {
-        if (!_bridge || !_bridge->set_flag) return;
-
         if (set_flag_id != data::NO_ID) _bridge->set_flag(set_flag_id, true);
         if (clear_flag_id != data::NO_ID) _bridge->set_flag(clear_flag_id, false);
     }
 
     bool dialogue_session::run_script(u16 function_id) noexcept
     {
-        if (function_id == data::NO_ID || !_bridge || !_bridge->run_script) return false;
+        if (function_id == data::NO_ID) return false;
 
         _bridge->run_script(function_id);
 
-        return _bridge->is_terminated && _bridge->is_terminated();
+        return _bridge->is_terminated();
     }
 
     void dialogue_session::end() noexcept
@@ -241,27 +239,18 @@ namespace NEONengine
         collect_choices();
     }
 
-    bool dialogue_session::is_own_page(u16 page_id) const noexcept
-    {
-        if (page_id == data::NO_ID) return false;
-        if (page_id < _page_range.start) return false;
-        return page_id < _page_range.start + _page_range.count;
-    }
-
     bool dialogue_session::is_available(u16 page_id) const noexcept
     {
         auto const& page = _pages[page_id];
 
         if ((page.flags & data::PAGE_FLAG_ENABLED) == 0) return false;
 
-        if (page.check_flag_id != data::NO_ID && _bridge && _bridge->get_flag
-            && !_bridge->get_flag(page.check_flag_id))
+        if (page.check_flag_id != data::NO_ID && !_bridge->get_flag(page.check_flag_id))
         {
             return false;
         }
 
-        if ((page.flags & data::PAGE_FLAG_ONE_TIME) != 0 && _bridge && _bridge->is_page_read
-            && _bridge->is_page_read(page_id))
+        if ((page.flags & data::PAGE_FLAG_ONE_TIME) != 0 && _bridge->is_page_read(page_id))
         {
             return false;
         }
@@ -275,14 +264,12 @@ namespace NEONengine
 
         if ((choice.flags & data::CHOICE_FLAG_ENABLED) == 0) return false;
 
-        if (choice.check_flag_id != data::NO_ID && _bridge && _bridge->get_flag
-            && !_bridge->get_flag(choice.check_flag_id))
+        if (choice.check_flag_id != data::NO_ID && !_bridge->get_flag(choice.check_flag_id))
         {
             return false;
         }
 
-        if ((choice.flags & data::CHOICE_FLAG_ONE_TIME) != 0 && _bridge && _bridge->is_choice_taken
-            && _bridge->is_choice_taken(choice_id))
+        if ((choice.flags & data::CHOICE_FLAG_ONE_TIME) != 0 && _bridge->is_choice_taken(choice_id))
         {
             return false;
         }
@@ -300,7 +287,7 @@ namespace NEONengine
         // so a malformed pak costs the player a choice rather than a read off the
         // end of the chunk.
         u32 const start = page ? page->choice_range.start : 0;
-        u32 end         = page ? start + page->choice_range.count : 0;
+        u32 end         = page ? page->choice_range.end() : 0;
         if (end > _choices.size()) end = _choices.size();
 
         for (u32 candidate = start; candidate < end; ++candidate)
@@ -325,7 +312,7 @@ namespace NEONengine
 
     void dialogue_session::go_to(u16 page_id) noexcept
     {
-        if (!is_own_page(page_id))
+        if (!_page_range.has(page_id))
         {
             end();
             return;
@@ -334,13 +321,13 @@ namespace NEONengine
         // Forward by index, never along next_page_id: adjacency is what makes a
         // one-time page fall through to its replacement, and a scan bounded by
         // the page range cannot loop the way a walk through the graph could.
-        u16 const end_index = to<u16>(_page_range.start + _page_range.count);
+        auto const end_index = _page_range.end();
         for (u16 candidate = page_id; candidate < end_index; ++candidate)
         {
             if (!is_available(candidate)) continue;
 
             _current = candidate;
-            if (_bridge && _bridge->mark_page_read) _bridge->mark_page_read(candidate);
+            _bridge->mark_page_read(candidate);
 
             // The author's flags first, then the script, so the script has the
             // last word over what the page was written to set.

@@ -51,20 +51,16 @@ namespace NEONengine
 
     // ─── Constructor ────────────────────────────────────────────────────────────
 
-    noir_vm::noir_vm(u8* flags,
-        u16 flags_size,
-        u16* values,
-        u16 values_count,
+    noir_vm::noir_vm(mtl::bitset<u32>& flags,
+        mtl::vector<u16>& values,
         u8 const* bytecode,
         u32 bytecode_size,
         u32 const* func_toc,
         u16 func_count,
         noir_bridge const* bridge,
         u16 stack_size) noexcept
-        : _flags(flags)
-        , _flags_size(flags_size)
-        , _values(values)
-        , _values_count(values_count)
+        : _flags(&flags)
+        , _values(&values)
         , _bytecode(bytecode)
         , _bytecode_size(bytecode_size)
         , _func_toc(func_toc)
@@ -181,6 +177,14 @@ namespace NEONengine
         }
 
         noir_session const outer = _current_session;
+
+        // The machine's own state belongs to the outer run, not this one.
+        // execute_now exists to run while the VM is stopped, so it must hand
+        // back the same stop it found: a dialogue script that dies would
+        // otherwise clear the modal latch and set the parked sessions running
+        // again behind the box that is still on screen.
+        noir_vm_state const outer_state = _vm_state;
+
         _run_mode            = run_mode::immediate;
 
         enter_script(func_id, IMMEDIATE_SLOT);
@@ -203,6 +207,12 @@ namespace NEONengine
         _current_session          = outer;
         _stack_base   = stack_base_for(_current_session.stack_index);
         _run_mode = run_mode::idle;
+
+        // A terminal call is the one verdict that outranks the outer run: the
+        // scene is over whatever the VM was doing before. Everything else gives
+        // the outer state back. Why the script died is carried by _last_error
+        // and the return value, so nothing is lost.
+        if (_vm_state != noir_vm_state::terminated) _vm_state = outer_state;
 
         if (died) return mtl::unexpected(_last_error);
         return answer;
@@ -324,13 +334,22 @@ namespace NEONengine
         _cached_dst_param = 0;
     }
 
+    // ─── resume_execution() ───────────────────────────────────────────────────────
+
+    void noir_vm::resume_execution() noexcept
+    {
+        // Only the modal latch. A teardown owed is not something an overlay
+        // coming down may cancel, and clearing `failed` here would hide it from
+        // whoever is about to read it.
+        if (_vm_state == noir_vm_state::blocked) _vm_state = noir_vm_state::ok;
+    }
+
     // ─── update() ───────────────────────────────────────────────────────────────
 
     mtl::expected<noir_result, noir_error> noir_vm::update() noexcept
     {
-        // A terminal call ended the scene these sessions belong to. Resuming one
-        // would run it in a scene that is already over, so nothing runs until
-        // the teardown it asked for has happened.
+        if (_vm_state == noir_vm_state::blocked) return noir_result::blocked;
+
         if (_vm_state == noir_vm_state::terminated) return noir_result::terminated;
 
         // Last update's failure no longer applies.
@@ -427,10 +446,11 @@ namespace NEONengine
         ++_rotation;
         remove_dead_sessions();
 
-        // A terminal call ends the walk, so nothing can fail after one: if both
-        // happened, the terminal call was last and its verdict stands.
+        // A deferred call ends the walk, so nothing can fail after one: if both
+        // happened, the deferred call was last and its verdict stands.
         switch (_vm_state)
         {
+            case noir_vm_state::blocked: return noir_result::blocked;
             case noir_vm_state::terminated: return noir_result::terminated;
             case noir_vm_state::failed: return mtl::unexpected(_last_error);
             case noir_vm_state::ok: break;
@@ -1099,7 +1119,7 @@ namespace NEONengine
             case CMPV:
             {
                 u16 imm    = read_u16();
-                u16 a      = _values[idx];
+                u16 a      = (*_values)[idx];
                 u32 result = to<u32>(a) - to<u32>(imm);
                 set_flags_nzcv_sub(a, imm, result);
                 return noir_result::ok;
@@ -1107,33 +1127,33 @@ namespace NEONengine
 
             case TSTV:
             {
-                set_flags_nz(_values[idx]);
+                set_flags_nz((*_values)[idx]);
                 return noir_result::ok;
             }
 
             case CLRV:
             {
-                _values[idx] = 0;
+                (*_values)[idx] = 0;
                 return noir_result::ok;
             }
 
             case INCV:
             {
-                u16 a      = _values[idx];
+                u16 a      = (*_values)[idx];
                 u32 result = to<u32>(a) + 1;
                 u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_add(a, 1, result);
-                _values[idx] = r;
+                (*_values)[idx] = r;
                 return noir_result::ok;
             }
 
             case DECV:
             {
-                u16 a      = _values[idx];
+                u16 a      = (*_values)[idx];
                 u32 result = to<u32>(a) - 1;
                 u16 r      = to<u16>(result & 0xFFFF);
                 set_flags_nzcv_sub(a, 1, result);
-                _values[idx] = r;
+                (*_values)[idx] = r;
                 return noir_result::ok;
             }
 
@@ -1294,7 +1314,7 @@ namespace NEONengine
             {
                 if (_current_session.d[0] == 0xFFFF)
                 {
-                    u16 total = to<u16>(_flags_size * 8);
+                    u16 total = to<u16>(_flags->size() * 8);
                     NE_LOG("FLAGS: (all %u)", total);
                     for (u16 i = 0; i < total; ++i)
                     {
@@ -1313,14 +1333,15 @@ namespace NEONengine
             {
                 if (_current_session.d[0] == 0xFFFF)
                 {
-                    NE_LOG("VALUES: (all %u)", _values_count);
-                    for (u16 i = 0; i < _values_count; ++i)
-                        NE_LOG("  value[%u] = %u", i, _values[i]);
+                    u16 total = to<u16>(_values->size());
+                    NE_LOG("VALUES: (all %u)", total);
+                    for (u16 i = 0; i < total; ++i)
+                        NE_LOG("  value[%u] = %u", i, (*_values)[i]);
                 }
                 else
                 {
                     if (validate_value_index(_current_session.d[0]))
-                        NE_LOG("VALUE[%u] = %u", _current_session.d[0], _values[_current_session.d[0]]);
+                        NE_LOG("VALUE[%u] = %u", _current_session.d[0], (*_values)[_current_session.d[0]]);
                 }
                 break;
             }
@@ -1521,7 +1542,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", idx);
                     return 0;
                 }
-                return _values[idx];
+                return (*_values)[idx];
             }
 
             case VALUE_D0:
@@ -1531,7 +1552,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", _current_session.d[0]);
                     return 0;
                 }
-                return _values[_current_session.d[0]];
+                return (*_values)[_current_session.d[0]];
             }
 
             default: return 0;
@@ -1565,7 +1586,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", idx);
                     break;
                 }
-                _values[idx] = value;
+                (*_values)[idx] = value;
                 break;
             }
 
@@ -1576,7 +1597,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", _current_session.d[0]);
                     break;
                 }
-                _values[_current_session.d[0]] = value;
+                (*_values)[_current_session.d[0]] = value;
                 break;
             }
 
@@ -1623,7 +1644,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", idx);
                     return 0;
                 }
-                return _values[idx];
+                return (*_values)[idx];
             }
 
             case VALUE_D0:
@@ -1633,7 +1654,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", _current_session.d[0]);
                     return 0;
                 }
-                return _values[_current_session.d[0]];
+                return (*_values)[_current_session.d[0]];
             }
 
             default: return 0;
@@ -1666,7 +1687,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", _cached_dst_param);
                     break;
                 }
-                _values[_cached_dst_param] = value;
+                (*_values)[_cached_dst_param] = value;
                 break;
             }
 
@@ -1677,7 +1698,7 @@ namespace NEONengine
                     fail(noir_error::value_oob, "value %u is out of range", _current_session.d[0]);
                     break;
                 }
-                _values[_current_session.d[0]] = value;
+                (*_values)[_current_session.d[0]] = value;
                 break;
             }
 
@@ -1725,29 +1746,22 @@ namespace NEONengine
 
     bool noir_vm::get_flag(u16 index) const noexcept
     {
-        u16 byte_idx = index / 8;
-        u8 bit_idx   = to<u8>(index % 8);
-        return (_flags[byte_idx] & (1u << bit_idx)) != 0;
+        return _flags->test(index);
     }
 
     void noir_vm::set_flag(u16 index, bool value) noexcept
     {
-        u16 byte_idx = index / 8;
-        u8 bit_idx   = to<u8>(index % 8);
-        if (value)
-            _flags[byte_idx] |= to<u8>(1u << bit_idx);
-        else
-            _flags[byte_idx] &= to<u8>(~(1u << bit_idx));
+        _flags->set(index, value);
     }
 
     bool noir_vm::validate_flag_index(u16 index) const noexcept
     {
-        return index < to<u16>(_flags_size * 8);
+        return index < to<u16>(_flags->size() * 8);
     }
 
     bool noir_vm::validate_value_index(u16 index) const noexcept
     {
-        return index < _values_count;
+        return index < to<u16>(_values->size());
     }
 
     // ─── Debug ──────────────────────────────────────────────────────────────────

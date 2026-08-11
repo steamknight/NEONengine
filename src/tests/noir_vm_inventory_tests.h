@@ -36,7 +36,7 @@ namespace NEONengine
 
         noir_bridge session_inventory_bridge(u32 item_count)
         {
-            s_session_bridge_inventory.create(0, 0, item_count);
+            s_session_bridge_inventory.create_for_test(0, 0, item_count);
 #ifdef GAME_DEBUG
             s_session_bridge_inventory.set_invalid_item_id_reporter(session_bridge_report_invalid_item);
 #endif
@@ -876,8 +876,18 @@ namespace NEONengine
         bc.emit(noir_op::INV_ADD);
         bc.emit(noir_op::INV_HAS);
         bc.emit(noir_op::INV_COUNT);
+        // INV_COUNT answers in D0, so the item id is gone. Park the count in D1,
+        // put the id back for the two opcodes that still need it, then return
+        // the count so the exit code still reports what INV_COUNT found.
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D1, noir_mode::REG_D0);
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(1);
         bc.emit(noir_op::INV_REMOVE);
         bc.emit(noir_op::INV_CLEAR);
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::REG_D1);
         bc.emit(noir_op::RET);
 
         auto bridge = session_inventory_bridge(3);
@@ -903,6 +913,11 @@ namespace NEONengine
         bc.emit(noir_op::INV_REMOVE);
         bc.emit(noir_op::INV_HAS);
         bc.emit(noir_op::INV_COUNT);
+        // INV_COUNT answers in D0, so the id has to go back before INV_CLEAR
+        // or the clear lands on whatever item that count names.
+        bc.emit(noir_op::MOV16);
+        bc.emit_mode(noir_mode::REG_D0, noir_mode::IMM16);
+        bc.emit_u16(9);
         bc.emit(noir_op::INV_CLEAR);
         bc.emit(noir_op::RET);
 
@@ -1106,19 +1121,58 @@ namespace NEONengine
 
     // ── Invalid opcodes ─────────────────────────────────────────────────────────
 
-    TEST_IMPL(test_noir_inv_invalid_opcode_0x85)
+    TEST_IMPL(test_noir_inv_invalid_opcode_0x86)
     {
         bytecode_builder bc;
         u16 fn = bc.begin_func();
 
-        bc.emit(0x85);
+        // 0x80-0x85 are all defined inventory opcodes, so the reserved part of
+        // the range starts here. 0x85 is INV_SELECTED and belongs in a test of
+        // its own, below.
+        bc.emit(0x86);
 
         bc.emit(noir_op::RET);
 
         auto vm     = bc.build_vm();
         auto status = bc.run_to_completion(vm, fn);
 
-        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x85 reserved");
+        TEST_ASSERT(failed_with(status, noir_error::invalid_opcode), "0x86 reserved");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_inv_selected_reads_the_bridge)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::INV_SELECTED);
+        bc.emit(noir_op::RET);
+
+        auto vm     = bc.build_vm();
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(status == noir_result::completed, "should complete");
+        TEST_ASSERT(vm.exit_code() == MOCK_SELECTED_ITEM, "INV_SELECTED returns the bridge answer");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_noir_inv_unwired_bridge_slot_fails_the_script)
+    {
+        bytecode_builder bc;
+        u16 fn = bc.begin_func();
+
+        bc.emit(noir_op::INV_SELECTED);
+        bc.emit(noir_op::RET);
+
+        // A host that leaves a slot empty used to send the VM through a null
+        // pointer to address zero. It has to kill the script instead.
+        noir_bridge bridge     = g_mock_bridge;
+        bridge.inv_selected_item = {};
+
+        auto vm     = bc.build_vm(256, &bridge);
+        auto status = bc.run_to_completion(vm, fn);
+
+        TEST_ASSERT(failed_with(status, noir_error::unbound_bridge), "unwired slot should fail");
         TEST_SUCCESS;
     }
 
@@ -1188,7 +1242,9 @@ namespace NEONengine
     TEST(test_noir_inv_has_conditional_add)
     TEST(test_noir_inv_has_conditional_skip)
     // Invalid opcodes
-    TEST(test_noir_inv_invalid_opcode_0x85)
+    TEST(test_noir_inv_invalid_opcode_0x86)
+    TEST(test_noir_inv_selected_reads_the_bridge)
+    TEST(test_noir_inv_unwired_bridge_slot_fails_the_script)
     TEST(test_noir_inv_invalid_opcode_0x8f)
     TEST_SUITE_END
 

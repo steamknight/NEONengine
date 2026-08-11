@@ -218,9 +218,6 @@ namespace NEONengine
 
         private:  /////////////////////////////////////////////////////////////////////////////////
 
-        /** @brief Whether @p page_id addresses a page of the running dialogue. */
-        bool is_own_page(u16 page_id) const noexcept;
-
         /**
          * @brief Whether the page at global @p page_id may be presented.
          *

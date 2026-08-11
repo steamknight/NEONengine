@@ -48,19 +48,17 @@ namespace NEONengine
         /// A language change left the backdrop's text regions in the old language.
         bool s_backdropStale = false;
 
-        /// The modal on screen now, or kind::none when the scene is free.
-        modal_request s_modal{};
-
         /**
-         * @brief Ends the fade modal that a script asked for.
+         * @brief Lets the scripts a fade parked run again.
          *
-         * The scene owns script-driven fades, so it hears about the end of one
-         * here rather than through the VM. A fade the engine starts for itself
-         * passes no callback and never reaches this.
+         * A fade is the one modal with nothing on the state stack to take it
+         * down, so the callback is where it ends. A fade the engine starts for
+         * itself passes no callback and never reaches this - it parked nothing,
+         * and resume_execution() would be a no-op anyway.
          */
         void scene_fade_done()
         {
-            s_modal = modal_request{};
+            g_pEngine->vm().resume_execution();
         }
 
         /**
@@ -196,34 +194,25 @@ namespace NEONengine
         }
 
         /**
-         * @brief Apply a script's SET_LANG request, reporting what took effect.
+         * @brief Rebuild what the scene had built out of the string table.
          *
-         * engine::set_language keeps the current table when the new one cannot
-         * be loaded, so the log names the language actually in force afterwards.
+         * The engine has already swapped the table, in engine::update(), before
+         * any state ran this frame. What is left is the scene's own share of the
+         * change: the text it drew out of the old table.
          */
-        void apply_pending_language()
+        void rebuild_for_language()
         {
-            auto const requested = g_pEngine->take_pending_language();
-            g_pEngine->set_language(requested);
-
             // Captions and text regions were both built from the table that just
             // went away. A pending scene is about to rebuild them anyway, so this
             // only pays for a language change that stays in the current scene.
-            if (g_pEngine->pending_system_kind() != system_kind::load_scene)
-            {
-                mtl::system_use_guard guard;  // OS on for pak/disk access
-                scene_bobs_reload_captions();
+            if (g_pEngine->pending_system_kind() == system_kind::load_scene) return;
 
-                // Repainting the backdrop is far more expensive than a caption,
-                // so it is only marked here; sceneProcess picks the moment.
-                s_backdropStale = true;
-            }
+            mtl::system_use_guard guard;  // OS on for pak/disk access
+            scene_bobs_reload_captions();
 
-            // The language's own name proves the table really swapped. Records
-            // always carry a terminator, so the view goes straight to "%s".
-            NE_LOG("language is now '%s' (%s)",
-                language_code(g_pEngine->current_language()),
-                g_pEngine->strings().language_name().data());
+            // Repainting the backdrop is far more expensive than a caption,
+            // so it is only marked here; sceneProcess picks the moment.
+            s_backdropStale = true;
         }
 
         /**
@@ -295,8 +284,8 @@ namespace NEONengine
 
             // GOTO_SCENE ends everything: anything on screen belonged to the old
             // scene, and a request recorded by a script that is about to be
-            // discarded has nobody left to act for.
-            s_modal = modal_request{};
+            // discarded has nobody left to act for. The VM's own latch goes with
+            // the sessions, in the reset_execution() further down.
             g_pEngine->take_pending_modal();
 
             // Everything this load asks the cache for is stamped as wanted now,
@@ -362,9 +351,11 @@ namespace NEONengine
          * the project's configured default stands in and scripts can omit the
          * count.
          *
-         * A kind with nothing to draw yet is logged and dropped rather than
-         * left standing, because a modal nobody can dismiss would hold the VM
-         * for the rest of the scene.
+         * The VM is already latched by the call that recorded the request. Each
+         * kind here only has to arrange for something to lift it: a fade does it
+         * from its own callback, a dialogue from the state that answers it. A
+         * kind that arranges neither leaves every script parked for the rest of
+         * the scene.
          */
         void start_pending_modal()
         {
@@ -379,21 +370,16 @@ namespace NEONengine
             switch (request.kind)
             {
                 case modal_kind::fade_out:
-                    s_modal = request;
                     screenFadeToBlack(g_mainScreen, fade_frames(), 0, scene_fade_done);
                     return;
 
                 case modal_kind::fade_in:
-                    s_modal = request;
                     screenFadeFromBlack(g_mainScreen, fade_frames(), 0, scene_fade_done);
                     return;
 
                 case modal_kind::show_dialog:
-                    // Held like a fade: the dialogue state is pushed by the main
-                    // loop next frame, and until it comes down nothing here may
-                    // run - least of all the VM, whose parked session would
-                    // otherwise resume past SHOW_DIALOG before a word was read.
-                    s_modal = request;
+                    // The main loop pushes the dialogue state next frame and
+                    // dialogueDestroy() lifts the latch when it comes down.
                     g_pEngine->request_dialogue(request.arg1);
                     return;
 
@@ -404,9 +390,10 @@ namespace NEONengine
         /**
          * @brief Act on a system request - a scene change, a save, a new game.
          *
-         * A kind the engine cannot do yet is logged and dropped. The VM is
-         * stopped behind most of these, and sceneProcess tears it down for
-         * whichever of them did not do it here.
+         * A kind the engine cannot do yet is logged and dropped, and has to
+         * undo the stop its bridge call put on the VM: a modal one by resuming
+         * it here, a terminal one through the teardown sceneProcess owes it
+         * either way.
          */
         void apply_system_request(system_request const& request)
         {
@@ -416,6 +403,9 @@ namespace NEONengine
 
                 case system_kind::save_game:
                     NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.arg1);
+                    // A modal call with no screen to answer it. Until there is
+                    // one, lift the latch here or the script never runs again.
+                    g_pEngine->vm().resume_execution();
                     return;
 
                 case system_kind::load_game:
@@ -464,7 +454,7 @@ namespace NEONengine
         // follows it, and in the frames between the two nothing is pending.
         // Treating the whole span as one event keeps the pointer on WAIT instead
         // of flicking back to its normal role in that gap.
-        bool const transitioning = g_pEngine->has_pending_language()
+        bool const transitioning = g_pEngine->language_changed()
             || g_pEngine->pending_system_kind() == system_kind::load_scene
             || screenIsFadingOut(g_mainScreen);
 
@@ -473,13 +463,15 @@ namespace NEONengine
         if (transitioning) mousePointerSwitch(mouse_pointer::WAIT);
 
         // Language before scene: a script that switches language and then leaves
-        // should present the next scene in the language it just chose.
-        if (g_pEngine->has_pending_language())
+        // should present the next scene in the language it just chose. The
+        // engine has already swapped the table by now, in engine::update(); this
+        // is the scene catching up with it.
+        if (g_pEngine->language_changed())
         {
             // Re-renders every caption under a system-use guard, so it blocks
             // for long enough to need the pointer published first.
             show_wait_pointer();
-            apply_pending_language();
+            rebuild_for_language();
         }
         if (g_pEngine->has_pending_system())
         {
@@ -511,13 +503,19 @@ namespace NEONengine
         // box would be closed here, before the timeline and the VM are asked to
         // run, so that both start again in the frame it closes.
 
-        // Every request is answered by now, so a modal is all that can still
-        // hold the scene, and it holds it for a strong reason: a fade is the
-        // front half of a scene change, so anything a track moved would be
-        // thrown away, a keyframe running a script could queue a second scene
-        // change, and a hovered hotspot would put its role back over the WAIT
-        // pointer.
-        bool const holding = s_modal.kind != modal_kind::none;
+        // One flag, one owner. The VM latches itself the moment a script makes
+        // a modal call and stays latched until whoever answered it resumes it,
+        // so asking the VM is the same as asking whether a modal is up - and
+        // there is no second copy of the answer to fall out of step.
+        //
+        // The scene stops with it, for a strong reason: a fade is the front half
+        // of a scene change, so anything a track moved would be thrown away, a
+        // keyframe running a script could queue a second scene change, and a
+        // hovered hotspot would put its role back over the WAIT pointer. An
+        // overlay has a further one - it restores the pixels it covered from a
+        // buffer taken when it went up, so anything moving underneath would be
+        // painted back where it no longer is.
+        bool const holding = g_pEngine->vm().blocked();
 
         // ── Timeline ─────────────────────────────────────────────────────────
         if (!holding) scene_timeline_update();
@@ -540,25 +538,16 @@ namespace NEONengine
         scene_bobs_draw();
     }
 
-    /**
-     * @brief Takes the scene back from an overlay that has just come down.
-     *
-     * A dialogue is answered by a state of its own, so unlike a fade the scene
-     * cannot tell when it is over. This is that moment: the hold comes off and
-     * the parked script runs again on the next frame. Other overlays - a
-     * message box, the debug view - never set the hold, so they pass through.
-     */
-    void sceneResume(void)
-    {
-        if (s_modal.kind == modal_kind::show_dialog) s_modal = modal_request{};
-    }
-
     void sceneDestroy(void)
     {
         s_backdropStale = false;
-        s_modal         = modal_request{};
         g_pEngine->take_pending_modal();
         g_pEngine->take_pending_system();
+
+        // A scene ending takes its scripts with it, latch and all, so a modal
+        // that was still up owes nothing to anyone.
+        g_pEngine->vm().reset_execution();
+
         scene_hotspots_clear();
         scene_timeline_clear();
         mousePointerDestroy();
@@ -572,6 +561,5 @@ namespace NEONengine
         .cbCreate  = sceneCreate,
         .cbLoop    = sceneProcess,
         .cbDestroy = sceneDestroy,
-        .cbResume  = sceneResume,
     };
 }  // namespace NEONengine

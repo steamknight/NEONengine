@@ -81,10 +81,21 @@ namespace NEONengine::tests
          * A failing pass can name more tests than the screen has lines. The log
          * has them all; the screen keeps the first that fit and reserves the
          * last line for the summary.
+         *
+         * create_text() allocates through ACE's font helpers, which need the OS,
+         * so it runs under a guard. The blit drives the blitter and must not,
+         * hence the two separate scopes.
          */
         void draw_report_line(char const* str, u8 color)
         {
-            auto text = g_pEngine->default_text_renderer()->create_text(str, 320, text_justify::LEFT);
+            ace::text_bitmap_ptr text(nullptr);
+            {
+                mtl::system_use_guard guard;  // OS on for the font allocation
+                text = g_pEngine->default_text_renderer()->create_text(
+                    str, 320, text_justify::LEFT);
+            }
+            if (!text) return;
+
             u16 const height = text->uwActualHeight;
 
             if (s_y + 2 * height > SCREEN_HEIGHT) return;
@@ -96,7 +107,14 @@ namespace NEONengine::tests
         /// Draws the summary on the bottom line, whatever came before it.
         void draw_summary(char const* str, u8 color)
         {
-            auto text = g_pEngine->default_text_renderer()->create_text(str, 320, text_justify::LEFT);
+            ace::text_bitmap_ptr text(nullptr);
+            {
+                mtl::system_use_guard guard;  // OS on for the font allocation
+                text = g_pEngine->default_text_renderer()->create_text(
+                    str, 320, text_justify::LEFT);
+            }
+            if (!text) return;
+
             screenTextCopy(g_mainScreen,
                 text.get(),
                 0,
@@ -167,6 +185,12 @@ namespace NEONengine::tests
 
         for (u32 i = 0; i < testCount; i++)
         {
+#ifdef NE_TRACE_TESTS
+            // Names every test before it runs, so a crash that takes the machine
+            // down names its own culprit: the last line logged is the test that
+            // did not come back.
+            NE_LOG("run %s.%s", szSuiteName, tests[i].name);
+#endif
             char const* szError = tests[i].test_fn();
             if (!szError)
             {

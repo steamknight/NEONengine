@@ -223,6 +223,12 @@ namespace NEONengine
         auto pResult
             = ace::fontCreateTextBitMap(mtl::round_up<16>(contentWidth), mtl::round_up<16>(height));
 
+        if (!pResult)
+        {
+            NE_LOG("Could not allocate a %hux%hu text bitmap.", contentWidth, height);
+            return ace::text_bitmap_ptr(nullptr);
+        }
+
         pResult->uwActualWidth  = contentWidth;
         pResult->uwActualHeight = height;
 

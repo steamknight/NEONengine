@@ -18,6 +18,8 @@
 #ifndef __GAME_SESSION_H__INCLUDED__
 #define __GAME_SESSION_H__INCLUDED__
 
+#include <mtl/bitset.h>
+#include <mtl/span.h>
 #include <mtl/vector.h>
 
 #include "game_data.h"
@@ -40,17 +42,7 @@ namespace NEONengine
     constexpr u16 NO_SELECTED_ITEM = 0xFFFFu;
 
     /**
-     * @brief What the player has read and taken, for the whole playthrough.
-     *
-     * Pages and choices are addressed by their global index - their position in
-     * the loaded game data's PAGS and CHOC chunks - rather than by an index
-     * within their dialogue, because that is what every record that points at
-     * one carries.
-     *
-     * Both records are packed one bit per entry, following the timeline's
-     * fired-keyframe array: a playthrough can hold thousands of pages, and a
-     * byte apiece would be seven eighths waste in a machine measured in
-     * megabytes.
+     * @brief Mutable game state for one playthrough. This is what gets saved and loaded from disk.
      */
     class game_session
     {
@@ -59,11 +51,9 @@ namespace NEONengine
          * @brief Sizes the session for @p page_count pages, @p choice_count
          *        choices and @p item_count inventory items, with all state clear.
          *
-         * Sizing from the loaded game data means an index that came from a
-         * record in that data is always addressable. Calling this again starts
-         * the playthrough's memory over, which is what a new game wants.
+         * Only used by unit tests; the engine creates a session from game data or from a save file.
          */
-        void create(u32 page_count, u32 choice_count, u32 item_count = 0);
+        void create_for_test(u32 page_count, u32 choice_count, u32 item_count = 0);
 
         /**
          * @brief Sizes the session from what @p data holds.
@@ -74,13 +64,13 @@ namespace NEONengine
         void create_from(game_data const& data);
 
         /** @brief How many pages this session can remember. */
-        u32 page_count() const noexcept { return _page_count; }
+        u32 page_count() const noexcept { return _pages_read.size(); }
 
         /** @brief How many choices this session can remember. */
-        u32 choice_count() const noexcept { return _choice_count; }
+        u32 choice_count() const noexcept { return _choices_taken.size(); }
 
         /** @brief How many inventory items this session can remember. */
-        u32 item_count() const noexcept { return _item_count; }
+        u32 item_count() const noexcept { return _item_counts.size(); }
 
         /**
          * @brief Whether the page at global @p index has been read.
@@ -90,10 +80,18 @@ namespace NEONengine
          * rather than trapping keeps a malformed pak to a page that reads oddly
          * instead of a crash.
          */
-        bool is_page_read(u32 index) const noexcept { return test(_pages_read, _page_count, index); }
+        bool is_page_read(u32 index) const noexcept
+        {
+            if (index >= _pages_read.size()) return false;
+            return _pages_read.test(index);
+        }
 
         /** @brief Records that the page at global @p index has been read. */
-        void mark_page_read(u32 index) noexcept { set(_pages_read, _page_count, index); }
+        void mark_page_read(u32 index) noexcept
+        {
+            if (index >= _pages_read.size()) return;
+            _pages_read.set(index);
+        }
 
         /**
          * @brief Whether the choice at global @p index has been taken.
@@ -102,11 +100,16 @@ namespace NEONengine
          */
         bool is_choice_taken(u32 index) const noexcept
         {
-            return test(_choices_taken, _choice_count, index);
+            if (index >= _choices_taken.size()) return false;
+            return _choices_taken.test(index);
         }
 
         /** @brief Records that the choice at global @p index has been taken. */
-        void mark_choice_taken(u32 index) noexcept { set(_choices_taken, _choice_count, index); }
+        void mark_choice_taken(u32 index) noexcept
+        {
+            if (index >= _choices_taken.size()) return;
+            _choices_taken.set(index);
+        }
 
         /** @brief Adds one of inventory item @p id, saturating at 65535. */
         void add_item(u16 id) noexcept
@@ -150,33 +153,30 @@ namespace NEONengine
         }
 
         mtl::vector<u16>& get_values() noexcept { return _values; }
+        mtl::vector<u16> const& get_values() const noexcept { return _values; }
+
+        mtl::bitset<u32>& get_flags() noexcept { return _flags; }
+        mtl::bitset<u32> const& get_flags() const noexcept { return _flags; }
 
         u16 get_selected_inventory_item() const noexcept
         {
-            return _values[to<u32>(engine_values::SELECTED_INV_ITEM)];
+            return _values[engine_value_index(engine_values::SELECTED_INV_ITEM)];
         }
 
         private:  /////////////////////////////////////////////////////////////////////////////////
-        /** @brief Bytes needed to hold @p count bits. */
-        static u32 byte_count(u32 count) noexcept { return (count + 7) / 8; }
 
-        /** @brief Whether bit @p index of @p bits is set; false past @p count. */
-        static bool test(mtl::vector<u8> const& bits, u32 count, u32 index) noexcept
+        /**
+         * @brief Returns the index of the engine "value" for @p which.
+         */
+        u32 engine_value_index(engine_values which) const noexcept
         {
-            if (index >= count) return false;
-            return (bits[index >> 3] & to<u8>(1 << (index & 7))) != 0;
-        }
-
-        /** @brief Sets bit @p index of @p bits, ignoring an index past @p count. */
-        static void set(mtl::vector<u8>& bits, u32 count, u32 index) noexcept
-        {
-            if (index >= count) return;
-            bits[index >> 3] |= to<u8>(1 << (index & 7));
+            u32 const base = to<u32>(_values.size()) - to<u32>(engine_values::COUNT);
+            return base + to<u32>(-to<i32>(which) - 1);
         }
 
         bool validate_item_id(u16 id) const noexcept
         {
-            if (to<u32>(id) < _item_count) return true;
+            if (to<u32>(id) < _item_counts.size()) return true;
             report_invalid_item_id(id);
             return false;
         }
@@ -190,23 +190,22 @@ namespace NEONengine
 #endif
         }
 
-        void create_initial_values(mtl::vector<u16> const& initial_values,
+        void create_initial_values(mtl::span<i16> initial_values,
             data::header const& header) noexcept;
 
+        private:  /////////////////////////////////////////////////////////////////////////////////
+
         /// One bit per page, in PAGS order: whether the player has read it.
-        mtl::vector<u8> _pages_read;
+        mtl::bitset<u32> _pages_read;
 
         /// One bit per choice, in CHOC order: whether the player has taken it.
-        mtl::vector<u8> _choices_taken;
+        mtl::bitset<u32> _choices_taken;
 
         /// One count per inventory item, in INVT order.
         mtl::vector<u16> _item_counts;
 
         mtl::vector<u16> _values;  ///< One signed value per declared value, in VALS order.
-
-        u32 _page_count{ 0 };    ///< Pages the bit array was sized for.
-        u32 _choice_count{ 0 };  ///< Choices the bit array was sized for.
-        u32 _item_count{ 0 };    ///< Inventory items the count array was sized for.
+        mtl::bitset<u32> _flags;   ///< One bit per declared flag, in FLGS order.
 
         invalid_item_id_reporter _invalid_item_id_reporter{ nullptr };
     };

@@ -68,12 +68,10 @@ namespace NEONengine
     constexpr u8 DIALOGUE_MAX_CHOICES_SHOWN = 9;
 
     /**
-     * @brief How long a reply picked by its number is held highlighted, in frames.
+     * @brief How long a reply is held highlighted, in frames.
      *
-     * Long enough for the player to read what they picked before the
-     * conversation moves on, short enough not to feel like a stall. A reply
-     * picked with the mouse needs none of this: it was highlighted for as long
-     * as the pointer sat on it.
+     * Applies only when the player picks a reply with the keyboard. Using the mouse already shows
+     * which choice is about to be picked.
      */
     constexpr u8 DIALOGUE_CHOICE_HOLD_FRAMES = 12;
 
@@ -87,10 +85,6 @@ namespace NEONengine
 
     /**
      * @brief One box of text waiting to be put on screen.
-     *
-     * A line a character speaks and a dead script's report differ only in what
-     * these fields hold, so everything that has something to say fills one of
-     * these in and one state draws them all.
      *
      * Neither string is copied. Whoever posts a request has to keep both alive
      * until the box is drawn, which is the next time the main loop runs.
@@ -235,6 +229,15 @@ namespace NEONengine
 
         using result = mtl::expected<engine_ptr, error_code>;
 
+        enum class request_failure
+        {
+            NONE,
+            LANGUAGE_LOAD_FAILED,
+            LANGUAGE_MISMATCH,
+        };
+
+        using request_result = mtl::expected<void, request_failure>;
+
         public:  //////////////////////////////////////////////////////////////////////////////////
         tFont* default_font() noexcept { return _pUiFont.get(); }
         text_renderer* default_text_renderer() noexcept { return _pTextRenderer.get(); }
@@ -259,56 +262,12 @@ namespace NEONengine
          */
         game_session& session() noexcept { return _session; }
 
-        /**
-         * @brief The current value of game state flag @p flag_id.
-         *
-         * Reads the buffer the VM borrows, so scripts and authored data see the
-         * same flag. An id past the end of that buffer is false, because a flag
-         * the data never declared has never been set.
-         */
-        bool get_flag(u16 flag_id) const noexcept
-        {
-            u32 const byte = to<u32>(flag_id) >> 3;
-            if (byte >= _flags.size()) return false;
-            return (_flags[byte] & to<u8>(1 << (flag_id & 7))) != 0;
-        }
-
-        /**
-         * @brief Writes game state flag @p flag_id.
-         *
-         * Writes the buffer the VM borrows, so a flag authored data sets is the
-         * same flag a script goes on to read. An id past the end of that buffer
-         * is dropped: the data never declared it, and growing the buffer here
-         * would move the memory the VM holds.
-         */
-        void set_flag(u16 flag_id, bool value) noexcept
-        {
-            u32 const byte = to<u32>(flag_id) >> 3;
-            if (byte >= _flags.size()) return;
-
-            u8 const mask = to<u8>(1 << (flag_id & 7));
-            if (value)
-                _flags[byte] = to<u8>(_flags[byte] | mask);
-            else
-                _flags[byte] = to<u8>(_flags[byte] & ~mask);
-        }
 
         /** @brief The active language's strings. */
         string_table& strings() noexcept { return *_pStrings; }
 
         /** @brief The language currently loaded. */
         language current_language() const noexcept { return _pStrings->language_id(); }
-
-        /**
-         * @brief Switch to @p lang, keeping the current strings if it fails.
-         *
-         * The new table is loaded before the old one is released, so a missing
-         * or corrupt language file never leaves the game without strings.
-         *
-         * @param lang The language to load.
-         * @return True when @p lang is now active.
-         */
-        bool set_language(language lang);
 
         /**
          * @brief Post a system request - a scene change, a save, a new game.
@@ -339,11 +298,7 @@ namespace NEONengine
         }
 
         /**
-         * @brief Post a language change requested by a script (SET_LANG).
-         *
-         * Deferred rather than applied on the spot: SET_LANG runs inside a VM
-         * step, and swapping the table reads from disk. The state loop applies
-         * it at the same safe point it applies a pending scene.
+         * @brief Post a language change request, applied on the next frame.
          */
         void request_language(language lang) noexcept
         {
@@ -353,12 +308,8 @@ namespace NEONengine
         /** @brief True when a script has requested a language change. */
         bool has_pending_language() const noexcept { return _pending_language.has(); }
 
-        /** @brief Consume the pending language request, clearing it. */
-        language take_pending_language() noexcept
-        {
-            auto const taken = _pending_language.take();
-            return taken;
-        }
+        /** @brief True for the one frame in which the string table actually swapped. */
+        bool language_changed() const noexcept { return _language_changed; }
 
         /**
          * @brief Post a modal requested by a script (SAY, FADE_OUT, and so on).
@@ -437,7 +388,14 @@ namespace NEONengine
         u16 current_scene() const noexcept { return _current_scene; }
         void set_current_scene(u16 scene_id) noexcept { _current_scene = scene_id; }
 
+        void update() noexcept;
+
         static result initialize();
+
+        private: //////////////////////////////////////////////////////////////////////////////////
+
+        /** @brief Apply the pending language change, if any. */
+        request_result apply_pending_language() noexcept;
 
         private:  //////////////////////////////////////////////////////////////////////////////////
 
@@ -451,9 +409,6 @@ namespace NEONengine
         // Current game session, overwriten on new/save/load game.
         game_session                     _session{};
 
-        // TODO: Move in to game session, and have the VM borrow it from there. 
-        mtl::vector<u8>                  _flags;
-
         // Language requested by a script, awaiting a swap.
         pending_request<language>        _pending_language{};
         pending_request<modal_request>   _pending_modal{};
@@ -461,7 +416,8 @@ namespace NEONengine
         pending_request<message_request> _pending_message{};
         pending_request<u16>             _pending_dialogue{};
 
-        u16 _current_scene{ 0 };  ///< Scene the runtime is presenting.
+        u16                              _current_scene{ 0 };  ///< Scene the runtime is presenting.
+        bool                             _language_changed{ false };
     };
 
     extern engine_ptr g_pEngine;

@@ -17,7 +17,7 @@ namespace NEONengine
         game_session sized_session(u32 pages, u32 choices, u32 items = 0)
         {
             game_session session;
-            session.create(pages, choices, items);
+            session.create_for_test(pages, choices, items);
             return session;
         }
 
@@ -73,7 +73,7 @@ namespace NEONengine
         session.mark_page_read(3);
         session.mark_choice_taken(4);
 
-        session.create(16, 16);
+        session.create_for_test(16, 16);
 
         TEST_ASSERT(!session.is_page_read(3), "creating again should forget what was read");
         TEST_ASSERT(!session.is_choice_taken(4), "creating again should forget what was taken");
@@ -364,7 +364,7 @@ namespace NEONengine
         session.add_item(0);
         session.add_item(1);
 
-        session.create(0, 0, 2);
+        session.create_for_test (0, 0, 2);
 
         TEST_ASSERT(session.count(0) == 0, "creating again should clear item 0");
         TEST_ASSERT(session.count(1) == 0, "creating again should clear item 1");

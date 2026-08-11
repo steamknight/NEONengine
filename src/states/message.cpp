@@ -169,6 +169,12 @@ namespace NEONengine
             to<WORD>(s_boxHeight));
         screenResumeDisplay(g_mainScreen);
 
+        // SAY is a modal bridge call, so the script that asked for this box is
+        // parked on the instruction after it and nothing else will start it
+        // again. A box the engine put up for its own reasons parked nothing and
+        // this is a no-op.
+        g_pEngine->vm().resume_execution();
+
         // The scene has not seen the button since before the box went up, so
         // the press that dismissed it would read as a fresh click on whatever
         // the pointer happens to be over.

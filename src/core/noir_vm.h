@@ -6,6 +6,7 @@
 #include <ace/types.h>
 
 #include "mtl/expected.h"
+#include "mtl/bitset.h"
 #include "mtl/memory.h"
 #include "mtl/utility.h"
 #include "mtl/vector.h"
@@ -61,6 +62,7 @@ namespace NEONengine
         immediate_modal,   ///< A deferred modal bridge call under execute_now
         runaway,           ///< An execute_now script ran past its instruction cap
         halt,              ///< The script ran HALT: a case its author says cannot happen
+        unbound_bridge,    ///< The opcode is valid but the host left its bridge slot empty
     };
 
     /**
@@ -74,6 +76,7 @@ namespace NEONengine
         ok,         ///< Nothing to report
         completed,  ///< update(): the run list emptied
         yielded,    ///< update(): sessions remain — call it again next frame
+        blocked,    ///< update(): a modal call ran; nothing runs until resume_execution()
         terminated, ///< update(): a terminal call ran; nothing runs until reset_execution()
         deferred,   ///< An instruction: a deferred bridge call ended the walk
         failed,     ///< An instruction: the session died. update() reports the reason instead.
@@ -82,13 +85,24 @@ namespace NEONengine
     /**
      * @brief The machine's own state, as opposed to a session's.
      *
-     * It lasts one update, except @c terminated, which is a latch only
-     * reset_execution() lifts.
+     * It lasts one update, except @c blocked and @c terminated, which are
+     * latches: nothing runs until the matching lift.
+     *
+     * The two latches are the same mechanism and differ only in how they end.
+     * A modal call stops the world while something else has the screen, and
+     * resume_execution() picks the sessions up where they parked. A terminal
+     * call stops the world because the scene the sessions belong to is over,
+     * and reset_execution() takes them with it.
+     *
+     * Neither is a property of one session. A modal box or a fade stops
+     * *everything*: a timeline still animating underneath one would move the
+     * pixels the overlay restores from when it comes down.
      */
     enum class noir_vm_state : u8
     {
         ok,          ///< Nothing went wrong this update
         failed,      ///< A session died this update
+        blocked,     ///< A modal call ran; nothing runs until resume_execution()
         terminated,  ///< A terminal call ran; nothing runs until reset_execution()
     };
 
@@ -129,7 +143,7 @@ namespace NEONengine
     };
 
     template<typename Sig>
-    struct deferred_modal  ///< Records a request; the scene shows it and holds the VM
+    struct deferred_modal  ///< Records a request; blocks the VM until whoever answers it resumes
     {
         Sig* fn;
     };
@@ -147,10 +161,14 @@ namespace NEONengine
      * headers. Every function pointer must stay valid as long as the VM does.
      *
      * A deferred call records what the script asked for and returns; the opcode
-     * then spends the rest of the frame budget, so no session runs again this
-     * update. The scene acts on the request at the top of the next frame. A
-     * terminal one also stops the VM until the teardown it asked for has
-     * happened.
+     * ends the walk, so no session runs again this update. The scene acts on
+     * the request at the top of the next frame.
+     *
+     * Both deferred kinds also latch the VM, because one frame is not long
+     * enough: a fade or a dialogue box lasts many. A modal one is lifted by
+     * resume_execution(), called by whoever answered the request when it comes
+     * down. A terminal one is lifted by reset_execution(), which takes the
+     * sessions with it.
      *
      * @see noir_vm
      */
@@ -290,10 +308,8 @@ namespace NEONengine
         /**
          * @brief Construct a VM instance.
          *
-         * @param flags           Borrowed bitfield array (game state flags)
-         * @param flags_size      Size of flags array in bytes (total bits = flags_size * 8)
-         * @param values          Borrowed 16-bit value array (game state values)
-         * @param values_count    Number of entries in the values array
+         * @param flags           Borrowed flag bitset (game state flags)
+         * @param values          Borrowed 16-bit value store (game state values)
          * @param bytecode        Borrowed read-only bytecode blob (all scripts)
          * @param bytecode_size   Size of bytecode blob in bytes
          * @param func_toc        Borrowed array of u32 offsets into bytecode
@@ -301,10 +317,8 @@ namespace NEONengine
          * @param bridge          Borrowed engine bridge (must outlive VM)
          * @param stack_size      Stack capacity of one session, in bytes
          */
-        noir_vm(u8* flags,
-            u16 flags_size,
-            u16* values,
-            u16 values_count,
+        noir_vm(mtl::bitset<u32>& flags,
+            mtl::vector<u16>& values,
             u8 const* bytecode,
             u32 bytecode_size,
             u32 const* func_toc,
@@ -359,16 +373,37 @@ namespace NEONengine
          *
          * Call this once per frame. Keep calling while the result is `yielded`.
          *
-         * Does nothing once a terminal call has run: the scene it was running
-         * in is over, so resuming a session in it would be wrong. Only
-         * reset_execution() lifts that.
+         * Does nothing while either latch is up. A modal call has put something
+         * else on the screen, and a session resuming behind it would run past
+         * the opcode before the player had answered it. A terminal call ended
+         * the scene the sessions were running in. resume_execution() lifts the
+         * first, reset_execution() the second.
          *
-         * @return `yielded` while sessions remain, `terminated` while a
-         *         teardown is owed, `completed` when the run list emptied, `ok`
-         *         when there was nothing to run — or why a session died, which
-         *         outranks all of them.
+         * @return `yielded` while sessions remain, `blocked` while a modal is
+         *         up, `terminated` while a teardown is owed, `completed` when
+         *         the run list emptied, `ok` when there was nothing to run — or
+         *         why a session died, which outranks all of them.
          */
         mtl::expected<noir_result, noir_error> update() noexcept;
+
+        /**
+         * @brief Let the sessions a modal call parked run again.
+         *
+         * The counterpart of reset_execution() for the modal latch, and the
+         * cheaper of the two: the sessions were never touched, so lifting the
+         * latch is the whole job. Each one is parked on the instruction after
+         * the call it made, because the program counter had already moved on
+         * when the walk ended.
+         *
+         * Whoever answered the request calls this when it is done - the fade
+         * callback, or an overlay state on its way down. Nothing else does. A
+         * modal request left unanswered stops every script for the rest of the
+         * scene, silently.
+         *
+         * Does nothing unless a modal call is what stopped the VM, so a state
+         * that came up for its own reasons can call it without checking.
+         */
+        void resume_execution() noexcept;
 
         /**
          * @brief Abandon every session and empty the run list.
@@ -383,7 +418,9 @@ namespace NEONengine
          * say - and their call chains should end rather than resume.
          *
          * This is the teardown a terminal call asks for, and the only thing
-         * that lets the VM run again after one.
+         * that lets the VM run again after one. It clears the modal latch too:
+         * a scene that ends while a modal is up takes the parked sessions with
+         * it, so there is nothing left to resume.
          */
         void reset_execution() noexcept;
 
@@ -393,6 +430,9 @@ namespace NEONengine
         u16 exit_code() const noexcept { return _exit_code; }
         u16 reg_d(u8 i) const noexcept { return _current_session.d[i & 3]; }
         u8 sr() const noexcept { return _current_session.sr; }
+
+        /// True while a modal call is waiting to be answered.
+        bool blocked() const noexcept { return _vm_state == noir_vm_state::blocked; }
 
         /// True while a terminal call is waiting for its teardown.
         bool terminated() const noexcept { return _vm_state == noir_vm_state::terminated; }
@@ -471,9 +511,21 @@ namespace NEONengine
         // body of its own, which adds a second call in front of every bridge
         // call and costs more than it saves.
 
+        // A bridge slot the host never filled holds a null pointer, and a 68k
+        // without an MMU does not trap on a jump to zero: it runs the exception
+        // vector table as if it were code, which decodes into the 0x4xxx space
+        // and gurus at 80000006 far from the real mistake. Every call helper
+        // below checks first so an unwired opcode kills its own script instead.
+        template<typename Sig>
+        [[gnu::always_inline]] bool unbound(Sig const& b) noexcept
+        {
+            return b.fn == nullptr;
+        }
+
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call(immediate<Sig> const& b, Args... args) noexcept
         {
+            if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
             b.fn(args...);
             return noir_result::ok;
         }
@@ -487,6 +539,11 @@ namespace NEONengine
             if (_run_mode == run_mode::immediate)
                 return fail(noir_error::immediate_modal, "a modal call under execute_now");
 
+            if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
+
+            // Set before the call, not after: a bridge function that answers
+            // the request on the spot has to be able to lift it again.
+            _vm_state = noir_vm_state::blocked;
             b.fn(args...);
             return noir_result::deferred;
         }
@@ -494,6 +551,8 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call(deferred_terminal<Sig> const& b, Args... args) noexcept
         {
+            if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
+
             // Set before the call, not after: a bridge function that tears the
             // VM down on the spot has to be able to clear it again.
             _vm_state = noir_vm_state::terminated;
@@ -505,6 +564,7 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call_result(immediate<Sig> const& b, Args... args) noexcept
         {
+            if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
             _current_session.d[0] = b.fn(args...);
             return noir_result::ok;
         }
@@ -513,6 +573,7 @@ namespace NEONengine
         template<typename Sig, typename... Args>
         [[gnu::always_inline]] noir_result call_flag(immediate<Sig> const& b, Args... args) noexcept
         {
+            if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
             set_flag_result(b.fn(args...));
             return noir_result::ok;
         }
@@ -670,10 +731,8 @@ namespace NEONengine
         private:  //////////////////////////////////////////////////////////////////////////////////
         // ── Borrowed memory (caller manages lifetime) ────────────────────────
 
-        u8* _flags;
-        u16 _flags_size;
-        u16* _values;
-        u16 _values_count;
+        mtl::bitset<u32>* _flags;
+        mtl::vector<u16>* _values;
         u8 const* _bytecode;
         u32 _bytecode_size;
         u32 const* _func_toc;

@@ -67,7 +67,7 @@ namespace mtl
     }
 
     template<typename T, typename U>
-    auto force_to(U&& value) -> T
+    constexpr auto force_to(U&& value) -> T
     {
         return reinterpret_cast<T>(forward<U>(value));
     }

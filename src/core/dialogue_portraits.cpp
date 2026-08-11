@@ -194,24 +194,19 @@ namespace NEONengine
     {
         dialogue_portraits_unload();
 
-        auto const pages = g_pEngine->data().pages();
-        if (page_range.start >= pages.size()) return;
-
-        u16 const end = to<u16>(page_range.start + page_range.count);
+        auto const pages = page_range.of(g_pEngine->data().pages());
 
         // One guard around every read, not one per portrait: the pause belongs
         // to the box appearing, and taking the system back and forth between
         // portraits would only make it longer.
         mtl::system_use_guard guard;
 
-        for (u16 index = page_range.start; index < end && index < pages.size(); ++index)
+        for (auto const& page : pages)
         {
-            u16 const bitmap_id = portrait_of(pages[index].speaker_id);
+            u16 const bitmap_id = portrait_of(page.speaker_id);
             if (bitmap_id == data::NO_ID) continue;
 
-            // Two pages sharing a speaker, or two speakers drawn from the same
-            // artwork, cost one copy of it. Chip RAM is what a talkative scene
-            // runs out of first.
+            // Don't load the same portrait twice
             if (find(bitmap_id)) continue;
 
             portrait loaded{};

@@ -80,7 +80,7 @@ namespace NEONengine
         auto status = vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_result::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::blocked, "the modal call latches the VM");
         TEST_SUCCESS;
     }
 
@@ -111,9 +111,11 @@ namespace NEONengine
         vm.update();
         TEST_ASSERT(g_mock_log.say_string_id == 12, "the first line went out");
 
+        vm.resume_execution();
         vm.update();
         TEST_ASSERT(g_mock_log.say_string_id == 13, "the second line waited a whole update");
 
+        vm.resume_execution();
         auto last = vm.update();
         TEST_ASSERT(last == noir_result::completed, "then the script ran out");
         TEST_SUCCESS;
@@ -148,6 +150,7 @@ namespace NEONengine
 
         TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");
@@ -176,6 +179,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 42, "D0 preserved across SAY block");
@@ -212,6 +216,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -249,6 +254,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across SAY block");
@@ -346,6 +352,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.say_string_id == 100, "say string_id 100");
         TEST_ASSERT(g_mock_log.say_speaker_id == 2, "say speaker_id 2");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");
@@ -395,7 +402,7 @@ namespace NEONengine
         auto status = vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at the deferred call");
-        TEST_ASSERT(status == noir_result::yielded, "sessions remain, so the update yields");
+        TEST_ASSERT(status == noir_result::blocked, "the modal call latches the VM");
         TEST_SUCCESS;
     }
 
@@ -461,6 +468,7 @@ namespace NEONengine
 
         TEST_ASSERT(vm.session_count() == 1, "parked at SHOW_DIALOG");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");
@@ -497,6 +505,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(0) == 11, "D0 preserved");
@@ -530,6 +539,7 @@ namespace NEONengine
         vm.execute(fn);
         vm.update();
 
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT((vm.sr() & noir_sr::N) != 0, "N flag preserved across block");
@@ -1378,6 +1388,7 @@ namespace NEONengine
         TEST_ASSERT(vm.session_count() == 1, "parked at SAY");
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes on the next update");
@@ -1424,6 +1435,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
         // Second update — should then defer on SHOW_DIALOG
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.session_count() == 1, "parked at SHOW_DIALOG");
@@ -1431,6 +1443,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.show_dialog_id == 50, "show_dialog(50)");
 
         // Third update — should complete
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes once both have had their update");
@@ -1493,6 +1506,7 @@ namespace NEONengine
         TEST_ASSERT(g_mock_log.say_called, "say called");
 
         // Next update — rest should run to completion
+        vm.resume_execution();
         auto status = vm.update();
 
         TEST_ASSERT(status == noir_result::completed, "completes in the update after the SAY");

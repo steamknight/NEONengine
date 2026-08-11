@@ -481,6 +481,64 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    // ── It runs while the VM is blocked ──────────────────────────────────────────
+
+    TEST_IMPL(test_immediate_runs_while_the_vm_is_blocked)
+    {
+        // The case a dialogue choice depends on: the box is up, the VM is
+        // latched, and a script still has to run to answer what the player
+        // picked. If it could not, no choice could ever act until the box came
+        // down on its own first.
+        bytecode_builder bc;
+
+        u16 const fn_say = bc.begin_func();
+        imm_mov_d0(bc, 1);
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        u16 const fn_now = bc.begin_func();
+        imm_mov_d0(bc, 42);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn_say);
+        vm.update();
+        TEST_ASSERT(vm.blocked(), "the SAY latched the VM");
+
+        auto const r = vm.execute_now(fn_now);
+
+        TEST_ASSERT(r == i16(42), "the script ran to its RET regardless");
+        TEST_ASSERT(vm.blocked(), "and the box is still up when it is done");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_a_death_here_does_not_lift_the_modal_latch)
+    {
+        // The dialogue is still on screen; the choice script it runs dies.
+        // Losing the latch here would let the parked sessions carry on behind
+        // a box that has not come down.
+        bytecode_builder bc;
+
+        u16 const fn_say = bc.begin_func();
+        imm_mov_d0(bc, 1);
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        u16 const fn_dies = bc.begin_func();
+        bc.emit(noir_op::HALT);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn_say);
+        vm.update();
+        TEST_ASSERT(vm.blocked(), "the SAY latched the VM");
+
+        auto const r = vm.execute_now(fn_dies);
+
+        TEST_ASSERT(failed_with(r, noir_error::halt), "the immediate script died");
+        TEST_ASSERT(vm.blocked(), "and the box is still owed an answer");
+        TEST_SUCCESS;
+    }
+
     // ── Terminal calls ───────────────────────────────────────────────────────────
 
     TEST_IMPL(test_immediate_allows_a_terminal_call)
@@ -551,6 +609,8 @@ namespace NEONengine
         TEST(test_wait_still_parks_a_session)
         TEST(test_immediate_kills_a_modal_call)
         TEST(test_immediate_records_no_modal_request)
+        TEST(test_immediate_runs_while_the_vm_is_blocked)
+        TEST(test_a_death_here_does_not_lift_the_modal_latch)
         TEST(test_immediate_allows_a_terminal_call)
         TEST(test_a_death_here_does_not_lift_the_teardown_latch)
     TEST_SUITE_END

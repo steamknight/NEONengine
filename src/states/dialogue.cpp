@@ -883,6 +883,12 @@ namespace NEONengine
 
         screenResumeDisplay(g_mainScreen);
 
+        // SHOW_DIALOG is a modal bridge call, so the script that opened the
+        // conversation is parked on the instruction after it, and this is the
+        // only thing that starts it again. A choice script that made a terminal
+        // call is untouched: that one is owed a teardown, not a resume.
+        g_pEngine->vm().resume_execution();
+
         // The scene has not seen the button since before the box went up, so
         // the press that closed it would read as a fresh click on whatever the
         // pointer happens to be over.

@@ -99,7 +99,7 @@ namespace NEONengine
 
         auto status = vm.update();
 
-        TEST_ASSERT(status == noir_result::yielded, "the session did not reach its RET");
+        TEST_ASSERT(status == noir_result::blocked, "the session did not reach its RET");
         TEST_ASSERT(vm.reg_d(3) != 4321, "nor the opcode straight after the call");
         TEST_ASSERT(vm.session_count() == 1, "and it is still in the run list");
         TEST_SUCCESS;
@@ -125,6 +125,7 @@ namespace NEONengine
         vm.update();
         TEST_ASSERT(g_mock_log.say_count == 1, "the line went out once");
 
+        vm.resume_execution();
         auto status = vm.update();
         TEST_ASSERT(status == noir_result::completed, "the rest of the script ran");
         TEST_ASSERT(vm.reg_d(2) == 1234, "starting at the opcode after the call");
@@ -263,6 +264,7 @@ namespace NEONengine
         TEST_ASSERT(!def_marked(0x0B04), "both held on the update the call was made");
         TEST_ASSERT(!def_marked_b(0x0B05), "including the one two places back");
 
+        vm.resume_execution();
         vm.update();
         TEST_ASSERT(def_marked(0x0B04), "the first is free on the update after it");
         TEST_ASSERT(def_marked_b(0x0B05), "and so is the one behind that");
@@ -364,6 +366,7 @@ namespace NEONengine
         vm.update();
         TEST_ASSERT(vm.reg_d(2) != 0x0F00, "parked inside the callee");
 
+        vm.resume_execution();
         auto status = vm.update();
         TEST_ASSERT(vm.reg_d(2) == 0x0F00, "the callee finished");
         TEST_ASSERT(vm.reg_d(3) == 0x0BAD, "and the caller carried on after it");
@@ -390,6 +393,7 @@ namespace NEONengine
         vm.execute(fn);
 
         vm.update();
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(vm.reg_d(1) == 0x1111, "D1 survived");
@@ -430,12 +434,17 @@ namespace NEONengine
         vm.execute(fn_talker);
 
         // Update 1: the waiter runs WAIT 2 and parks; the talker says its first
-        // line and ends the walk. Updates 2 and 3 age the wait out.
+        // line and ends the walk, latching the VM. Each SAY the talker makes
+        // blocks the VM again, so resuming between updates is what lets the
+        // wait age at all.
         vm.update();
         TEST_ASSERT(!def_marked(0x0B06), "the wait has not aged out yet");
 
+        vm.resume_execution();
         vm.update();
+        vm.resume_execution();
         vm.update();
+        vm.resume_execution();
         vm.update();
 
         TEST_ASSERT(def_marked(0x0B06), "the wait aged out despite the interruptions");
@@ -539,10 +548,12 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_modal_calls_do_not_stop_the_vm)
+    TEST_IMPL(test_modal_calls_block_the_vm_until_resumed)
     {
-        // The other half of the pair. Were terminal and modal still the same
-        // thing, a conversation would stop the VM for good on its first line.
+        // A modal call latches the VM exactly like a terminal one, but
+        // resume_execution() is the way out instead of reset_execution(). Were
+        // it treated as merely ending the walk, the session behind it would run
+        // one frame after the box went up, before anyone answered it.
         u8 const modal[] = {
             noir_op::SAY,
             noir_op::SHOW_DIALOG,
@@ -566,11 +577,19 @@ namespace NEONengine
             g_mock_log.reset();
             vm.execute(fn);
 
-            vm.update();
-            TEST_ASSERT(!vm.terminated(), "a modal call stopped the VM");
+            auto first = vm.update();
+            TEST_ASSERT(first == noir_result::blocked, "the modal call latched the VM");
+            TEST_ASSERT(vm.blocked(), "and blocked() agrees");
+            TEST_ASSERT(!vm.terminated(), "though it is not a teardown");
 
-            vm.update();
-            TEST_ASSERT(def_marked(0x0B24), "and the session did not carry on");
+            auto second = vm.update();
+            TEST_ASSERT(second == noir_result::blocked, "an unanswered request keeps it latched");
+            TEST_ASSERT(!def_marked(0x0B24), "and the session did not carry on");
+
+            vm.resume_execution();
+            auto third = vm.update();
+            TEST_ASSERT(third == noir_result::completed, "answering it lets the session finish");
+            TEST_ASSERT(def_marked(0x0B24), "and it carried on past the call");
         }
         TEST_SUCCESS;
     }
@@ -608,6 +627,83 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    TEST_IMPL(test_modal_call_freezes_a_waiting_session)
+    {
+        // A modal call stops the world exactly as a terminal one does: a WAIT
+        // must not age out while the dialogue box is up, or the session behind
+        // it would come back due the instant the box closes rather than on
+        // schedule.
+        bytecode_builder bc;
+
+        u16 fn_wait = bc.begin_func();
+        bc.emit(noir_op::WAIT);
+        bc.emit_u16(3);
+        def_mov_d0(bc, 0x0B27);
+        bc.emit(noir_op::HOTSPOT_ON);
+        bc.emit(noir_op::RET);
+
+        u16 fn_say = bc.begin_func();
+        def_mov_d0(bc, 1);
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        g_mock_log.reset();
+        vm.execute(fn_wait);
+        vm.execute(fn_say);
+
+        for (u16 i = 0; i < 10; ++i) vm.update();
+
+        TEST_ASSERT(!def_marked(0x0B27), "the wait did not age out while the VM was blocked");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_resume_execution_does_nothing_unless_blocked)
+    {
+        // A no-op unless the VM is latched by a modal call. If it lifted a
+        // teardown too, an overlay coming down at the wrong moment would cancel
+        // a scene change a dialogue choice script had already asked for.
+        bytecode_builder bc;
+
+        u16 fn_goto = bc.begin_func();
+        def_mov_d0(bc, 7);
+        bc.emit(noir_op::GOTO_SCENE);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn_goto);
+        vm.update();
+        TEST_ASSERT(vm.terminated(), "the terminal call latched");
+
+        vm.resume_execution();
+
+        TEST_ASSERT(vm.terminated(), "resume_execution left the teardown owed");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_reset_execution_clears_the_modal_latch)
+    {
+        // The teardown between scenes lifts every latch, not just the terminal
+        // one: a fresh scene must not inherit a block left over by the old one.
+        bytecode_builder bc;
+
+        u16 fn_say = bc.begin_func();
+        def_mov_d0(bc, 1);
+        bc.emit(noir_op::SAY);
+        bc.emit(noir_op::RET);
+
+        auto vm = bc.build_vm();
+        vm.execute(fn_say);
+        vm.update();
+        TEST_ASSERT(vm.blocked(), "the modal call latched");
+
+        vm.reset_execution();
+
+        TEST_ASSERT(!vm.blocked(), "reset_execution lifted it");
+        TEST_ASSERT(vm.session_count() == 0, "and cleared the run list too");
+        TEST_SUCCESS;
+    }
+
     // ── Suite registration ───────────────────────────────────────────────────────
 
     constexpr char const* noir_vm_deferred_name = "noir_vm_deferred";
@@ -628,8 +724,11 @@ namespace NEONengine
         { "terminal holds every session", test_terminal_call_holds_every_session },
         { "terminal freezes a waiting session", test_terminal_call_freezes_a_waiting_session },
         { "every terminal opcode stops the VM", test_every_terminal_opcode_stops_the_vm },
-        { "modal calls do not stop the VM", test_modal_calls_do_not_stop_the_vm },
+        { "modal calls block until resumed", test_modal_calls_block_the_vm_until_resumed },
+        { "modal freezes a waiting session", test_modal_call_freezes_a_waiting_session },
+        { "resume_execution is a no-op unless blocked", test_resume_execution_does_nothing_unless_blocked },
         { "the latch outlives new sessions", test_terminal_latch_outlives_new_sessions },
+        { "reset_execution clears the modal latch", test_reset_execution_clears_the_modal_latch },
     };
 
 }  // namespace NEONengine

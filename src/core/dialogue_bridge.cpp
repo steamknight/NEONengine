@@ -30,14 +30,12 @@ namespace NEONengine
 
         bool db_get_flag(u16 flag_id)
         {
-            // Flags still live in the buffer the VM borrows rather than in the
-            // game session, so that is where the answer comes from.
-            return g_pEngine && g_pEngine->get_flag(flag_id);
+            return g_pEngine && g_pEngine->session().get_flags().test(flag_id);
         }
 
         void db_set_flag(u16 flag_id, bool value)
         {
-            if (g_pEngine) g_pEngine->set_flag(flag_id, value);
+            if (g_pEngine) g_pEngine->session().get_flags().set(flag_id, value);
         }
 
         void db_run_script(u16 function_id)
@@ -51,7 +49,7 @@ namespace NEONengine
 
         bool db_is_terminated() { return g_pEngine && g_pEngine->vm().terminated(); }
 
-        dialogue_bridge const g_engine_dialogue_bridge = {
+        constexpr dialogue_bridge g_engine_dialogue_bridge = {
             .mark_page_read    = db_mark_page_read,
             .is_page_read      = db_is_page_read,
             .mark_choice_taken = db_mark_choice_taken,
@@ -64,4 +62,14 @@ namespace NEONengine
     }  // namespace
 
     dialogue_bridge const& engine_dialogue_bridge() noexcept { return g_engine_dialogue_bridge; }
+
+    constexpr bool is_dialogue_bridge_ready() noexcept
+    {
+        auto bridge = g_engine_dialogue_bridge;
+        return bridge.mark_page_read && bridge.is_page_read && bridge.mark_choice_taken
+            && bridge.is_choice_taken && bridge.get_flag && bridge.set_flag
+            && bridge.run_script && bridge.is_terminated;
+    }
+
+    static_assert(is_dialogue_bridge_ready(), "the engine's dialogue bridge is not fully wired");
 }  // namespace NEONengine

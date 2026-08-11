@@ -87,6 +87,8 @@ void genericProcess(void)
         statePush(g_gameStateManager, &g_stateDialogue);
     }
 
+    g_pEngine->update();
+
     stateProcess(g_gameStateManager);
     screenProcess(NEONengine::g_mainScreen);
 

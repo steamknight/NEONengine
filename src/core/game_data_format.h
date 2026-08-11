@@ -123,6 +123,16 @@ namespace NEONengine::data
             return mtl::span<T>(all.data() + start, count);
         }
 
+        [[nodiscard]] constexpr u16 end() const noexcept { return start + count; }
+
+        [[nodiscard]] constexpr bool has(u16 index) const noexcept
+        {
+            // Exploit unsigned wraparound: if index < start, then index - start wraps to a large value.
+            return (index - start) < count;
+        }
+
+        [[nodiscard]] constexpr bool is_empty() const noexcept { return count == 0; }
+
         friend constexpr bool operator==(range const& lhs, range const& rhs) noexcept
         {
             return lhs.start == rhs.start && lhs.count == rhs.count;

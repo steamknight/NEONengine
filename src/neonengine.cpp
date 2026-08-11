@@ -142,24 +142,11 @@ namespace NEONengine
         result->_session.create_from(*result->_pGameData);
         result->_session.set_invalid_item_id_reporter(report_invalid_inventory_item_id);
 
-        // Seed the runtime game-state buffers from the loaded initial state, then
-        // build the one persistent script VM over them. FLAGS/VALUES are copied so
-        // the on-disk image stays pristine and the runtime state is separately
-        // savable; the VM borrows these engine-owned buffers for its lifetime.
-        auto const initialFlags = result->_pGameData->initial_flags();
-        result->_flags.resize(initialFlags.size());
-        for (u32 i = 0; i < initialFlags.size(); ++i)
-        {
-            result->_flags.data()[i] = initialFlags[i];
-        }
-
         auto const scripts   = result->_pGameData->scripts();
         auto const functions = result->_pGameData->function_offsets();
         result->_vm          = noir_vm_ptr(new (mtl::MemF::Fast) noir_vm(  //
-            result->_flags.data(),
-            to<u16>(result->_flags.size()),
-            result->_session.get_values().data(),
-            to<u16>(result->_session.get_values().size()),
+            result->_session.get_flags(),
+            result->_session.get_values(),
             scripts.data(),
             scripts.size(),
             functions.data(),
@@ -169,35 +156,58 @@ namespace NEONengine
         NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
             to<ULONG>(scripts.size()),
             to<UWORD>(functions.size()),
-            to<UWORD>(result->_flags.size()),
+            to<UWORD>(result->_session.get_flags().size()),
             to<UWORD>(result->_session.get_values().size()));
 
         return result;
     }
 
-    bool engine::set_language(language lang)
+    engine::request_result engine::apply_pending_language() noexcept
     {
-        if (_pStrings && _pStrings->language_id() == lang) return true;
+        if (!_pending_language.has()) return request_result{};
+
+        auto lang_id = _pending_language.take();
+
+        if (_pStrings && _pStrings->language_id() == lang_id) return request_result{};
 
         // Load first, swap second: on failure the current table stays live.
-        mtl::system_use_guard guard;  // systemUse()/systemUnuse() around the disk access.
+        mtl::system_use_guard guard;
 
-        auto strings = string_table::create(lang);
+        auto strings = string_table::create(lang_id);
         if (!strings)
         {
             NE_LOG("Could not load language '%s'. Error %d.",
-                language_code(lang), to<int>(strings.error()));
-            return false;
+                language_code(lang_id), to<int>(strings.error()));
+            return mtl::unexpected(request_failure::LANGUAGE_LOAD_FAILED);
         }
 
         if (!matches_build(*_pGameData, *strings.value()))
         {
             NE_LOG("Language '%s' is from another build; keeping the current one.",
-                language_code(lang));
-            return false;
+                language_code(lang_id));
+            return mtl::unexpected(request_failure::LANGUAGE_MISMATCH);
         }
 
         _pStrings = mtl::move(strings.value());
-        return true;
+        _language_changed = true;
+
+        // The language's own name proves the table really swapped. Records
+        // always carry a terminator, so the view goes straight to "%s".
+        NE_LOG("language is now '%s' (%s)",
+            language_code(lang_id), _pStrings->language_name().data());
+
+        return request_result{};
+    }
+
+    void engine::update() noexcept
+    {
+        _language_changed = false;
+
+        auto result = apply_pending_language();
+        if (!result)
+        {
+            // TODO: request an error message to be displayed to the player.
+        }
+
     }
 }  // namespace NEONengine

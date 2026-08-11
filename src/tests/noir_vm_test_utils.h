@@ -170,6 +170,10 @@ namespace NEONengine
         g_mock_log.inv_cleared_item_id = id;
     }
 
+    /// A fixed answer, so a test can tell INV_SELECTED apart from an empty D0.
+    constexpr u16 MOCK_SELECTED_ITEM = 0x2A;
+    static u16 mock_inv_selected_item() { return MOCK_SELECTED_ITEM; }
+
     static void mock_goto_scene(u16 id)
     {
         g_mock_log.goto_scene_id     = id;
@@ -309,6 +313,7 @@ namespace NEONengine
         .inv_has    = {mock_inv_has},
         .inv_count  = {mock_inv_count},
         .inv_clear_item = {mock_inv_clear_item},
+        .inv_selected_item = {mock_inv_selected_item},
 
         .goto_scene  = {mock_goto_scene},
         .get_scene   = {mock_get_scene},
@@ -366,15 +371,15 @@ namespace NEONengine
         u16 pos;
         u16 func_count;
 
-        // External state arrays provided to the VM
-        u8 flags[16];  // 128 flags
-        u16 values[32];
+        // External state containers provided to the VM
+        mtl::bitset<u32> flags{ 16 };  // 128 flags
+        mtl::vector<u16> values{ 32, 0 };
 
         bytecode_builder() : pos(0), func_count(0)
         {
             for (auto& b : code) b = 0;
             for (auto& t : toc) t = 0;
-            for (auto& f : flags) f = 0;
+            flags.reset();
             for (auto& v : values) v = 0;
         }
 
@@ -411,9 +416,7 @@ namespace NEONengine
         {
             g_mock_log.reset();
             return noir_vm(flags,
-                sizeof(flags),
                 values,
-                sizeof(values) / sizeof(values[0]),
                 code,
                 pos,
                 toc,
