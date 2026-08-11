@@ -189,6 +189,10 @@ implementations, thirty mocks, and the thirty-four dispatch sites in
 
 ## 4b. One overlay slot, and one drain order
 
+**Done, except for the drain order.** The overlay slot landed; stating the frame
+order in one place waits on item 1, which is where a `engine::frame()` exists to
+state it in. The rest of this section records what changed and why.
+
 **Now.** The engine holds five `pending_request<T>` members. They are usually
 described as one problem, but they are not one thing — they have three different
 owners:
@@ -261,6 +265,32 @@ hazard retired before item 1 can trip over it, and a frame order that exists in
 one place. The `pending_request<T>` template itself is fine and stays; it is the
 five-slots-polled-separately pattern, and the two slots that should have been
 one, that need the work.
+
+**What landed.** `pending_overlay` in `neonengine.h` holds a `message_request`,
+a dialogue id, an `overlay_kind`, and the two buffers the message text is copied
+into — 512 bytes for the text, 32 for the caption, both in Fast RAM. The longest
+string in the shipped tables is 95 bytes, so the cut path logs and is not
+expected to run. `post_message` and `post_dialogue` both refuse a full slot, so
+"first wins" is stated once, at the store. The engine's four accessors forward to
+it; `message.cpp`, `dialogue.cpp` and `scene.cpp` needed no edits at all.
+
+`s_error_text` and its copy loop are gone: `nb_report_error` now hands the VM's
+own buffer straight to `show_message`, because the slot is what copies. The
+`main.cpp` if-else is a `switch` on `pending_overlay_kind()`, so a new overlay
+kind must be answered or the build warns. `pending_request::post_if_empty` had no
+callers left and went with it.
+
+**One behaviour change, deliberate.** Two slots could both be full: the message
+went up and the conversation followed a frame later. One slot drops the second
+post instead. The only path there is a script death, whose report is posted from
+the same walk that a later session could run `SHOW_DIALOG` from. Dropping the
+conversation after a script error is the better of the two behaviours — the
+report is the thing worth reading — but it is a change, and this is the record of
+it.
+
+**Cost.** One `bstr_view` copy of up to 512 bytes per message box, against a box
+render that blits a nine-patch frame and rasterises the text. Nothing measurable,
+and no allocation.
 
 ## 5. `Screen` becomes a class
 

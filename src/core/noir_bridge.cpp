@@ -55,33 +55,19 @@ namespace NEONengine
         }
 
         // ── Diagnostics ──────────────────────────────────────────────────────
-        /// The one message text the engine does not already hold. @see nb_report_error
-        char s_error_text[NOIR_ERROR_MESSAGE_SIZE];
-
         /**
          * @brief Puts what killed a script in front of the player.
          *
-         * The VM builds the line in a buffer of its own that it reuses, so
-         * unlike every other message this text has to be copied to outlive the
-         * call. Whether the message is wanted is settled before the copy: a
-         * script dying does not end the walk it was part of, so a second one
-         * can die before the first message has been drawn, and that second
-         * death must not rewrite the text the waiting request points at.
+         * The VM builds the line in a buffer of its own that it reuses, so this
+         * text is only good for the length of the call. The message slot copies
+         * what it is given, which is what lets it outlive that.
          */
         void nb_report_error(engine& e, char const* message)
         {
-            if (!message || e.has_pending_message()) return;
-
-            size_t length = 0;
-            while (length + 1 < sizeof(s_error_text) && message[length] != '\0')
-            {
-                s_error_text[length] = message[length];
-                ++length;
-            }
-            s_error_text[length] = '\0';
+            if (!message) return;
 
             e.show_message(message_request{
-                .text          = bstr_view(s_error_text, length),
+                .text          = bstr_view(message),
                 .caption       = "Script Error",
                 .color         = MESSAGE_ERROR_COLOR,
                 .caption_color = MESSAGE_ERROR_COLOR,

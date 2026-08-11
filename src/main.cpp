@@ -76,15 +76,20 @@ void genericProcess(void)
     tState const* const on_top = g_gameStateManager->pCurrent;
     bool const overlay_up = on_top == &g_stateMessage || on_top == &g_stateDialogue;
 
-    if (!overlay_up && g_pEngine->has_pending_message())
+    if (!overlay_up)
     {
-        statePush(g_gameStateManager, &g_stateMessage);
-    }
-    // Same reason, and never in the same frame as a message: two overlays would
-    // freeze the display twice and the second would paint over the first.
-    else if (!overlay_up && g_pEngine->has_pending_dialogue())
-    {
-        statePush(g_gameStateManager, &g_stateDialogue);
+        switch (g_pEngine->pending_overlay_kind())
+        {
+            case overlay_kind::message:
+                statePush(g_gameStateManager, &g_stateMessage);
+                break;
+
+            case overlay_kind::dialogue:
+                statePush(g_gameStateManager, &g_stateDialogue);
+                break;
+
+            case overlay_kind::none: break;
+        }
     }
 
     g_pEngine->update();

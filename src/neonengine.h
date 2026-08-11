@@ -36,6 +36,17 @@ namespace NEONengine
     /// Palette index a dead script's report uses.
     constexpr u8 MESSAGE_ERROR_COLOR = 3;
 
+    /**
+     * @brief Longest message text the engine keeps, in bytes.
+     *
+     * Comfortably more than a box 256 pixels wide can show, and more than four
+     * times the longest line the shipped tables hold. Text past it is cut.
+     */
+    constexpr size_t MESSAGE_TEXT_CAPACITY = 512;
+
+    /// Longest message caption the engine keeps, in bytes. @see MESSAGE_TEXT_CAPACITY
+    constexpr size_t MESSAGE_CAPTION_CAPACITY = 32;
+
     /// Gap between the edge of the screen and the dialogue frame, in pixels.
     constexpr u16 DIALOGUE_MARGIN = 8;
 
@@ -86,8 +97,9 @@ namespace NEONengine
     /**
      * @brief One box of text waiting to be put on screen.
      *
-     * Neither string is copied. Whoever posts a request has to keep both alive
-     * until the box is drawn, which is the next time the main loop runs.
+     * Neither string is copied here. @ref pending_overlay copies both as it
+     * takes the request, so a caller only has to keep them alive for the
+     * length of the post.
      */
     struct message_request
     {
@@ -161,18 +173,6 @@ namespace NEONengine
          */
         void post(T request) noexcept { _request = mtl::move(request); _valid = true; }
 
-        /**
-         * @brief Records @p request only when the slot is free.
-         *
-         * For requests whose senders are not serialised, and where the first is
-         * the one worth keeping.
-         */
-        void post_if_empty(T request) noexcept
-        {
-            if (_valid) return;
-            post(mtl::move(request));
-        }
-
         /** @brief True when something is waiting to be acted on. */
         bool has() const noexcept { return _valid; }
 
@@ -212,10 +212,82 @@ namespace NEONengine
         bool _valid{ false };
     };
 
-    class engine;
-    using engine_ptr = mtl::unique_ptr<engine>;
+    /** @brief What is waiting to go up over the scene, if anything. */
+    enum class overlay_kind : u8
+    {
+        none,
+        message,
+        dialogue,
+    };
 
-    class engine
+    /**
+     * @brief The one thing that may go up over the scene in a frame.
+     *
+     * A message and a conversation cannot share a frame. The freeze that holds
+     * a buffer back does not nest, so the second box up would restore its
+     * rectangle from a buffer that never held the scene under it. One slot
+     * makes that a property of the store, rather than a rule spelled out again
+     * wherever overlays are put on screen.
+     *
+     * The slot owns the message text it is given. Every message comes from a
+     * buffer its poster does not control - the string table's payload, which a
+     * language change frees, or the line the VM builds in a buffer it reuses -
+     * so copying here is what lets the text outlive the call that posted it.
+     */
+    class pending_overlay
+    {
+        public:  //////////////////////////////////////////////////////////////////////////////////
+        /**
+         * @brief Records a box of text, unless something is already waiting.
+         *
+         * The first request stands until it has been shown. A script dies
+         * without ending the walk it was part of, so a session later in that
+         * same walk can speak, or die in turn, before anything looks at the
+         * slot; the death that stopped the first one is the more useful of the
+         * two to read.
+         *
+         * A request with no text is not a message and is ignored. Text longer
+         * than the slot holds is cut short.
+         */
+        void post_message(message_request const& request) noexcept;
+
+        /** @brief Records a conversation, unless something is already waiting. */
+        void post_dialogue(u16 dialogue_id) noexcept;
+
+        /** @brief What is waiting, or @c none. */
+        overlay_kind kind() const noexcept { return _kind; }
+
+        /**
+         * @brief Takes the waiting message and empties the slot.
+         *
+         * The strings it carries point into this slot, and stay good until the
+         * next post. That is long enough: an overlay is drawn as it is created,
+         * and nothing runs to post another until it has come down.
+         *
+         * @return An empty request when a message is not what is waiting.
+         */
+        message_request take_message() noexcept;
+
+        /**
+         * @brief Takes the waiting conversation and empties the slot.
+         *
+         * @return 0 when a conversation is not what is waiting.
+         */
+        u16 take_dialogue() noexcept;
+
+        /** @brief Drops whatever is waiting, unshown. */
+        void clear() noexcept { _kind = overlay_kind::none; }
+
+        private: //////////////////////////////////////////////////////////////////////////////////
+        message_request _message{};
+        u16             _dialogue{ 0 };
+        overlay_kind    _kind{ overlay_kind::none };
+        char            _text[MESSAGE_TEXT_CAPACITY]{};
+        char            _caption[MESSAGE_CAPTION_CAPACITY]{};
+    };
+
+    class engine;
+    using engine_ptr = mtl::unique_ptr<engine>;    class engine
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
         enum class error_code
@@ -335,54 +407,42 @@ namespace NEONengine
         /**
          * @brief Post a box of text for the message state to put on screen.
          *
-         * The first request stands until it has been shown. A script dies
-         * without ending the walk it was part of, so a session later in that
-         * same walk can speak, or die in turn, before anything looks at the
-         * slot; the death that stopped the first one is the more useful of the
-         * two to read.
+         * Deferred rather than drawn where it is asked for: a bridge call runs
+         * deep inside the running state's own callback, and a box drawn there
+         * would be painted over by the rest of that callback.
          *
-         * A request with no text is not a message and is ignored.
+         * @see pending_overlay::post_message for what happens to a second one.
          */
         void show_message(message_request const& request) noexcept
         {
-            if (has_pending_message()) return;
-            _pending_message.post_if_empty(request);
+            _pending_overlay.post_message(request);
         }
-
-        /** @brief True when something has a box of text waiting to be shown. */
-        bool has_pending_message() const noexcept { return _pending_message.has(); }
 
         /** @brief Consume the waiting message, clearing the slot. */
         message_request take_pending_message() noexcept
         {
-            return _pending_message.take();
+            return _pending_overlay.take_message();
         }
 
         /**
          * @brief Post a conversation for the dialogue state to put on screen.
          *
          * Deferred for the same reason a message is: the scene answers
-         * SHOW_DIALOG from inside its own loop callback, and a state pushed
-         * there would draw the box and then let the rest of that callback paint
-         * over it. The main loop pushes it instead, before any state runs.
-         *
-         * One slot is enough. The opcode that asks for one parks its session and
-         * spends the frame budget, and the scene holds the VM until the box has
-         * come down, so nothing runs to ask for a second.
+         * SHOW_DIALOG from inside its own loop callback.
          */
         void request_dialogue(u16 dialogue_id) noexcept
         {
-            _pending_dialogue.post(dialogue_id);
+            _pending_overlay.post_dialogue(dialogue_id);
         }
-
-        /** @brief True when a conversation is waiting to be put on screen. */
-        bool has_pending_dialogue() const noexcept { return _pending_dialogue.has(); }
 
         /** @brief Consume the waiting conversation, clearing the slot. */
         u16 take_pending_dialogue() noexcept
         {
-            return _pending_dialogue.take();
+            return _pending_overlay.take_dialogue();
         }
+
+        /** @brief What is waiting to go up over the scene, or @c none. */
+        overlay_kind pending_overlay_kind() const noexcept { return _pending_overlay.kind(); }
 
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         u16 current_scene() const noexcept { return _current_scene; }
@@ -413,8 +473,7 @@ namespace NEONengine
         pending_request<language>        _pending_language{};
         pending_request<modal_request>   _pending_modal{};
         pending_request<system_request>  _pending_system{};
-        pending_request<message_request> _pending_message{};
-        pending_request<u16>             _pending_dialogue{};
+        pending_overlay                  _pending_overlay{};
 
         u16                              _current_scene{ 0 };  ///< Scene the runtime is presenting.
         bool                             _language_changed{ false };
