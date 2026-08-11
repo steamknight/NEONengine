@@ -27,7 +27,10 @@ namespace NEONengine
 
         _item_counts.assign(data.inventory_items().size(), to<u16>(0));
 
-        _flags = mtl::bitset<u32>(data.initial_flags().size());
+        // The FLGS chunk declares how many flags there are; the bytes that
+        // follow are how they are packed. The bitset counts bits, so it is
+        // sized from the count and not from the packing.
+        _flags = mtl::bitset<u32>(data.flag_count());
         for (u32 i = 0; i < data.flag_count(); ++i)
         {
             auto byte_index = i >> 3;

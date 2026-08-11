@@ -1316,7 +1316,7 @@ namespace NEONengine
             {
                 if (_current_session.d[0] == 0xFFFF)
                 {
-                    u16 total = to<u16>(_flags->size() * 8);
+                    u16 total = to<u16>(_flags->size());
                     NE_LOG("FLAGS: (all %u)", total);
                     for (u16 i = 0; i < total; ++i)
                     {
@@ -1758,7 +1758,7 @@ namespace NEONengine
 
     bool noir_vm::validate_flag_index(u16 index) const noexcept
     {
-        return index < to<u16>(_flags->size() * 8);
+        return index < to<u16>(_flags->size());
     }
 
     bool noir_vm::validate_value_index(u16 index) const noexcept

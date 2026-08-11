@@ -154,7 +154,7 @@ namespace NEONengine
             &engine_bridge(),
             result.get()));
 
-        NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
+        NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flags, %hu values",
             to<ULONG>(scripts.size()),
             to<UWORD>(functions.size()),
             to<UWORD>(result->_session.get_flags().size()),

@@ -380,7 +380,7 @@ namespace NEONengine
         u16 func_count;
 
         // External state containers provided to the VM
-        mtl::bitset<u32> flags{ 16 };  // 128 flags
+        mtl::bitset<u32> flags{ 128 };
         mtl::vector<u16> values{ 32, 0 };
 
         bytecode_builder() : pos(0), func_count(0)
