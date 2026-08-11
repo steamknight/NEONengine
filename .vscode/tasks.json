@@ -14,6 +14,44 @@
 			},
 			"problemMatcher": [],
 			"detail": "CMake template build task"
+		},
+		{
+			"label": "configureGameMode",
+			"type": "shell",
+			"command": "pwsh.exe",
+			"args": [
+				"-c",
+				"cmake -S ${workspaceFolder} -B ${workspaceFolder}/build -DACE_TEST_RUNNER=0"
+			]
+		},
+		{
+			"label": "configureTestMode",
+			"type": "shell",
+			"command": "pwsh.exe",
+			"args": [
+				"-c",
+				"cmake -S ${workspaceFolder} -B ${workspaceFolder}/build -DACE_TEST_RUNNER=1"
+			]
+		},
+		{
+			"label": "buildGameMode",
+			"dependsOn": [
+				"configureGameMode",
+				"CMake: build"
+			],
+			"dependsOrder": "sequence",
+			"type": "shell",
+			"command": "echo Game mode configured and built"
+		},
+		{
+			"label": "buildTestMode",
+			"dependsOn": [
+				"configureTestMode",
+				"CMake: build"
+			],
+			"dependsOrder": "sequence",
+			"type": "shell",
+			"command": "echo Test mode configured and built"
 		}
 	]
 }

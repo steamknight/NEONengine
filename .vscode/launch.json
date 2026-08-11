@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "preLaunchTask": "buildGameMode",
             "type": "amiga",
             "request": "launch",
             "name": "Amiga 1200",
@@ -15,6 +16,7 @@
             "fastmem": "8M"
         },
         {
+            "preLaunchTask": "buildTestMode",
             "type": "amiga",
             "request": "launch",
             "name": "Amiga 1200 Tests",
