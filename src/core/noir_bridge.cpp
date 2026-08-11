@@ -20,29 +20,33 @@ namespace NEONengine
 {
     namespace
     {
+        /// Wraps an implementation below as a slot the bridge table can hold.
+        template<auto Fn>
+        inline constexpr auto on_engine = host_call<engine, Fn>;
+
         // ── Screen ───────────────────────────────────────────────────────────
         // Fades are deferred modals: the scene starts them at the top of the
         // next frame and holds the VM until they finish.
-        void nb_fade_out(u16 frames)
+        void nb_fade_out(engine& e, u16 frames)
         {
-            if (g_pEngine) g_pEngine->request_modal(modal_kind::fade_out, frames);
+            e.request_modal(modal_kind::fade_out, frames);
         }
-        void nb_fade_in(u16 frames)
+        void nb_fade_in(engine& e, u16 frames)
         {
-            if (g_pEngine) g_pEngine->request_modal(modal_kind::fade_in, frames);
+            e.request_modal(modal_kind::fade_in, frames);
         }
-        void nb_screen_clear(u16) {}
+        void nb_screen_clear(engine&, u16) {}
 
         // ── Scenes ───────────────────────────────────────────────────────────
-        void nb_goto_scene(u16 scene_id)
+        void nb_goto_scene(engine& e, u16 scene_id)
         {
-            if (g_pEngine) g_pEngine->request_system(system_kind::load_scene, scene_id);
+            e.request_system(system_kind::load_scene, scene_id);
         }
-        u16 nb_get_scene() { return g_pEngine ? g_pEngine->current_scene() : u16(0); }
-        void nb_hotspot_on(u16 id) { scene_hotspots_set_enabled(id, true); }
-        void nb_hotspot_off(u16 id) { scene_hotspots_set_enabled(id, false); }
+        u16 nb_get_scene(engine& e) { return e.current_scene(); }
+        void nb_hotspot_on(engine&, u16 id) { scene_hotspots_set_enabled(id, true); }
+        void nb_hotspot_off(engine&, u16 id) { scene_hotspots_set_enabled(id, false); }
 
-        void nb_set_pointer(u16 type)
+        void nb_set_pointer(engine&, u16 type)
         {
             if (type < to<u16>(mouse_pointer::COUNT))
             {
@@ -64,9 +68,9 @@ namespace NEONengine
          * can die before the first message has been drawn, and that second
          * death must not rewrite the text the waiting request points at.
          */
-        void nb_report_error(char const* message)
+        void nb_report_error(engine& e, char const* message)
         {
-            if (!g_pEngine || !message || g_pEngine->has_pending_message()) return;
+            if (!message || e.has_pending_message()) return;
 
             size_t length = 0;
             while (length + 1 < sizeof(s_error_text) && message[length] != '\0')
@@ -76,7 +80,7 @@ namespace NEONengine
             }
             s_error_text[length] = '\0';
 
-            g_pEngine->show_message(message_request{
+            e.show_message(message_request{
                 .text          = bstr_view(s_error_text, length),
                 .caption       = "Script Error",
                 .color         = MESSAGE_ERROR_COLOR,
@@ -86,60 +90,43 @@ namespace NEONengine
         }
 
         // ── Inventory ────────────────────────────────────────────────────────
-        void nb_inv_add(u16 item_id)
+        void nb_inv_add(engine& e, u16 item_id) { e.session().add_item(item_id); }
+        void nb_inv_remove(engine& e, u16 item_id) { e.session().remove_item(item_id); }
+        bool nb_inv_has(engine& e, u16 item_id) { return e.session().has(item_id); }
+        u16 nb_inv_count(engine& e, u16 item_id) { return e.session().count(item_id); }
+        void nb_inv_clear_item(engine& e, u16 item_id) { e.session().clear_item(item_id); }
+        u16 nb_inv_selected_item(engine& e)
         {
-            if (g_pEngine) g_pEngine->session().add_item(item_id);
-        }
-        void nb_inv_remove(u16 item_id)
-        {
-            if (g_pEngine) g_pEngine->session().remove_item(item_id);
-        }
-        bool nb_inv_has(u16 item_id)
-        {
-            return g_pEngine ? g_pEngine->session().has(item_id) : false;
-        }
-        u16 nb_inv_count(u16 item_id)
-        {
-            return g_pEngine ? g_pEngine->session().count(item_id) : u16(0);
-        }
-        void nb_inv_clear_item(u16 item_id)
-        {
-            if (g_pEngine) g_pEngine->session().clear_item(item_id);
-        }
-        u16 nb_inv_selected_item()
-        {
-            return g_pEngine ? g_pEngine->session().get_selected_inventory_item() : data::NO_ID;
+            return e.session().get_selected_inventory_item();
         }
 
         // ── Dialogue / Audio ─────────────────────────────────────────────────
-        void nb_say(u16 string_id, u16)
+        void nb_say(engine& e, u16 string_id, u16)
         {
-            if (!g_pEngine) return;
-
-            g_pEngine->show_message(message_request{
-                .text = g_pEngine->strings().get_string(string_id),
+            e.show_message(message_request{
+                .text = e.strings().get_string(string_id),
             });
         }
-        void nb_show_dialog(u16 dialogue_id)
+        void nb_show_dialog(engine& e, u16 dialogue_id)
         {
-            if (g_pEngine) g_pEngine->request_modal(modal_kind::show_dialog, dialogue_id);
+            e.request_modal(modal_kind::show_dialog, dialogue_id);
         }
-        void nb_show_text(u16, u16, u16) {}
-        void nb_clear_text() {}
-        void nb_play_music(u16) {}
-        void nb_stop_music() {}
-        void nb_play_sfx(u16) {}
+        void nb_show_text(engine&, u16, u16, u16) {}
+        void nb_clear_text(engine&) {}
+        void nb_play_music(engine&, u16) {}
+        void nb_stop_music(engine&) {}
+        void nb_play_sfx(engine&, u16) {}
 
         // ── Timeline ─────────────────────────────────────────────────────────
         // A track name means a track in the current scene, so naming one that
         // another scene owns does nothing here.
-        void nb_anim_play(u16 name_id) { scene_timeline_play(name_id); }
-        void nb_anim_stop(u16 name_id) { scene_timeline_stop(name_id); }
+        void nb_anim_play(engine&, u16 name_id) { scene_timeline_play(name_id); }
+        void nb_anim_stop(engine&, u16 name_id) { scene_timeline_stop(name_id); }
 
         // ── System ───────────────────────────────────────────────────────────
         // Records the request; the state loop applies it at a safe point. Doing
         // it here would read from disk inside a VM step.
-        void nb_set_lang(u16 lang)
+        void nb_set_lang(engine& e, u16 lang)
         {
             if (lang >= to<u16>(language::COUNT))
             {
@@ -148,74 +135,68 @@ namespace NEONengine
             }
 
             NE_LOG("SET_LANG %hu ('%s') requested", lang, language_code(to<language>(lang)));
-            if (g_pEngine) g_pEngine->request_language(to<language>(lang));
+            e.request_language(to<language>(lang));
         }
-        void nb_save_game(u16 slot)
+        void nb_save_game(engine& e, u16 slot)
         {
-            if (g_pEngine) g_pEngine->request_system(system_kind::save_game, slot);
+            e.request_system(system_kind::save_game, slot);
         }
 
         // Terminal: the VM stops the moment one of these runs and only starts
         // again once the scene has torn it down.
-        void nb_load_game(u16 slot)
+        void nb_load_game(engine& e, u16 slot)
         {
-            if (g_pEngine) g_pEngine->request_system(system_kind::load_game, slot);
+            e.request_system(system_kind::load_game, slot);
         }
-        void nb_new_game()
-        {
-            if (g_pEngine) g_pEngine->request_system(system_kind::new_game);
-        }
-        void nb_quit_game()
-        {
-            if (g_pEngine) g_pEngine->request_system(system_kind::quit_game);
-        }
+        void nb_new_game(engine& e) { e.request_system(system_kind::new_game); }
+        void nb_quit_game(engine& e) { e.request_system(system_kind::quit_game); }
 
 #ifdef GAME_DEBUG
-        void nb_debug_log(u16) {}
-        void nb_debug_print(char const*, u8) {}
+        void nb_debug_log(engine&, u16) {}
+        void nb_debug_print(engine&, char const*, u8) {}
 #endif
 
         noir_bridge const g_engine_bridge = {
-            .inv_add           = { nb_inv_add },
-            .inv_remove        = { nb_inv_remove },
-            .inv_has           = { nb_inv_has },
-            .inv_count         = { nb_inv_count },
-            .inv_clear_item    = { nb_inv_clear_item },
-            .inv_selected_item = { nb_inv_selected_item },
+            .inv_add           = { on_engine<nb_inv_add> },
+            .inv_remove        = { on_engine<nb_inv_remove> },
+            .inv_has           = { on_engine<nb_inv_has> },
+            .inv_count         = { on_engine<nb_inv_count> },
+            .inv_clear_item    = { on_engine<nb_inv_clear_item> },
+            .inv_selected_item = { on_engine<nb_inv_selected_item> },
 
-            .goto_scene  = { nb_goto_scene },
-            .get_scene   = { nb_get_scene },
-            .hotspot_on  = { nb_hotspot_on },
-            .hotspot_off = { nb_hotspot_off },
-            .set_pointer = { nb_set_pointer },
+            .goto_scene  = { on_engine<nb_goto_scene> },
+            .get_scene   = { on_engine<nb_get_scene> },
+            .hotspot_on  = { on_engine<nb_hotspot_on> },
+            .hotspot_off = { on_engine<nb_hotspot_off> },
+            .set_pointer = { on_engine<nb_set_pointer> },
 
-            .say         = { nb_say },
-            .show_dialog = { nb_show_dialog },
-            .show_text   = { nb_show_text },
-            .clear_text  = { nb_clear_text },
+            .say         = { on_engine<nb_say> },
+            .show_dialog = { on_engine<nb_show_dialog> },
+            .show_text   = { on_engine<nb_show_text> },
+            .clear_text  = { on_engine<nb_clear_text> },
 
-            .play_music = { nb_play_music },
-            .stop_music = { nb_stop_music },
-            .play_sfx   = { nb_play_sfx },
+            .play_music = { on_engine<nb_play_music> },
+            .stop_music = { on_engine<nb_stop_music> },
+            .play_sfx   = { on_engine<nb_play_sfx> },
 
-            .fade_out     = { nb_fade_out },
-            .fade_in      = { nb_fade_in },
-            .screen_clear = { nb_screen_clear },
+            .fade_out     = { on_engine<nb_fade_out> },
+            .fade_in      = { on_engine<nb_fade_in> },
+            .screen_clear = { on_engine<nb_screen_clear> },
 
-            .anim_play = { nb_anim_play },
-            .anim_stop = { nb_anim_stop },
+            .anim_play = { on_engine<nb_anim_play> },
+            .anim_stop = { on_engine<nb_anim_stop> },
 
-            .set_lang  = { nb_set_lang },
-            .save_game = { nb_save_game },
-            .load_game = { nb_load_game },
-            .new_game  = { nb_new_game },
-            .quit_game = { nb_quit_game },
+            .set_lang  = { on_engine<nb_set_lang> },
+            .save_game = { on_engine<nb_save_game> },
+            .load_game = { on_engine<nb_load_game> },
+            .new_game  = { on_engine<nb_new_game> },
+            .quit_game = { on_engine<nb_quit_game> },
 
-            .report_error = nb_report_error,
+            .report_error = on_engine<nb_report_error>,
 
 #ifdef GAME_DEBUG
-            .debug_log   = { nb_debug_log },
-            .debug_print = { nb_debug_print },
+            .debug_log   = { on_engine<nb_debug_log> },
+            .debug_print = { on_engine<nb_debug_print> },
 #endif
         };
     }  // namespace
@@ -223,9 +204,13 @@ namespace NEONengine
     void report_invalid_inventory_item_id(u16 item_id) noexcept
     {
 #ifdef GAME_DEBUG
+        // game_session reports through a plain u16 hook with no receiver, so
+        // this one still reaches for the global. It goes when that hook does.
+        if (!g_pEngine) return;
+
         char message[NOIR_ERROR_MESSAGE_SIZE];
         snprintf(message, sizeof(message), "inventory item %hu is out of range", item_id);
-        nb_report_error(message);
+        nb_report_error(*g_pEngine, message);
 #else
         (void)item_id;
 #endif

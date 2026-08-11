@@ -155,10 +155,38 @@ namespace NEONengine
     };
 
     /**
+     * @brief Wraps @p Fn, which takes a @p Host, as a function the table can hold.
+     *
+     * The table passes the host as an untyped pointer, so this is where the type
+     * comes back: every implementation below it takes a @c Host& and never sees
+     * a cast. The wrapper is a plain static function, so it costs the cast and
+     * nothing else.
+     */
+    template<typename Host, auto Fn>
+    struct host_call_impl;
+
+    template<typename Host, typename R, typename... Args, R (*Fn)(Host&, Args...)>
+    struct host_call_impl<Host, Fn>
+    {
+        static R fn(void* host, Args... args) { return Fn(*static_cast<Host*>(host), args...); }
+    };
+
+    template<typename Host, auto Fn>
+    inline constexpr auto host_call = host_call_impl<Host, Fn>::fn;
+
+    /**
      * @brief Function pointer table bridging the VM to engine systems.
      *
      * The VM calls engine systems through this struct, so it includes no engine
      * headers. Every function pointer must stay valid as long as the VM does.
+     *
+     * Every call takes the host as its first argument - whoever the VM was built
+     * to act on. The VM only passes it along and never looks inside it, which is
+     * what keeps this header free of engine types. @ref host_call turns a typed
+     * implementation into a slot this table can hold.
+     *
+     * The table itself holds no state, so one shared constant serves every VM
+     * built against it.
      *
      * A deferred call records what the script asked for and returns; the opcode
      * ends the walk, so no session runs again this update. The scene acts on
@@ -175,46 +203,46 @@ namespace NEONengine
     struct noir_bridge
     {
         // Inventory
-        immediate<void(u16 item_id)> inv_add;
-        immediate<void(u16 item_id)> inv_remove;
-        immediate<bool(u16 item_id)> inv_has;  ///< true = has item
-        immediate<u16(u16 item_id)> inv_count;
-        immediate<void(u16 item_id)> inv_clear_item;
-        immediate<u16()> inv_selected_item;  ///< item id or 0xFFFF if none selected
+        immediate<void(void*, u16 item_id)> inv_add;
+        immediate<void(void*, u16 item_id)> inv_remove;
+        immediate<bool(void*, u16 item_id)> inv_has;  ///< true = has item
+        immediate<u16(void*, u16 item_id)> inv_count;
+        immediate<void(void*, u16 item_id)> inv_clear_item;
+        immediate<u16(void*)> inv_selected_item;  ///< item id or 0xFFFF if none selected
 
         // Scenes
-        deferred_terminal<void(u16 scene_id)> goto_scene;
-        immediate<u16()> get_scene;
-        immediate<void(u16 id)> hotspot_on;
-        immediate<void(u16 id)> hotspot_off;
-        immediate<void(u16 type)> set_pointer;
+        deferred_terminal<void(void*, u16 scene_id)> goto_scene;
+        immediate<u16(void*)> get_scene;
+        immediate<void(void*, u16 id)> hotspot_on;
+        immediate<void(void*, u16 id)> hotspot_off;
+        immediate<void(void*, u16 type)> set_pointer;
 
         // Dialogue / Text
-        deferred_modal<void(u16 string_id, u16 speaker_id)> say;
-        deferred_modal<void(u16 dialogue_id)> show_dialog;
-        immediate<void(u16 string_id, u16 x, u16 y)> show_text;
-        immediate<void()> clear_text;
+        deferred_modal<void(void*, u16 string_id, u16 speaker_id)> say;
+        deferred_modal<void(void*, u16 dialogue_id)> show_dialog;
+        immediate<void(void*, u16 string_id, u16 x, u16 y)> show_text;
+        immediate<void(void*)> clear_text;
 
         // Audio
-        immediate<void(u16 music_id)> play_music;
-        immediate<void()> stop_music;
-        immediate<void(u16 sfx_id)> play_sfx;
+        immediate<void(void*, u16 music_id)> play_music;
+        immediate<void(void*)> stop_music;
+        immediate<void(void*, u16 sfx_id)> play_sfx;
 
         // Screen
-        deferred_modal<void(u16 duration_frames)> fade_out;
-        deferred_modal<void(u16 duration_frames)> fade_in;
-        immediate<void(u16 color_index)> screen_clear;
+        deferred_modal<void(void*, u16 duration_frames)> fade_out;
+        deferred_modal<void(void*, u16 duration_frames)> fade_in;
+        immediate<void(void*, u16 color_index)> screen_clear;
 
         // Animation
-        immediate<void(u16 anim_id)> anim_play;
-        immediate<void(u16 anim_id)> anim_stop;
+        immediate<void(void*, u16 anim_id)> anim_play;
+        immediate<void(void*, u16 anim_id)> anim_stop;
 
         // System
-        immediate<void(u16 lang_id)> set_lang;
-        deferred_modal<void(u16 slot)> save_game;
-        deferred_terminal<void(u16 slot)> load_game;
-        deferred_terminal<void()> new_game;
-        deferred_terminal<void()> quit_game;
+        immediate<void(void*, u16 lang_id)> set_lang;
+        deferred_modal<void(void*, u16 slot)> save_game;
+        deferred_terminal<void(void*, u16 slot)> load_game;
+        deferred_terminal<void(void*)> new_game;
+        deferred_terminal<void(void*)> quit_game;
 
         // Diagnostics
         /**
@@ -225,11 +253,11 @@ namespace NEONengine
          * NUL-terminated string on the VM's stack, so anything that outlives
          * the call has to be a copy.
          */
-        void (*report_error)(char const* message);
+        void (*report_error)(void* host, char const* message);
 
 #ifdef GAME_DEBUG
-        immediate<void(u16 string_id)> debug_log;              ///< Log string table entry
-        immediate<void(char const* str, u8 len)> debug_print;  ///< Log raw string
+        immediate<void(void*, u16 string_id)> debug_log;              ///< Log string table entry
+        immediate<void(void*, char const* str, u8 len)> debug_print;  ///< Log raw string
 #endif
     };
 
@@ -315,6 +343,7 @@ namespace NEONengine
          * @param func_toc        Borrowed array of u32 offsets into bytecode
          * @param func_count      Number of entries in the function TOC
          * @param bridge          Borrowed engine bridge (must outlive VM)
+         * @param host            Borrowed receiver every bridge call acts on
          * @param stack_size      Stack capacity of one session, in bytes
          */
         noir_vm(mtl::bitset<u32>& flags,
@@ -324,6 +353,7 @@ namespace NEONengine
             u32 const* func_toc,
             u16 func_count,
             noir_bridge const* bridge,
+            void* host,
             u16 stack_size = NOIR_STACK_SIZE) noexcept;
 
         ~noir_vm() noexcept = default;
@@ -526,7 +556,7 @@ namespace NEONengine
         [[gnu::always_inline]] noir_result call(immediate<Sig> const& b, Args... args) noexcept
         {
             if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
-            b.fn(args...);
+            b.fn(_host, args...);
             return noir_result::ok;
         }
 
@@ -544,7 +574,7 @@ namespace NEONengine
             // Set before the call, not after: a bridge function that answers
             // the request on the spot has to be able to lift it again.
             _vm_state = noir_vm_state::blocked;
-            b.fn(args...);
+            b.fn(_host, args...);
             return noir_result::deferred;
         }
 
@@ -556,7 +586,7 @@ namespace NEONengine
             // Set before the call, not after: a bridge function that tears the
             // VM down on the spot has to be able to clear it again.
             _vm_state = noir_vm_state::terminated;
-            b.fn(args...);
+            b.fn(_host, args...);
             return noir_result::deferred;
         }
 
@@ -565,7 +595,7 @@ namespace NEONengine
         [[gnu::always_inline]] noir_result call_result(immediate<Sig> const& b, Args... args) noexcept
         {
             if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
-            _current_session.d[0] = b.fn(args...);
+            _current_session.d[0] = b.fn(_host, args...);
             return noir_result::ok;
         }
 
@@ -574,7 +604,7 @@ namespace NEONengine
         [[gnu::always_inline]] noir_result call_flag(immediate<Sig> const& b, Args... args) noexcept
         {
             if (unbound(b)) return fail(noir_error::unbound_bridge, "bridge call not wired");
-            set_flag_result(b.fn(args...));
+            set_flag_result(b.fn(_host, args...));
             return noir_result::ok;
         }
 
@@ -738,6 +768,7 @@ namespace NEONengine
         u32 const* _func_toc;
         u16 _func_count;
         noir_bridge const* _bridge;
+        void* _host;  ///< Passed to every bridge call; the VM never looks inside it.
 
         // ── Owned memory ─────────────────────────────────────────────────────
 

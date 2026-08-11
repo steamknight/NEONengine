@@ -151,7 +151,8 @@ namespace NEONengine
             scripts.size(),
             functions.data(),
             to<u16>(functions.size()),
-            &engine_bridge()));
+            &engine_bridge(),
+            result.get()));
 
         NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flag bytes, %hu values",
             to<ULONG>(scripts.size()),

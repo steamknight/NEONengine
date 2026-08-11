@@ -145,209 +145,217 @@ namespace NEONengine
     static mock_bridge_log g_mock_log;
 
     // ─── Mock bridge function implementations ───────────────────────────────────
+    //
+    // Each takes the log as its host, so the bridge reaches it the same way the
+    // engine's own reaches the engine. g_mock_log is what the tests are handed,
+    // and what they read their assertions from.
 
-    static void mock_inv_add(u16 id)
+    /// Wraps a mock below as a slot the bridge table can hold.
+    template<auto Fn>
+    inline constexpr auto on_log = host_call<mock_bridge_log, Fn>;
+
+    static void mock_inv_add(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.inv_added[g_mock_log.inv_add_count++] = id;
+        log.inv_added[log.inv_add_count++] = id;
     }
-    static void mock_inv_remove(u16 id)
+    static void mock_inv_remove(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.inv_removed[g_mock_log.inv_remove_count++] = id;
+        log.inv_removed[log.inv_remove_count++] = id;
     }
-    static bool mock_inv_has(u16 id)
+    static bool mock_inv_has(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.inv_has_query = id;
-        return g_mock_log.inv_has_result;
+        log.inv_has_query = id;
+        return log.inv_has_result;
     }
-    static u16 mock_inv_count(u16 id)
+    static u16 mock_inv_count(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.inv_count_query = id;
-        return g_mock_log.inv_count_result;
+        log.inv_count_query = id;
+        return log.inv_count_result;
     }
-    static void mock_inv_clear_item(u16 id)
+    static void mock_inv_clear_item(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.inv_clear_called = true;
-        g_mock_log.inv_cleared_item_id = id;
+        log.inv_clear_called = true;
+        log.inv_cleared_item_id = id;
     }
 
     /// A fixed answer, so a test can tell INV_SELECTED apart from an empty D0.
     constexpr u16 MOCK_SELECTED_ITEM = 0x2A;
-    static u16 mock_inv_selected_item() { return MOCK_SELECTED_ITEM; }
+    static u16 mock_inv_selected_item(mock_bridge_log&) { return MOCK_SELECTED_ITEM; }
 
-    static void mock_goto_scene(u16 id)
+    static void mock_goto_scene(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.goto_scene_id     = id;
-        g_mock_log.goto_scene_called = true;
+        log.goto_scene_id     = id;
+        log.goto_scene_called = true;
     }
-    static u16 mock_get_scene()
+    static u16 mock_get_scene(mock_bridge_log& log)
     {
-        return g_mock_log.get_scene_result;
+        return log.get_scene_result;
     }
-    static void mock_hotspot_on(u16 id)
+    static void mock_hotspot_on(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.hotspot_on_id = id;
+        log.hotspot_on_id = id;
     }
-    static void mock_hotspot_off(u16 id)
+    static void mock_hotspot_off(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.hotspot_off_id = id;
+        log.hotspot_off_id = id;
     }
-    static void mock_set_pointer(u16 t)
+    static void mock_set_pointer(mock_bridge_log& log, u16 t)
     {
-        g_mock_log.set_pointer_type = t;
-    }
-
-    static void mock_say(u16 s, u16 sp)
-    {
-        g_mock_log.say_string_id  = s;
-        g_mock_log.say_speaker_id = sp;
-        g_mock_log.say_called     = true;
-        ++g_mock_log.say_count;
-    }
-    static void mock_show_dialog(u16 id)
-    {
-        g_mock_log.show_dialog_id     = id;
-        g_mock_log.show_dialog_called = true;
-    }
-    static void mock_show_text(u16 s, u16 x, u16 y)
-    {
-        g_mock_log.show_text_id = s;
-        g_mock_log.show_text_x  = x;
-        g_mock_log.show_text_y  = y;
-    }
-    static void mock_clear_text()
-    {
-        g_mock_log.clear_text_called = true;
-    }
-    static void mock_play_music(u16 id)
-    {
-        g_mock_log.play_music_id = id;
-    }
-    static void mock_stop_music()
-    {
-        g_mock_log.stop_music_called = true;
-    }
-    static void mock_play_sfx(u16 id)
-    {
-        g_mock_log.play_sfx_id = id;
+        log.set_pointer_type = t;
     }
 
-    static void mock_fade_out(u16 f)
+    static void mock_say(mock_bridge_log& log, u16 s, u16 sp)
     {
-        g_mock_log.fade_out_frames = f;
-        g_mock_log.fade_out_called = true;
+        log.say_string_id  = s;
+        log.say_speaker_id = sp;
+        log.say_called     = true;
+        ++log.say_count;
     }
-    static void mock_fade_in(u16 f)
+    static void mock_show_dialog(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.fade_in_frames = f;
-        g_mock_log.fade_in_called = true;
+        log.show_dialog_id     = id;
+        log.show_dialog_called = true;
     }
-    static void mock_screen_clear(u16 c)
+    static void mock_show_text(mock_bridge_log& log, u16 s, u16 x, u16 y)
     {
-        g_mock_log.screen_clr_color = c;
+        log.show_text_id = s;
+        log.show_text_x  = x;
+        log.show_text_y  = y;
+    }
+    static void mock_clear_text(mock_bridge_log& log)
+    {
+        log.clear_text_called = true;
+    }
+    static void mock_play_music(mock_bridge_log& log, u16 id)
+    {
+        log.play_music_id = id;
+    }
+    static void mock_stop_music(mock_bridge_log& log)
+    {
+        log.stop_music_called = true;
+    }
+    static void mock_play_sfx(mock_bridge_log& log, u16 id)
+    {
+        log.play_sfx_id = id;
     }
 
-    static void mock_anim_play(u16 id)
+    static void mock_fade_out(mock_bridge_log& log, u16 f)
     {
-        g_mock_log.anim_play_id = id;
+        log.fade_out_frames = f;
+        log.fade_out_called = true;
     }
-    static void mock_anim_stop(u16 id)
+    static void mock_fade_in(mock_bridge_log& log, u16 f)
     {
-        g_mock_log.anim_stop_id = id;
+        log.fade_in_frames = f;
+        log.fade_in_called = true;
+    }
+    static void mock_screen_clear(mock_bridge_log& log, u16 c)
+    {
+        log.screen_clr_color = c;
     }
 
-    static void mock_set_lang(u16 id)
+    static void mock_anim_play(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.set_lang_id = id;
+        log.anim_play_id = id;
     }
-    static void mock_save_game(u16 s)
+    static void mock_anim_stop(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.save_slot = s;
+        log.anim_stop_id = id;
     }
-    static void mock_load_game(u16 s)
+
+    static void mock_set_lang(mock_bridge_log& log, u16 id)
     {
-        g_mock_log.load_slot = s;
+        log.set_lang_id = id;
     }
-    static void mock_new_game()
+    static void mock_save_game(mock_bridge_log& log, u16 s)
     {
-        g_mock_log.new_game_called = true;
+        log.save_slot = s;
     }
-    static void mock_quit_game()
+    static void mock_load_game(mock_bridge_log& log, u16 s)
     {
-        g_mock_log.quit_game_called = true;
+        log.load_slot = s;
+    }
+    static void mock_new_game(mock_bridge_log& log)
+    {
+        log.new_game_called = true;
+    }
+    static void mock_quit_game(mock_bridge_log& log)
+    {
+        log.quit_game_called = true;
     }
 
     // The last death wins, so a test that provokes two reads the second - which
     // is what the VM's own account used to do.
-    static void mock_report_error(char const* message)
+    static void mock_report_error(mock_bridge_log& log, char const* message)
     {
         size_t i = 0;
-        while (i + 1 < sizeof(g_mock_log.error_text) && message[i] != '\0')
+        while (i + 1 < sizeof(log.error_text) && message[i] != '\0')
         {
-            g_mock_log.error_text[i] = message[i];
+            log.error_text[i] = message[i];
             ++i;
         }
-        g_mock_log.error_text[i] = '\0';
+        log.error_text[i] = '\0';
     }
 
 #ifdef GAME_DEBUG
-    static void mock_debug_log(u16 string_id)
+    static void mock_debug_log(mock_bridge_log& log, u16 string_id)
     {
-        g_mock_log.debug_log_string_id = string_id;
-        g_mock_log.debug_log_called    = true;
+        log.debug_log_string_id = string_id;
+        log.debug_log_called    = true;
     }
-    static void mock_debug_print(char const* str, u8 len)
+    static void mock_debug_print(mock_bridge_log& log, char const* str, u8 len)
     {
-        g_mock_log.debug_print_called = true;
-        g_mock_log.debug_print_len    = len;
+        log.debug_print_called = true;
+        log.debug_print_len    = len;
         u8 copy_len              = len < 63 ? len : 63;
-        for (u8 i = 0; i < copy_len; ++i) g_mock_log.debug_print_buf[i] = str[i];
-        g_mock_log.debug_print_buf[copy_len] = '\0';
+        for (u8 i = 0; i < copy_len; ++i) log.debug_print_buf[i] = str[i];
+        log.debug_print_buf[copy_len] = '\0';
     }
 #endif
 
     // ─── Pre-built mock bridge instance ─────────────────────────────────────────
 
     static noir_bridge const g_mock_bridge = {
-        .inv_add    = {mock_inv_add},
-        .inv_remove = {mock_inv_remove},
-        .inv_has    = {mock_inv_has},
-        .inv_count  = {mock_inv_count},
-        .inv_clear_item = {mock_inv_clear_item},
-        .inv_selected_item = {mock_inv_selected_item},
+        .inv_add    = {on_log<mock_inv_add>},
+        .inv_remove = {on_log<mock_inv_remove>},
+        .inv_has    = {on_log<mock_inv_has>},
+        .inv_count  = {on_log<mock_inv_count>},
+        .inv_clear_item = {on_log<mock_inv_clear_item>},
+        .inv_selected_item = {on_log<mock_inv_selected_item>},
 
-        .goto_scene  = {mock_goto_scene},
-        .get_scene   = {mock_get_scene},
-        .hotspot_on  = {mock_hotspot_on},
-        .hotspot_off = {mock_hotspot_off},
-        .set_pointer = {mock_set_pointer},
+        .goto_scene  = {on_log<mock_goto_scene>},
+        .get_scene   = {on_log<mock_get_scene>},
+        .hotspot_on  = {on_log<mock_hotspot_on>},
+        .hotspot_off = {on_log<mock_hotspot_off>},
+        .set_pointer = {on_log<mock_set_pointer>},
 
-        .say         = {mock_say},
-        .show_dialog = {mock_show_dialog},
-        .show_text   = {mock_show_text},
-        .clear_text  = {mock_clear_text},
+        .say         = {on_log<mock_say>},
+        .show_dialog = {on_log<mock_show_dialog>},
+        .show_text   = {on_log<mock_show_text>},
+        .clear_text  = {on_log<mock_clear_text>},
 
-        .play_music = {mock_play_music},
-        .stop_music = {mock_stop_music},
-        .play_sfx   = {mock_play_sfx},
+        .play_music = {on_log<mock_play_music>},
+        .stop_music = {on_log<mock_stop_music>},
+        .play_sfx   = {on_log<mock_play_sfx>},
 
-        .fade_out     = {mock_fade_out},
-        .fade_in      = {mock_fade_in},
-        .screen_clear = {mock_screen_clear},
+        .fade_out     = {on_log<mock_fade_out>},
+        .fade_in      = {on_log<mock_fade_in>},
+        .screen_clear = {on_log<mock_screen_clear>},
 
-        .anim_play = {mock_anim_play},
-        .anim_stop = {mock_anim_stop},
+        .anim_play = {on_log<mock_anim_play>},
+        .anim_stop = {on_log<mock_anim_stop>},
 
-        .set_lang  = {mock_set_lang},
-        .save_game = {mock_save_game},
-        .load_game = {mock_load_game},
-        .new_game  = {mock_new_game},
-        .quit_game = {mock_quit_game},
+        .set_lang  = {on_log<mock_set_lang>},
+        .save_game = {on_log<mock_save_game>},
+        .load_game = {on_log<mock_load_game>},
+        .new_game  = {on_log<mock_new_game>},
+        .quit_game = {on_log<mock_quit_game>},
 
-        .report_error = mock_report_error,
+        .report_error = on_log<mock_report_error>,
 
 #ifdef GAME_DEBUG
-        .debug_log   = {mock_debug_log},
-        .debug_print = {mock_debug_print},
+        .debug_log   = {on_log<mock_debug_log>},
+        .debug_print = {on_log<mock_debug_print>},
 #endif
     };
 
@@ -422,6 +430,7 @@ namespace NEONengine
                 toc,
                 func_count,
                 bridge,
+                &g_mock_log,
                 stack_size);
         }
 

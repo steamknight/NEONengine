@@ -481,9 +481,9 @@ namespace NEONengine
         u16 s_sched_spawn_count = 0;
 
         /// Immediate, and only ever appends: starting a script is always legal.
-        void sched_inv_add(u16 id)
+        void sched_inv_add(mock_bridge_log& log, u16 id)
         {
-            g_mock_log.inv_added[g_mock_log.inv_add_count++] = id;
+            log.inv_added[log.inv_add_count++] = id;
             if (!s_sched_vm) return;
 
             if (s_sched_spawn_count > 0)
@@ -495,17 +495,17 @@ namespace NEONengine
 
         /// Terminal, and tears the VM down where it stands - the one bridge
         /// call allowed to, and the shape a real NEW_GAME would take.
-        void sched_new_game()
+        void sched_new_game(mock_bridge_log& log)
         {
-            g_mock_log.new_game_called = true;
+            log.new_game_called = true;
             if (s_sched_vm) s_sched_vm->reset_execution();
         }
 
         noir_bridge make_sched_bridge()
         {
             noir_bridge b = g_mock_bridge;
-            b.inv_add     = { sched_inv_add };
-            b.new_game    = { sched_new_game };
+            b.inv_add     = { on_log<sched_inv_add> };
+            b.new_game    = { on_log<sched_new_game> };
             return b;
         }
 

@@ -53,7 +53,7 @@ namespace NEONengine
         }
 
         /// Stands in for PLAY_MUSIC. Immediate, so it runs inside the opcode.
-        void imm_reentrant_music(u16 /*music_id*/)
+        void imm_reentrant_music(mock_bridge_log&, u16 /*music_id*/)
         {
             if (!s_vm) return;
 
@@ -259,7 +259,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         noir_bridge bridge = g_mock_bridge;
-        bridge.play_music  = {imm_reentrant_music};
+        bridge.play_music  = {on_log<imm_reentrant_music>};
 
         auto vm   = bc.build_vm(256, &bridge);
         s_vm      = &vm;
@@ -298,7 +298,7 @@ namespace NEONengine
         bc.emit(noir_op::RET);
 
         noir_bridge bridge = g_mock_bridge;
-        bridge.play_music  = {imm_reentrant_music};
+        bridge.play_music  = {on_log<imm_reentrant_music>};
 
         auto vm  = bc.build_vm(256, &bridge);
         s_vm     = &vm;

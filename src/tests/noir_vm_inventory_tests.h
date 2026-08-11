@@ -16,11 +16,23 @@ namespace NEONengine
     {
         game_session s_session_bridge_inventory;
 
-        void session_bridge_inv_add(u16 item_id) { s_session_bridge_inventory.add_item(item_id); }
-        void session_bridge_inv_remove(u16 item_id) { s_session_bridge_inventory.remove_item(item_id); }
-        bool session_bridge_inv_has(u16 item_id) { return s_session_bridge_inventory.has(item_id); }
-        u16 session_bridge_inv_count(u16 item_id) { return s_session_bridge_inventory.count(item_id); }
-        void session_bridge_inv_clear_item(u16 item_id)
+        void session_bridge_inv_add(mock_bridge_log&, u16 item_id)
+        {
+            s_session_bridge_inventory.add_item(item_id);
+        }
+        void session_bridge_inv_remove(mock_bridge_log&, u16 item_id)
+        {
+            s_session_bridge_inventory.remove_item(item_id);
+        }
+        bool session_bridge_inv_has(mock_bridge_log&, u16 item_id)
+        {
+            return s_session_bridge_inventory.has(item_id);
+        }
+        u16 session_bridge_inv_count(mock_bridge_log&, u16 item_id)
+        {
+            return s_session_bridge_inventory.count(item_id);
+        }
+        void session_bridge_inv_clear_item(mock_bridge_log&, u16 item_id)
         {
             s_session_bridge_inventory.clear_item(item_id);
         }
@@ -30,7 +42,7 @@ namespace NEONengine
         {
             char message[NOIR_ERROR_MESSAGE_SIZE];
             snprintf(message, sizeof(message), "inventory item %hu is out of range", item_id);
-            mock_report_error(message);
+            mock_report_error(g_mock_log, message);
         }
 #endif
 
@@ -42,11 +54,11 @@ namespace NEONengine
 #endif
 
             noir_bridge bridge = g_mock_bridge;
-            bridge.inv_add     = {session_bridge_inv_add};
-            bridge.inv_remove  = {session_bridge_inv_remove};
-            bridge.inv_has     = {session_bridge_inv_has};
-            bridge.inv_count   = {session_bridge_inv_count};
-            bridge.inv_clear_item = {session_bridge_inv_clear_item};
+            bridge.inv_add     = {on_log<session_bridge_inv_add>};
+            bridge.inv_remove  = {on_log<session_bridge_inv_remove>};
+            bridge.inv_has     = {on_log<session_bridge_inv_has>};
+            bridge.inv_count   = {on_log<session_bridge_inv_count>};
+            bridge.inv_clear_item = {on_log<session_bridge_inv_clear_item>};
             return bridge;
         }
     }  // namespace

@@ -58,6 +58,7 @@ namespace NEONengine
         u32 const* func_toc,
         u16 func_count,
         noir_bridge const* bridge,
+        void* host,
         u16 stack_size) noexcept
         : _flags(&flags)
         , _values(&values)
@@ -66,6 +67,7 @@ namespace NEONengine
         , _func_toc(func_toc)
         , _func_count(func_count)
         , _bridge(bridge)
+        , _host(host)
         , _stack(to<size_t>(stack_size) * INITIAL_SLOTS, u8(0))
         , _stack_bytes(stack_size)
         , _stack_slots(INITIAL_SLOTS)
@@ -103,7 +105,7 @@ namespace NEONengine
 
         NE_LOG("%s", message);
 
-        _bridge->report_error(message);
+        _bridge->report_error(_host, message);
 
         // terminated is a latch, and losing it would let the VM run sessions in
         // a scene that is over. A death cannot follow a terminal call inside an
