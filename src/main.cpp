@@ -12,6 +12,7 @@
 
 #include "build_number.h"
 #include "core/asset_cache.h"
+#include "core/debug_keys.h"
 #include "core/game_data.h"
 #include "core/logger.h"
 #include "core/music.h"
@@ -97,59 +98,7 @@ void genericProcess(void)
     stateProcess(g_gameStateManager);
     screenProcess(NEONengine::g_mainScreen);
 
-    // The state stack already records whether the stats are up, so asking it is
-    // both shorter and safe when something else - a message box - is on top.
-    if (keyUse(KEY_F1))
-    {
-        // Re-read: stateProcess() above may have pushed or popped since.
-        tState const* current = g_gameStateManager->pCurrent;
-        if (current == &g_stateScene)
-        {
-            statePush(g_gameStateManager, &g_stateDebugView);
-        }
-        else if (current == &g_stateDebugView)
-        {
-            statePop(g_gameStateManager);
-        }
-    }
-
-    if (keyUse(KEY_F2))
-    {
-        auto chipSize = memGetFreeChipSize();
-        auto fastSize = AvailMem(MEMF_FAST);
-        auto anySize  = AvailMem(MEMF_ANY);
-
-        NE_LOG("Chip: %ld.%3ld KB, Fast: %ld.%3ld KB, Any:  %ld.%3ld KB ",
-            chipSize >> 10,
-            chipSize & 0x3FF,
-            fastSize >> 10,
-            fastSize & 0x3FF,
-            anySize >> 10,
-            anySize & 0x3FF);
-    }
-
-    // Reporting the cache walks the game data once per entry to work out what
-    // each one is, so it stays on a key rather than running every load. A hitch
-    // when it is pressed is the point of the trade.
-    if (keyUse(KEY_F3))
-    {
-        asset_cache_log();
-    }
-
-    if (keyUse(KEY_F4))
-    {
-        asset_cache_clear();
-        NE_LOG("asset cache cleared on request");
-    }
-
-    // ACE's own output buries ours on a busy frame, so it can be switched off
-    // and back on while the game runs. ACE_DEBUG stays on either way, so the
-    // checks that depend on it keep working.
-    if (keyUse(KEY_F5))
-    {
-        log_mute_ace(!log_ace_muted());
-        NE_LOG_ALWAYS("ACE logging %s", log_ace_muted() ? "muted" : "on");
-    }
+    debug_keys_process();
 }
 
 void genericDestroy(void)
