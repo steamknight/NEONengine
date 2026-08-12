@@ -33,36 +33,94 @@ The goals the work is measured against:
 
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
-Item 4 splits in two, and the halves want different neighbours. 4a, the bridge
-context, goes first: it is mechanical, self-contained, and it is what unlocks
-every later reduction in global reach. 4b, the overlay slot, goes next because it
-deletes the arbitration block in `main.cpp` that item 1 would otherwise have to
-carry across intact. Item 1 goes before 2 because the frame's owner should exist
+4a and 4b are done. Item 1 is two steps into four.
+
+Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
+context, went first: mechanical, self-contained, and what unlocks every later
+reduction in global reach. 4b, the overlay slot, went next because it deletes the
+arbitration block in `main.cpp` that item 1 would otherwise have had to carry
+across intact. Item 1 comes before 2 because the frame's owner should exist
 before we decide what the scene runtime is a member of.
 
 ---
 
 ## 1. The engine owns the frame
 
-**Now.** `genericProcess()` pumps input, arbitrates which overlay to push, calls
-`engine::update()`, then `stateProcess()` and `screenProcess()`, then handles the
-debug keys. `sceneProcess()` runs a second ordering pass of its own: pending
-requests, then modals, then the timeline, hotspots, VM, and bobs.
-`engine::update()` applies a pending language and nothing else.
+**Two steps of four done.** Steps 1 and 2 have landed; 3 and 4 have not.
 
-The overlay-push block in `main.cpp` is engine policy wearing a main-loop
-disguise. It reads `g_gameStateManager->pCurrent`, compares it against
-`g_stateMessage` and `g_stateDialogue`, and encodes the rule that two overlays
-may not go up in one frame. That rule belongs with the code that posts the
-requests.
+**Now.** `genericProcess()` pumps input, presents the pending overlay, calls
+`engine::update()`, then `stateProcess()` and `screenProcess()`, then the debug
+keys. `sceneProcess()` runs a second ordering pass of its own: pending requests,
+then modals, then the timeline, hotspots, VM, and bobs. `engine::update()`
+applies a pending language and nothing else — four lines with a grand name.
 
-**Change.** `engine::frame()` runs the ordered sequence. `genericProcess()`
-becomes a call to it. The debug keys move to a `debug_console` the engine ticks
-last, or compile out of a release build. Item 4b should land first, so that the
-overlay arbitration has already collapsed to a `take` and a switch by the time
-this moves it.
+**A correction to what this item first claimed.** It said one function would
+become *the* frame order. It cannot, and should not. There are legitimately two
+orders: the frame's, which holds whatever is on top, and the scene's, which
+applies only while a scene is presented. When a message box is up the timeline
+must not tick and hotspots must not update. Collapsing the two would mean the
+engine deciding scene business, which is the god class this plan exists to avoid.
 
-**Payoff.** One function becomes the frame order, readable top to bottom. Today
+So the goal, stated properly: **the frame's order lives in one function, that
+function contains only calls, and the scene's order stops being reachable from
+`main.cpp`.**
+
+**Change, in four steps.**
+
+*Step 1 — evict the debug keys.* **Done.** F1 through F5 was a third of
+`main.cpp` and related to nothing around it. Now `debug_keys_process()` in
+`core/debug_keys.cpp`. They sit outside `frame()` rather than inside a
+`debug_console` the engine ticks, as this section first proposed: they belong to
+whoever is working on the engine, not to the game, and none of them is part of a
+frame. They still run after the frame they report on.
+
+*Step 2 — `overlay_system`.* **Done.** The slot lived in the engine and the rule
+for when it may go up lived in `main.cpp`, so neither half could be read without
+the other. Both now sit in `core/overlay_system.h`, with the message vocabulary
+they work on. Which states draw an overlay is told to the system at boot rather
+than known by it, so the engine keeps no knowledge of which states a build has —
+the test runner has neither and binds nothing. The engine hands the system out
+rather than forwarding to it: five engine methods went for one, and
+`neonengine.h` lost 175 lines against 20 gained.
+
+*Step 3 — `engine::frame()`.* Six lines that are the frame order:
+
+```cpp
+void engine::frame() noexcept
+{
+    pump_input();                       // key, mouse, ptplayer
+    apply_pending_language();
+    _overlays.present(g_gameStateManager);
+    stateProcess(g_gameStateManager);
+    screenProcess(g_mainScreen);
+}
+```
+
+`genericProcess()` becomes `g_pEngine->frame();` then `debug_keys_process();`.
+`engine::update()` retires into it. The invariant to hold: **`frame()` contains
+calls only, never logic** — that is what stops it growing into the god function.
+
+*Step 4 — record the drain order*, which is 4b's unfinished half. It now has
+somewhere to live: a comment on `frame()` saying that language settles before
+anything is drawn, and why the scene drains modal and system requests rather than
+the engine.
+
+**One ordering change, deliberate.** Today the overlay push runs *before*
+`engine::update()`; in `frame()` it runs after. That inversion was unsafe until
+4b — `statePush` calls `cbCreate` synchronously, so `messageCreate` rendered the
+text before the swap freed the table under it. 4b's copy is what makes the order
+free to choose. Settling engine state before drawing is the more defensible
+order, and the text is identical either way because the copy is taken as the
+message is posted.
+
+**Out of scope, deliberately.** `g_mainScreen` has about eighty call sites across
+twelve files and `g_gameStateManager` about twenty-four, nearly all `statePop`
+inside states. Those are items 5 and 3. An item 1 that absorbs either stops being
+a frame refactor and becomes a rewrite. `sceneProcess()` keeps its own pass; at
+most its request-drain block gets a name, and that is really item 2's opening
+move.
+
+**Payoff.** The frame order becomes readable top to bottom in one place. Today
 the question "does X run before Y" needs two files and trust in the comments.
 Every hazard those comments guard against is an ordering hazard, so an explicit
 order is what actually retires them.
