@@ -164,6 +164,21 @@ namespace NEONengine
     class engine;
     using engine_ptr = mtl::unique_ptr<engine>;
 
+    // Held by pointer, so the scene's parts stay out of this header. Every
+    // translation unit includes it, and few of them care what a scene is made of.
+    class scene_runtime;
+
+    /**
+     * @brief Destroys a scene runtime. Defined where the type is complete.
+     *
+     * Named here rather than left to mtl::unique_ptr's default, which would be
+     * instantiated against the forward declaration above and delete the runtime
+     * without running its destructor.
+     */
+    void destroy_scene_runtime(scene_runtime* runtime);
+
+    using scene_runtime_ptr = mtl::unique_ptr<scene_runtime, destroy_scene_runtime>;
+
     class engine
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
@@ -287,6 +302,31 @@ namespace NEONengine
         void set_current_scene(u16 scene_id) noexcept { _current_scene = scene_id; }
 
         /**
+         * @brief What the current scene is made of.
+         *
+         * The scene state opens this as it starts and closes it as it ends,
+         * because the parts it holds want the screen and the pak, and neither
+         * exists when the engine is built. It hangs here because a bridge call
+         * carries an engine and nothing else.
+         *
+         * Live whenever anything can ask for it: every caller runs inside the
+         * scene state, and a box of text or a conversation is pushed over that
+         * state rather than swapped for it. Returned by reference for the same
+         * reason data() and vm() are.
+         */
+        scene_runtime& scene() noexcept { return *_scene; }
+
+        /** @brief Builds the scene runtime, dropping any already open. */
+        void open_scene() noexcept;
+
+        /**
+         * @brief Drops the scene runtime and everything it holds.
+         *
+         * Hands memory back to the OS, so call this under a system-use guard.
+         */
+        void close_scene() noexcept;
+
+        /**
          * @brief Runs one frame, in the order a frame has to happen in.
          */
         void frame() noexcept;
@@ -326,6 +366,7 @@ namespace NEONengine
         pending_request<modal_request>   _pending_modal{};
         pending_request<system_request>  _pending_system{};
         overlay_system                   _overlays{};
+        scene_runtime_ptr                _scene{ nullptr };
 
         u16                              _current_scene{ 0 };  ///< Scene the runtime is presenting.
         bool                             _language_changed{ false };

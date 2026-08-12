@@ -4,15 +4,17 @@
 
 #include "neonengine.h"
 
+#include <ace/utils/extview.h>
+#include <ace/utils/palette.h>
+
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
 #include "core/logger.h"
 #include "core/music.h"
-#include "core/palette_cycle.h"
-#include "core/scene_audio.h"
 #include "core/scene_bobs.h"
+#include "core/screen.h"
 #include "core/track_clock.h"
 
 NE_LOG_DOMAIN(Timeline);
@@ -24,101 +26,8 @@ namespace NEONengine
         /// No track of that name in this scene.
         constexpr u16 NO_TRACK = 0xFFFF;
 
-        /// No graphic instance of that id in this scene.
-        constexpr u16 NO_INSTANCE = 0xFFFF;
-
-        /// No neighbouring keyframe on that side.
-        constexpr u16 NO_KEY = 0xFFFF;
-
-        /// Cycle boundaries logged per track before the module falls silent.
+        /// Cycle boundaries logged per track before this falls silent.
         constexpr u16 LOGGED_CYCLES = 3;
-
-        u16 s_first = 0;  ///< First TRAK id this scene owns.
-        u16 s_count = 0;  ///< How many it owns; 0 disables the whole module.
-
-        u16 s_gfxi_first = 0;  ///< First GFXI id this scene owns.
-        u16 s_gfxi_count = 0;  ///< How many it owns.
-
-        mtl::vector<track_clock> s_clocks;  ///< One playhead per owned track.
-
-        /// Scene-local index of each track's first keyframe, for indexing s_fired.
-        mtl::vector<u32> s_key_base;
-
-        /// One bit per scene-local keyframe: whether a fire_once key has fired.
-        mtl::vector<u8> s_fired;
-
-        /**
-         * @brief A GFX_MOVE interpolation under way for one graphic instance.
-         *
-         * Held per instance rather than per track because an instance has one
-         * position: two tracks moving the same one are settled by which wrote
-         * last, not by both being remembered. @c track names the playhead the
-         * span is read against, since every track keeps its own.
-         */
-        struct glide
-        {
-            data::point<u16> from{ 0, 0 };  ///< Where the span begins.
-            data::point<u16> to{ 0, 0 };    ///< Where it ends.
-            u16 t0    = 0;                  ///< Playhead position of @c from.
-            u16 t1    = 0;                  ///< Playhead position of @c to; always > t0.
-            u16 track = 0;                  ///< Scene-local track driving it.
-            bool active    = false;              ///< Whether the instance is on a span at all.
-        };
-
-        /// One slot per graphic instance the scene owns.
-        mtl::vector<glide> s_glides;
-
-        /**
-         * @brief A band of palette entries one track turns while its playhead
-         *        stands inside a span.
-         *
-         * A cycle is a span, not a pair of events. Reading it off the playhead's
-         * position rather than firing it on a crossing is what makes it behave
-         * on a ping-pong track: the return leg walks the positions backwards, so
-         * the band turns backwards with it, and it re-enters the span at exactly
-         * the offset it left on, so the whole out-and-back is continuous. Fired
-         * as events, a reverse leg would meet the END first and leave the band
-         * turning everywhere except inside its own span.
-         *
-         * @c offset is the only state that has to be kept, because it describes
-         * the palette as it actually stands: a rotation is a permutation, so
-         * turning the rest of the way round restores the authored order exactly
-         * and no copy of it is needed.
-         */
-        struct cycle_span
-        {
-            u16 track  = 0;  ///< Scene-local track whose playhead drives it.
-            u16 t0     = 0;  ///< Position the span opens at.
-            u16 t1     = 0;  ///< Position it closes at; always > t0.
-            u16 delay  = 1;  ///< Frames each step of the turn is held for.
-            u16 width  = 0;  ///< Entries in the band; always >= 2.
-            u16 offset = 0;  ///< How far the band currently stands turned.
-            u8 first   = 0;  ///< First palette entry of the band.
-            u8 last    = 0;  ///< Last entry of the band, inclusive.
-
-            /// Whether the band turns for one traversal of its span only.
-            bool fire_once = false;
-
-            /// Whether the playhead stood inside the span last frame.
-            bool inside = false;
-
-            /// Whether a fire_once band has had its one traversal.
-            bool spent = false;
-        };
-
-        /**
-         * @brief Every band this scene's timeline turns, in no particular order.
-         *
-         * Two bands of one track may not overlap, which Build enforces. Two
-         * bands of different tracks may, because their clocks are independent
-         * and Build cannot know where either playhead will be. Overlapping
-         * rotations do not commute, so an authored overlap scrambles both bands
-         * and neither offset describes the palette any more. That is left to
-         * happen: it costs nothing that matters - the next scene load replaces
-         * the palette outright - and correcting it would mean undoing and
-         * reapplying every band on every frame any one of them stepped.
-         */
-        mtl::vector<cycle_span> s_cycles;
 
         /**
          * @brief Names @p mode the way the editor and the format docs do.
@@ -187,174 +96,6 @@ namespace NEONengine
             return *force_to<u16 const*>(key.payload);
         }
 
-        /**
-         * @brief The scene-local slot for global GFXI @p id.
-         *
-         * @return NO_INSTANCE when the id names an instance this scene does not
-         *         own, which the load reports once rather than every frame.
-         */
-        u16 find_instance(u16 id)
-        {
-            if (id < s_gfxi_first) return NO_INSTANCE;
-            u16 const local = to<u16>(id - s_gfxi_first);
-            return local < s_gfxi_count ? local : NO_INSTANCE;
-        }
-
-        /// @brief @p track's keyframes, in stored order.
-        mtl::span<data::keyframe> track_keys(data::track const& track)
-        {
-            auto const all = g_pEngine->data().keyframes();
-            return mtl::span<data::keyframe>(all.data() + track.keyframe_range.start,
-                track.keyframe_range.count);
-        }
-
-        /// @brief Whether the fire_once key at scene-local @p index has already fired.
-        bool has_fired(u32 index)
-        {
-            return (s_fired[index >> 3] & to<u8>(1 << (index & 7))) != 0;
-        }
-
-        /// @brief Records that the fire_once key at scene-local @p index has fired.
-        void mark_fired(u32 index)
-        {
-            s_fired[index >> 3] |= to<u8>(1 << (index & 7));
-        }
-
-        /**
-         * @brief Offers every fire_once key of the track at @p index again.
-         *
-         * A run is the unit a fire_once keyframe fires once within, and
-         * scene_timeline_play() always begins a new run, so the marks from the
-         * previous one are wiped rather than carried over.
-         */
-        void clear_fired(u16 index, data::track const& track)
-        {
-            u32 const base = s_key_base[index];
-            for (u16 offset = 0; offset < track.keyframe_range.count; ++offset)
-            {
-                u32 const marker = base + offset;
-                s_fired[marker >> 3] &= to<u8>(0xFF ^ (1 << (marker & 7)));
-            }
-        }
-
-        /**
-         * @brief Whether @p track's keyframes really lie inside the KEYS chunk.
-         *
-         * Playing a track whose range points past the chunk would read whatever
-         * follows it, so a track that fails this is never started: not at load,
-         * and not by ANIM_PLAY either.
-         */
-        bool keys_in_range(data::track const& track)
-        {
-            auto const all = g_pEngine->data().keyframes();
-            return to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
-                <= all.size();
-        }
-
-        /**
-         * @brief The scene-local index of the track called @p name_id.
-         *
-         * @return NO_TRACK when this scene has no such track, which is an
-         *         ordinary outcome: a script is not owned by a scene, so it can
-         *         legitimately name a track that only exists in another one.
-         */
-        u16 find_track(u16 name_id)
-        {
-            auto const tracks = scene_timeline_tracks();
-            for (u16 index = 0; index < s_count; ++index)
-            {
-                if (tracks[index].name_id == name_id) return index;
-            }
-            return NO_TRACK;
-        }
-
-        /**
-         * @brief Where a keyframe sits, for the ones that need to see their neighbours.
-         *
-         * A GFX_MOVE is only half a movement: the other half is the move before
-         * or after it in the same track, so it cannot be run from the record
-         * alone the way a script keyframe can.
-         */
-        struct fire_context
-        {
-            mtl::span<data::keyframe> keys;       ///< The owning track's keyframes.
-            data::track const* record = nullptr;  ///< The owning track's TRAK record.
-            u32 base             = 0;        ///< s_fired index of keys[0].
-            u16 offset           = 0;        ///< This keyframe's index in keys.
-            u16 track            = 0;        ///< Scene-local track index.
-            bool reversing            = false;    ///< Whether the playhead heads back to 0.
-        };
-
-        /**
-         * @brief The nearest GFX_MOVE for @p instance on one side of ctx.offset.
-         *
-         * A spent fire_once key is passed over rather than found: it no longer
-         * places its instance, so it cannot bracket a movement either.
-         *
-         * @param forward Which side to look on, in time order.
-         * @return An index into ctx.keys, or NO_KEY when that side holds none.
-         */
-        u16 neighbour_move(fire_context const& ctx, u16 instance, bool forward)
-        {
-            u16 step = ctx.offset;
-            while (true)
-            {
-                if (forward)
-                {
-                    if (++step >= ctx.keys.size()) return NO_KEY;
-                }
-                else
-                {
-                    if (step == 0) return NO_KEY;
-                    --step;
-                }
-
-                auto const& key = ctx.keys[step];
-                if (!is_move(key) || move_of(key).instance_id != instance) continue;
-                if ((key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) && has_fired(ctx.base + step))
-                {
-                    continue;
-                }
-                return step;
-            }
-        }
-
-        /// @brief Takes the instance at @p slot off whatever span it was on.
-        void clear_glide(u16 slot) { s_glides[slot].active = false; }
-
-        /**
-         * @brief Puts the instance at @p slot on the span @p t0 to @p t1.
-         *
-         * The ends are given in time order however the playhead is travelling,
-         * which is what lets one expression serve a reverse leg: the position is
-         * read off the span rather than accumulated along it.
-         */
-        void set_glide(u16 slot,
-            u16 track,
-            data::point<u16> from,
-            u16 t0,
-            data::point<u16> dest,
-            u16 t1)
-        {
-            // Two moves of one instance at one time are rejected by the editor,
-            // so this means a pak built by something else. Dividing by the span
-            // would trap rather than merely misplace the instance, hence a test
-            // rather than trust.
-            if (t1 <= t0)
-            {
-                clear_glide(slot);
-                return;
-            }
-
-            glide& g = s_glides[slot];
-            g.from   = from;
-            g.to     = dest;
-            g.t0     = t0;
-            g.t1     = t1;
-            g.track  = track;
-            g.active = true;
-        }
-
         /// @brief @p from moved @p done parts out of @p span of the way to @p dest.
         u16 lerp(u16 from, u16 dest, i32 done, i32 span)
         {
@@ -363,498 +104,596 @@ namespace NEONengine
         }
 
         /**
-         * @brief Places every gliding instance where its track's playhead says.
+         * @brief Reverses the reference palette entries [@p from, @p to].
          *
-         * Computed from the playhead rather than stepped along, so a span costs
-         * nothing to re-enter, gathers no drift however long it is, lands exactly
-         * on its far end, and reads the same backwards as forwards. The divide
-         * this costs is some 44 cycles against a frame's ~280,000; the search it
-         * replaces was the expensive part, and the cached span removes that.
+         * The building block of the rotation: turning a band right by k is the
+         * whole band reversed, then each of its two pieces reversed back. That
+         * is one pass over the band and a bit, whatever k is, and needs no
+         * scratch buffer - which matters, because a band may be the entire
+         * 256-entry palette and the stack is not the place for a copy of it.
          */
-        void update_glides()
+        void reverse(ULONG* entries, u16 first, u16 last)
         {
-            for (u16 slot = 0; slot < s_glides.size(); ++slot)
+            while (first < last)
             {
-                glide const& g = s_glides[slot];
-                if (!g.active) continue;
-
-                // A halted playhead would only recompute the same position, and
-                // leaving the instance untouched is what stopping should do.
-                auto const& clock = s_clocks[g.track];
-                if (!clock.is_running()) continue;
-
-                i32 const span = to<i32>(g.t1) - to<i32>(g.t0);
-                i32 const done = to<i32>(clock.position()) - to<i32>(g.t0);
-
-                data::point<u16> const pos{ lerp(g.from.y, g.to.y, done, span),
-                    lerp(g.from.x, g.to.x, done, span) };
-                scene_bobs_set_instance_pos(slot, pos);
-            }
-        }
-
-        /**
-         * @brief Turns every palette band to where its track's playhead says.
-         *
-         * Read off the playhead for the same reasons the glides are, and with
-         * one more: a ping-pong's return leg walks the positions backwards, so
-         * the band simply turns backwards with it, and re-enters its span on
-         * exactly the offset it left on.
-         *
-         * Only the difference from where the band already stands is applied, so
-         * the usual frame turns it by one step or not at all, and a playhead
-         * that jumped costs one pass over the band rather than one per step.
-         */
-        void update_cycles()
-        {
-            for (auto& span : s_cycles)
-            {
-                auto const& clock       = s_clocks[span.track];
-                u16 const position = clock.position();
-
-                // Half-open: the band is the START's to turn right up to the
-                // END's position, and the END's position itself belongs to
-                // whatever comes next.
-                bool const inside = clock.is_running() && position >= span.t0 && position < span.t1;
-
-                // A fire_once band turns for one traversal and no more, so it is
-                // spent by leaving the span rather than by entering it: leaving
-                // is the point at which the traversal is over.
-                if (span.fire_once && span.inside && !inside) span.spent = true;
-                span.inside = inside;
-
-                // A band outside its span is left standing where the span left
-                // it rather than being put back. Putting it back would be a jump
-                // in the middle of the track: the offset the span ends on is
-                // wherever the rotation had got to, and a ping-pong re-enters at
-                // exactly that offset on its way back, so snapping to authored
-                // order at the end would throw the band home and then straight
-                // back out again a moment later. Holding makes a ping-pong
-                // continuous everywhere: out, hold, and back the way it came.
-                //
-                // The one place a jump remains is a RESTART loop whose span is
-                // not a whole number of revolutions, which lands back on offset
-                // zero at the position the span opens at. A restart is a
-                // discontinuity by definition, and authoring the span as
-                // (t1 - t0) == n * width * delay removes even that one.
-                u16 const wanted = (inside && !span.spent)
-                    ? to<u16>(((position - span.t0) / span.delay) % span.width)
-                    : span.offset;
-
-                if (wanted == span.offset) continue;
-
-                // Always forwards, because a rotation is cyclic: turning the
-                // rest of the way round is how the band goes back, and it is the
-                // same one pass either way.
-                u16 const steps
-                    = to<u16>((wanted + span.width - span.offset) % span.width);
-                palette_cycle_rotate(span.first, span.last, steps);
-                span.offset = wanted;
-            }
-        }
-
-        /**
-         * @brief Leaves every band of this scene standing as it was authored.
-         *
-         * A rotation is a permutation, so turning each band the rest of the way
-         * round restores it exactly. Worth doing on the way out because a scene
-         * without a background of its own loads no palette and would otherwise
-         * inherit the last scene's bands mid-turn.
-         */
-        void restore_cycles()
-        {
-            for (auto& span : s_cycles)
-            {
-                if (span.offset == 0) continue;
-                palette_cycle_rotate(
-                    span.first, span.last, to<u16>(span.width - span.offset));
-                span.offset = 0;
-            }
-        }
-
-        /**
-         * @brief Offers the bands of the track at @p index their traversal again.
-         *
-         * The counterpart to clear_fired(): a run is the unit a fire_once band
-         * turns once within. The offset is left alone, because it describes the
-         * palette as it actually stands rather than a policy; the band picks up
-         * from there when the playhead next reaches the span.
-         */
-        void clear_cycles(u16 index)
-        {
-            for (auto& span : s_cycles)
-            {
-                if (span.track != index) continue;
-                span.inside = false;
-                span.spent  = false;
-            }
-        }
-
-        /**
-         * @brief Runs @p key as a GFX_MOVE and works out what comes next.
-         *
-         * The instance lands exactly on the keyframe's position, and the span
-         * the playhead is now entering is cached so that no later frame has to
-         * search for it.
-         */
-        bool fire_move(data::keyframe const& key, fire_context const& ctx)
-        {
-            auto const& payload = move_of(key);
-            u16 const slot = find_instance(payload.instance_id);
-            if (slot == NO_INSTANCE) return false;  // Reported once at load.
-
-            scene_bobs_set_instance_pos(slot, payload.pos);
-
-            // A ping-pong turns round on the very frame it reaches its duration,
-            // so a keyframe sitting there is crossed once, going up, and never
-            // again coming down. The span it brackets on the way back has to be
-            // set up here because there is no second crossing to do it.
-            bool const turning =
-                to<data::loop_mode>(ctx.record->loop_mode) == data::loop_mode::PING_PONG
-                && key.time >= ctx.record->duration;
-            bool const backward = ctx.reversing || turning;
-
-            u16 const other = neighbour_move(ctx, payload.instance_id, !backward);
-            if (other == NO_KEY)
-            {
-                clear_glide(slot);
-                return true;
-            }
-
-            // Spans are described in time order, not in travel order: the later
-            // of the two keys carries the flag whichever way the playhead runs,
-            // which is exactly what spares a reverse leg a second rule.
-            auto const& lo = backward ? ctx.keys[other] : key;
-            auto const& hi = backward ? key : ctx.keys[other];
-
-            if ((hi.flags & data::KEYFRAME_FLAG_INTERPOLATE) == 0)
-            {
-                clear_glide(slot);
-                return true;
-            }
-
-            set_glide(slot, ctx.track, move_of(lo).pos, lo.time, move_of(hi).pos, hi.time);
-            return true;
-        }
-
-        bool fire_visibility(data::keyframe const& key)
-        {
-            auto const& payload =
-                *force_to<data::gfx_visibility_payload const*>(key.payload);
-
-            u16 const slot = find_instance(payload.instance_id);
-            if (slot == NO_INSTANCE) return false;  // Reported once at load.
-
-            scene_bobs_set_instance_visible(slot, payload.visible != 0);
-            return true;
-        }
-
-        bool fire_sfx(data::keyframe const& key)
-        {
-            // Preloaded when the scene did, because a sound has to be resident
-            // in Chip RAM before it is asked for. The channel the payload names
-            // is deliberately not read; see scene_audio.
-            scene_audio_play(force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
-            return true;
-        }
-
-        bool fire_music(data::keyframe const& key)
-        {
-            auto const& payload = *force_to<data::music_play_payload const*>(key.payload);
-
-            // Read here rather than preloaded with the scene: a module is far
-            // larger than a sound effect, and a scene may name several it never
-            // reaches. The cost is a hitch on the frame this fires. Nothing
-            // drifts, because the clock counts frames processed rather than
-            // time passed, but it is a stall and it is meant to be one.
-            mtl::system_use_guard guard;
-
-            auto mod = g_pEngine->data().open_asset_uncached(payload.music_hash);
-            if (!mod)
-            {
-                NE_LOG("no music asset for hash %08lx", to<ULONG>(payload.music_hash));
-                return false;
-            }
-
-            musicLoad(mtl::move(mod));
-            musicPlayCurrent(payload.loop);
-            NE_LOG("MUSIC_PLAY %08lx, loop %hu",
-                to<ULONG>(payload.music_hash),
-                to<u16>(payload.loop));
-            return true;
-        }
-
-        bool fire_script(data::keyframe const& key, u16 track_index)
-        {
-            auto const& payload = *force_to<data::execute_script_payload const*>(key.payload);
-            auto& vm            = g_pEngine->vm();
-
-            // Sessions run side by side, so several keyframes in one frame each
-            // get one, in the order they fired. The one refusal left is a script
-            // that is already running: it keeps its place in the run list rather
-            // than restarting, and the keyframe counts as not fired.
-            if (!vm.execute(payload.function_id))
-            {
-                NE_LOG("track %hu could not run script %hu",
-                    track_index,
-                    payload.function_id);
-                return false;
-            }
-
-            NE_LOG("track %hu ran script %hu", track_index, payload.function_id);
-            return true;
-        }
-
-        /**
-         * @brief Runs @p key, if this slice knows how to.
-         *
-         * @return Whether the keyframe actually fired. A keyframe that did not
-         *         fire has not used up its fire_once, so a looping track will
-         *         offer it again rather than losing it for the rest of the run.
-         */
-        bool fire(data::keyframe const& key, fire_context const& ctx)
-        {
-            switch (to<data::keyframe_type>(key.type))
-            {
-                case data::keyframe_type::GFX_MOVE: return fire_move(key, ctx);
-                case data::keyframe_type::GFX_VISIBILITY: return fire_visibility(key);
-                case data::keyframe_type::SFX_PLAY: return fire_sfx(key);
-                case data::keyframe_type::MUSIC_PLAY: return fire_music(key);
-                case data::keyframe_type::EXECUTE_SCRIPT: return fire_script(key, ctx.track);
-
-                case data::keyframe_type::MUSIC_STOP:
-                    musicStop();
-                    NE_LOG("MUSIC_STOP");
-                    return true;
-
-                case data::keyframe_type::PALETTE_CYCLE_START:
-                case data::keyframe_type::PALETTE_CYCLE_END:
-                    // A palette cycle is a span the playhead stands inside, not
-                    // an event it crosses: update_cycles() reads it off the
-                    // position every frame, and these two records only say where
-                    // the span begins and ends. Nothing fires, so nothing here
-                    // spends a fire_once either - the span keeps that itself.
-                    return false;
-
-                default:
-                    // Every other type is reported once at load and ignored
-                    // here, so that an unimplemented keyframe on a looping track
-                    // cannot log 50 times a second.
-                    return false;
-            }
-        }
-
-        /**
-         * @brief Sets up the spans a cycle of @p track begins already on.
-         *
-         * A move that no earlier move leads up to has nowhere to start from but
-         * where its instance already stands, so its span is established here
-         * rather than at a crossing: the instance has to be moving before the
-         * playhead arrives, and the crossing is where it arrives.
-         *
-         * Run at the head of every cycle rather than only of every run, so that
-         * a looping track's second cycle leads into its first move exactly as
-         * its first cycle did instead of teleporting there.
-         */
-        void prime_glides(u16 track_index, data::track const& track)
-        {
-            // A cycle begins with nothing of the last one still in motion, so
-            // that a movement whose keyframes are spent or gone cannot leave an
-            // instance following a span the playhead has left. Only this track's
-            // movements are dropped; another track's are its own business.
-            for (u16 slot = 0; slot < s_glides.size(); ++slot)
-            {
-                if (s_glides[slot].active && s_glides[slot].track == track_index)
-                {
-                    clear_glide(slot);
-                }
-            }
-
-            fire_context ctx;
-            ctx.keys   = track_keys(track);
-            ctx.record = &track;
-            ctx.base   = s_key_base[track_index];
-            ctx.track  = track_index;
-
-            for (u16 offset = 0; offset < ctx.keys.size(); ++offset)
-            {
-                auto const& key = ctx.keys[offset];
-                if (!is_move(key) || (key.flags & data::KEYFRAME_FLAG_INTERPOLATE) == 0) continue;
-
-                // A move at position 0 is simply where the instance is at
-                // position 0; the crossing on the cycle's first frame says so.
-                if (key.time == 0) continue;
-
-                if ((key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) && has_fired(ctx.base + offset))
-                {
-                    continue;
-                }
-
-                auto const& payload = move_of(key);
-                u16 const slot = find_instance(payload.instance_id);
-                if (slot == NO_INSTANCE) continue;
-
-                // Only the cycle's first move for an instance leads from where
-                // that instance already is. Every later one is picked up as the
-                // move before it is crossed.
-                ctx.offset = offset;
-                if (neighbour_move(ctx, payload.instance_id, false) != NO_KEY) continue;
-
-                data::point<u16> from{ 0, 0 };
-                if (!scene_bobs_instance_pos(slot, from)) continue;
-
-                set_glide(slot, track_index, from, 0, payload.pos, key.time);
-            }
-        }
-
-        /**
-         * @brief Collects the palette bands the track at @p index turns.
-         *
-         * A START and its END are paired here rather than at fire time, so that
-         * a band whose records do not make a span is complained about once at
-         * load instead of fifty times a second. The two are always in the same
-         * track, which is why an END can name nothing but a cycle id and still
-         * be unambiguous.
-         */
-        void collect_cycles(u16 track_index, data::track const& track)
-        {
-            auto const keys = track_keys(track);
-            for (u16 offset = 0; offset < keys.size(); ++offset)
-            {
-                auto const& open = keys[offset];
-                if (!is_cycle_start(open)) continue;
-
-                auto const& payload = cycle_start_of(open);
-
-                u16 close = NO_KEY;
-                for (u16 other = 0; other < keys.size(); ++other)
-                {
-                    if (!is_cycle_end(keys[other])) continue;
-                    if (cycle_id_of(keys[other]) != payload.cycle_id) continue;
-                    if (keys[other].time <= open.time) continue;
-                    close = other;
-                    break;
-                }
-
-                // The editor pairs these and rejects the rest, so any of the
-                // following means the pak was built by something else.
-                if (close == NO_KEY)
-                {
-                    NE_LOG("  track %hu cycle %hu has no end after it; it will not turn",
-                        track_index,
-                        payload.cycle_id);
-                    continue;
-                }
-
-                // A reversed or single-entry band is not a band, and turning one
-                // would walk off the end of the palette rather than merely look
-                // wrong, so it is refused rather than clamped.
-                if (payload.last <= payload.first)
-                {
-                    NE_LOG("  track %hu cycle %hu spans entries %hhu..%hhu, which is not a band",
-                        track_index,
-                        payload.cycle_id,
-                        payload.first,
-                        payload.last);
-                    continue;
-                }
-
-                cycle_span span;
-                span.track = track_index;
-                span.t0    = open.time;
-                span.t1    = keys[close].time;
-                span.first = payload.first;
-                span.last  = payload.last;
-                span.width = to<u16>(payload.last - payload.first + 1);
-
-                // Zero frames a step is no step at all, and dividing by it traps
-                // rather than misbehaving, so it becomes the fastest turn there
-                // is instead.
-                span.delay = payload.delay == 0 ? 1 : payload.delay;
-                if (payload.delay == 0)
-                {
-                    NE_LOG("  track %hu cycle %hu holds each step for 0 frames; using 1",
-                        track_index,
-                        payload.cycle_id);
-                }
-
-                span.fire_once = (open.flags & data::KEYFRAME_FLAG_FIRE_ONCE) != 0;
-                s_cycles.push_back(span);
-            }
-        }
-
-        /**
-         * @brief Fires whatever the track at @p track_index has under its playhead.
-         */
-        void fire_keyframes(u16 track_index, data::track const& track)
-        {
-            if (track.keyframe_range.count == 0) return;
-
-            fire_context ctx;
-            ctx.keys   = track_keys(track);
-            ctx.record = &track;
-            ctx.base   = s_key_base[track_index];
-            ctx.track  = track_index;
-
-            auto const& clock = s_clocks[track_index];
-            auto const run    = clock.keys_at(ctx.keys);
-            if (run.count == 0) return;
-
-            ctx.reversing = clock.is_reversing();
-
-            for (u16 step = 0; step < run.count; ++step)
-            {
-                // A track played backwards is played backwards all the way down,
-                // so keys sharing a position run in reverse on the return leg.
-                ctx.offset = ctx.reversing
-                    ? to<u16>(run.first + run.count - 1 - step)
-                    : to<u16>(run.first + step);
-
-                auto const& key       = ctx.keys[ctx.offset];
-                bool const fire_once  = (key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) != 0;
-                u32 const marker = ctx.base + ctx.offset;
-
-                if (fire_once && has_fired(marker)) continue;
-                if (fire(key, ctx) && fire_once) mark_fired(marker);
+                ULONG const held = entries[first];
+                entries[first]   = entries[last];
+                entries[last]    = held;
+                ++first;
+                --last;
             }
         }
     }  // namespace
 
-    void scene_timeline_clear()
+    scene_timeline::~scene_timeline()
     {
-        s_first      = 0;
-        s_count      = 0;
-        s_gfxi_first = 0;
-        s_gfxi_count = 0;
-        s_clocks.clear();
-        s_key_base.clear();
-        s_fired.clear();
-        s_glides.clear();
-        s_cycles.clear();
+        unload();
     }
 
-    void scene_timeline_restore_palette()
+    u16 scene_timeline::find_instance(u16 id)
+    {
+        if (id < _gfxi_first) return NO_INSTANCE;
+        u16 const local = to<u16>(id - _gfxi_first);
+        return local < _gfxi_count ? local : NO_INSTANCE;
+    }
+
+    mtl::span<data::keyframe> scene_timeline::track_keys(data::track const& track)
+    {
+        auto const all = _data.keyframes();
+        return mtl::span<data::keyframe>(all.data() + track.keyframe_range.start,
+            track.keyframe_range.count);
+    }
+
+    bool scene_timeline::has_fired(u32 index)
+    {
+        return (_fired[index >> 3] & to<u8>(1 << (index & 7))) != 0;
+    }
+
+    void scene_timeline::mark_fired(u32 index)
+    {
+        _fired[index >> 3] |= to<u8>(1 << (index & 7));
+    }
+
+    void scene_timeline::clear_fired(u16 index, data::track const& track)
+    {
+        u32 const base = _key_base[index];
+        for (u16 offset = 0; offset < track.keyframe_range.count; ++offset)
+        {
+            u32 const marker = base + offset;
+            _fired[marker >> 3] &= to<u8>(0xFF ^ (1 << (marker & 7)));
+        }
+    }
+
+    bool scene_timeline::keys_in_range(data::track const& track)
+    {
+        auto const all = _data.keyframes();
+        return to<size_t>(track.keyframe_range.start) + track.keyframe_range.count
+            <= all.size();
+    }
+
+    u16 scene_timeline::find_track(u16 name_id)
+    {
+        auto const all = tracks();
+        for (u16 index = 0; index < _count; ++index)
+        {
+            if (all[index].name_id == name_id) return index;
+        }
+        return NO_TRACK;
+    }
+
+    u16 scene_timeline::neighbour_move(fire_context const& ctx, u16 instance, bool forward)
+    {
+        u16 step = ctx.offset;
+        while (true)
+        {
+            if (forward)
+            {
+                if (++step >= ctx.keys.size()) return NO_KEY;
+            }
+            else
+            {
+                if (step == 0) return NO_KEY;
+                --step;
+            }
+
+            auto const& key = ctx.keys[step];
+            if (!is_move(key) || move_of(key).instance_id != instance) continue;
+            if ((key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) && has_fired(ctx.base + step))
+            {
+                continue;
+            }
+            return step;
+        }
+    }
+
+    void scene_timeline::clear_glide(u16 slot) { _glides[slot].active = false; }
+
+    void scene_timeline::set_glide(u16 slot,
+        u16 track,
+        data::point<u16> from,
+        u16 t0,
+        data::point<u16> dest,
+        u16 t1)
+    {
+        // Two moves of one instance at one time are rejected by the editor,
+        // so this means a pak built by something else. Dividing by the span
+        // would trap rather than merely misplace the instance, hence a test
+        // rather than trust.
+        if (t1 <= t0)
+        {
+            clear_glide(slot);
+            return;
+        }
+
+        glide& g = _glides[slot];
+        g.from   = from;
+        g.to     = dest;
+        g.t0     = t0;
+        g.t1     = t1;
+        g.track  = track;
+        g.active = true;
+    }
+
+    void scene_timeline::update_glides()
+    {
+        for (u16 slot = 0; slot < _glides.size(); ++slot)
+        {
+            glide const& g = _glides[slot];
+            if (!g.active) continue;
+
+            // A halted playhead would only recompute the same position, and
+            // leaving the instance untouched is what stopping should do.
+            auto const& clock = _clocks[g.track];
+            if (!clock.is_running()) continue;
+
+            i32 const span = to<i32>(g.t1) - to<i32>(g.t0);
+            i32 const done = to<i32>(clock.position()) - to<i32>(g.t0);
+
+            data::point<u16> const pos{ lerp(g.from.y, g.to.y, done, span),
+                lerp(g.from.x, g.to.x, done, span) };
+            _bobs.set_instance_pos(slot, pos);
+        }
+    }
+
+    void scene_timeline::update_cycles()
+    {
+        for (auto& span : _cycles)
+        {
+            auto const& clock       = _clocks[span.track];
+            u16 const position = clock.position();
+
+            // Half-open: the band is the START's to turn right up to the
+            // END's position, and the END's position itself belongs to
+            // whatever comes next.
+            bool const inside = clock.is_running() && position >= span.t0 && position < span.t1;
+
+            // A fire_once band turns for one traversal and no more, so it is
+            // spent by leaving the span rather than by entering it: leaving
+            // is the point at which the traversal is over.
+            if (span.fire_once && span.inside && !inside) span.spent = true;
+            span.inside = inside;
+
+            // A band outside its span is left standing where the span left
+            // it rather than being put back. Putting it back would be a jump
+            // in the middle of the track: the offset the span ends on is
+            // wherever the rotation had got to, and a ping-pong re-enters at
+            // exactly that offset on its way back, so snapping to authored
+            // order at the end would throw the band home and then straight
+            // back out again a moment later. Holding makes a ping-pong
+            // continuous everywhere: out, hold, and back the way it came.
+            //
+            // The one place a jump remains is a RESTART loop whose span is
+            // not a whole number of revolutions, which lands back on offset
+            // zero at the position the span opens at. A restart is a
+            // discontinuity by definition, and authoring the span as
+            // (t1 - t0) == n * width * delay removes even that one.
+            u16 const wanted = (inside && !span.spent)
+                ? to<u16>(((position - span.t0) / span.delay) % span.width)
+                : span.offset;
+
+            if (wanted == span.offset) continue;
+
+            // Always forwards, because a rotation is cyclic: turning the
+            // rest of the way round is how the band goes back, and it is the
+            // same one pass either way.
+            u16 const steps
+                = to<u16>((wanted + span.width - span.offset) % span.width);
+            rotate_palette_band(span.first, span.last, steps);
+            span.offset = wanted;
+        }
+    }
+
+    void scene_timeline::restore_cycles()
+    {
+        for (auto& span : _cycles)
+        {
+            if (span.offset == 0) continue;
+            rotate_palette_band(
+                span.first, span.last, to<u16>(span.width - span.offset));
+            span.offset = 0;
+        }
+    }
+
+    void scene_timeline::clear_cycles(u16 index)
+    {
+        for (auto& span : _cycles)
+        {
+            if (span.track != index) continue;
+            span.inside = false;
+            span.spent  = false;
+        }
+    }
+
+    void scene_timeline::rotate_palette_band(u8 first, u8 last, u16 steps)
+    {
+        // Not a band. The editor rejects it, so it means the pak was built by
+        // something else; rotating a reversed range would walk off the end of
+        // the palette, which is worth refusing rather than reporting.
+        if (last <= first) return;
+
+        u16 const width = to<u16>(last - first + 1);
+
+        steps %= width;
+        if (steps == 0) return;
+
+        auto* entries = force_to<ULONG*>(screenGetPalette(g_mainScreen));
+
+        reverse(entries, first, last);
+        reverse(entries, first, to<u16>(first + steps - 1));
+        reverse(entries, to<u16>(first + steps), last);
+
+        if (_paletteDirtyFirst == NO_ENTRY || first < _paletteDirtyFirst)
+        {
+            _paletteDirtyFirst = first;
+        }
+        if (_paletteDirtyLast < last) _paletteDirtyLast = last;
+    }
+
+    void scene_timeline::commit_palette()
+    {
+        if (_paletteDirtyFirst == NO_ENTRY) return;
+
+        u16 const first = _paletteDirtyFirst;
+        u16 const last  = _paletteDirtyLast;
+        _paletteDirtyFirst = NO_ENTRY;
+        _paletteDirtyLast  = 0;
+
+        // A fade rebuilds the display from the reference for the whole palette
+        // this frame anyway, and it runs after this does, so it will carry the
+        // rotation across on its own. Doing it here as well would rebuild the
+        // hardware palette a second time for nothing.
+        if (screenFadeOwnsPalette(g_mainScreen)) return;
+
+        screenPublishPalette(g_mainScreen, first, to<u16>(last - first + 1));
+    }
+
+    bool scene_timeline::fire_move(data::keyframe const& key, fire_context const& ctx)
+    {
+        auto const& payload = move_of(key);
+        u16 const slot = find_instance(payload.instance_id);
+        if (slot == NO_INSTANCE) return false;  // Reported once at load.
+
+        _bobs.set_instance_pos(slot, payload.pos);
+
+        // A ping-pong turns round on the very frame it reaches its duration,
+        // so a keyframe sitting there is crossed once, going up, and never
+        // again coming down. The span it brackets on the way back has to be
+        // set up here because there is no second crossing to do it.
+        bool const turning =
+            to<data::loop_mode>(ctx.record->loop_mode) == data::loop_mode::PING_PONG
+            && key.time >= ctx.record->duration;
+        bool const backward = ctx.reversing || turning;
+
+        u16 const other = neighbour_move(ctx, payload.instance_id, !backward);
+        if (other == NO_KEY)
+        {
+            clear_glide(slot);
+            return true;
+        }
+
+        // Spans are described in time order, not in travel order: the later
+        // of the two keys carries the flag whichever way the playhead runs,
+        // which is exactly what spares a reverse leg a second rule.
+        auto const& lo = backward ? ctx.keys[other] : key;
+        auto const& hi = backward ? key : ctx.keys[other];
+
+        if ((hi.flags & data::KEYFRAME_FLAG_INTERPOLATE) == 0)
+        {
+            clear_glide(slot);
+            return true;
+        }
+
+        set_glide(slot, ctx.track, move_of(lo).pos, lo.time, move_of(hi).pos, hi.time);
+        return true;
+    }
+
+    bool scene_timeline::fire_visibility(data::keyframe const& key)
+    {
+        auto const& payload =
+            *force_to<data::gfx_visibility_payload const*>(key.payload);
+
+        u16 const slot = find_instance(payload.instance_id);
+        if (slot == NO_INSTANCE) return false;  // Reported once at load.
+
+        _bobs.set_instance_visible(slot, payload.visible != 0);
+        return true;
+    }
+
+    bool scene_timeline::fire_sfx(data::keyframe const& key)
+    {
+        // Preloaded when the scene did, because a sound has to be resident
+        // in Chip RAM before it is asked for. The channel the payload names
+        // is deliberately not read; see scene_sound_effects.
+        _sound_effects.play(force_to<data::sfx_play_payload const*>(key.payload)->sfx_hash);
+        return true;
+    }
+
+    bool scene_timeline::fire_music(data::keyframe const& key)
+    {
+        auto const& payload = *force_to<data::music_play_payload const*>(key.payload);
+
+        // Read here rather than preloaded with the scene: a module is far
+        // larger than a sound effect, and a scene may name several it never
+        // reaches. The cost is a hitch on the frame this fires. Nothing
+        // drifts, because the clock counts frames processed rather than
+        // time passed, but it is a stall and it is meant to be one.
+        mtl::system_use_guard guard;
+
+        auto mod = _data.open_asset_uncached(payload.music_hash);
+        if (!mod)
+        {
+            NE_LOG("no music asset for hash %08lx", to<ULONG>(payload.music_hash));
+            return false;
+        }
+
+        musicLoad(mtl::move(mod));
+        musicPlayCurrent(payload.loop);
+        NE_LOG("MUSIC_PLAY %08lx, loop %hu",
+            to<ULONG>(payload.music_hash),
+            to<u16>(payload.loop));
+        return true;
+    }
+
+    bool scene_timeline::fire_script(data::keyframe const& key, u16 track_index)
+    {
+        auto const& payload = *force_to<data::execute_script_payload const*>(key.payload);
+        auto& vm            = g_pEngine->vm();
+
+        // Sessions run side by side, so several keyframes in one frame each
+        // get one, in the order they fired. The one refusal left is a script
+        // that is already running: it keeps its place in the run list rather
+        // than restarting, and the keyframe counts as not fired.
+        if (!vm.execute(payload.function_id))
+        {
+            NE_LOG("track %hu could not run script %hu",
+                track_index,
+                payload.function_id);
+            return false;
+        }
+
+        NE_LOG("track %hu ran script %hu", track_index, payload.function_id);
+        return true;
+    }
+
+    bool scene_timeline::fire(data::keyframe const& key, fire_context const& ctx)
+    {
+        switch (to<data::keyframe_type>(key.type))
+        {
+            case data::keyframe_type::GFX_MOVE: return fire_move(key, ctx);
+            case data::keyframe_type::GFX_VISIBILITY: return fire_visibility(key);
+            case data::keyframe_type::SFX_PLAY: return fire_sfx(key);
+            case data::keyframe_type::MUSIC_PLAY: return fire_music(key);
+            case data::keyframe_type::EXECUTE_SCRIPT: return fire_script(key, ctx.track);
+
+            case data::keyframe_type::MUSIC_STOP:
+                musicStop();
+                NE_LOG("MUSIC_STOP");
+                return true;
+
+            case data::keyframe_type::PALETTE_CYCLE_START:
+            case data::keyframe_type::PALETTE_CYCLE_END:
+                // A palette cycle is a span the playhead stands inside, not
+                // an event it crosses: update_cycles() reads it off the
+                // position every frame, and these two records only say where
+                // the span begins and ends. Nothing fires, so nothing here
+                // spends a fire_once either - the span keeps that itself.
+                return false;
+
+            default:
+                // Every other type is reported once at load and ignored
+                // here, so that an unimplemented keyframe on a looping track
+                // cannot log 50 times a second.
+                return false;
+        }
+    }
+
+    void scene_timeline::prime_glides(u16 track_index, data::track const& track)
+    {
+        // A cycle begins with nothing of the last one still in motion, so
+        // that a movement whose keyframes are spent or gone cannot leave an
+        // instance following a span the playhead has left. Only this track's
+        // movements are dropped; another track's are its own business.
+        for (u16 slot = 0; slot < _glides.size(); ++slot)
+        {
+            if (_glides[slot].active && _glides[slot].track == track_index)
+            {
+                clear_glide(slot);
+            }
+        }
+
+        fire_context ctx;
+        ctx.keys   = track_keys(track);
+        ctx.record = &track;
+        ctx.base   = _key_base[track_index];
+        ctx.track  = track_index;
+
+        for (u16 offset = 0; offset < ctx.keys.size(); ++offset)
+        {
+            auto const& key = ctx.keys[offset];
+            if (!is_move(key) || (key.flags & data::KEYFRAME_FLAG_INTERPOLATE) == 0) continue;
+
+            // A move at position 0 is simply where the instance is at
+            // position 0; the crossing on the cycle's first frame says so.
+            if (key.time == 0) continue;
+
+            if ((key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) && has_fired(ctx.base + offset))
+            {
+                continue;
+            }
+
+            auto const& payload = move_of(key);
+            u16 const slot = find_instance(payload.instance_id);
+            if (slot == NO_INSTANCE) continue;
+
+            // Only the cycle's first move for an instance leads from where
+            // that instance already is. Every later one is picked up as the
+            // move before it is crossed.
+            ctx.offset = offset;
+            if (neighbour_move(ctx, payload.instance_id, false) != NO_KEY) continue;
+
+            data::point<u16> from{ 0, 0 };
+            if (!_bobs.instance_pos(slot, from)) continue;
+
+            set_glide(slot, track_index, from, 0, payload.pos, key.time);
+        }
+    }
+
+    void scene_timeline::collect_cycles(u16 track_index, data::track const& track)
+    {
+        auto const keys = track_keys(track);
+        for (u16 offset = 0; offset < keys.size(); ++offset)
+        {
+            auto const& open = keys[offset];
+            if (!is_cycle_start(open)) continue;
+
+            auto const& payload = cycle_start_of(open);
+
+            u16 close = NO_KEY;
+            for (u16 other = 0; other < keys.size(); ++other)
+            {
+                if (!is_cycle_end(keys[other])) continue;
+                if (cycle_id_of(keys[other]) != payload.cycle_id) continue;
+                if (keys[other].time <= open.time) continue;
+                close = other;
+                break;
+            }
+
+            // The editor pairs these and rejects the rest, so any of the
+            // following means the pak was built by something else.
+            if (close == NO_KEY)
+            {
+                NE_LOG("  track %hu cycle %hu has no end after it; it will not turn",
+                    track_index,
+                    payload.cycle_id);
+                continue;
+            }
+
+            // A reversed or single-entry band is not a band, and turning one
+            // would walk off the end of the palette rather than merely look
+            // wrong, so it is refused rather than clamped.
+            if (payload.last <= payload.first)
+            {
+                NE_LOG("  track %hu cycle %hu spans entries %hhu..%hhu, which is not a band",
+                    track_index,
+                    payload.cycle_id,
+                    payload.first,
+                    payload.last);
+                continue;
+            }
+
+            cycle_span span;
+            span.track = track_index;
+            span.t0    = open.time;
+            span.t1    = keys[close].time;
+            span.first = payload.first;
+            span.last  = payload.last;
+            span.width = to<u16>(payload.last - payload.first + 1);
+
+            // Zero frames a step is no step at all, and dividing by it traps
+            // rather than misbehaving, so it becomes the fastest turn there
+            // is instead.
+            span.delay = payload.delay == 0 ? 1 : payload.delay;
+            if (payload.delay == 0)
+            {
+                NE_LOG("  track %hu cycle %hu holds each step for 0 frames; using 1",
+                    track_index,
+                    payload.cycle_id);
+            }
+
+            span.fire_once = (open.flags & data::KEYFRAME_FLAG_FIRE_ONCE) != 0;
+            _cycles.push_back(span);
+        }
+    }
+
+    void scene_timeline::fire_keyframes(u16 track_index, data::track const& track)
+    {
+        if (track.keyframe_range.count == 0) return;
+
+        fire_context ctx;
+        ctx.keys   = track_keys(track);
+        ctx.record = &track;
+        ctx.base   = _key_base[track_index];
+        ctx.track  = track_index;
+
+        auto const& clock = _clocks[track_index];
+        auto const run    = clock.keys_at(ctx.keys);
+        if (run.count == 0) return;
+
+        ctx.reversing = clock.is_reversing();
+
+        for (u16 step = 0; step < run.count; ++step)
+        {
+            // A track played backwards is played backwards all the way down,
+            // so keys sharing a position run in reverse on the return leg.
+            ctx.offset = ctx.reversing
+                ? to<u16>(run.first + run.count - 1 - step)
+                : to<u16>(run.first + step);
+
+            auto const& key       = ctx.keys[ctx.offset];
+            bool const fire_once  = (key.flags & data::KEYFRAME_FLAG_FIRE_ONCE) != 0;
+            u32 const marker = ctx.base + ctx.offset;
+
+            if (fire_once && has_fired(marker)) continue;
+            if (fire(key, ctx) && fire_once) mark_fired(marker);
+        }
+    }
+
+    void scene_timeline::unload()
+    {
+        _first      = 0;
+        _count      = 0;
+        _gfxi_first = 0;
+        _gfxi_count = 0;
+        _clocks.clear();
+        _key_base.clear();
+        _fired.clear();
+        _glides.clear();
+        _cycles.clear();
+    }
+
+    void scene_timeline::restore_palette()
     {
         restore_cycles();
     }
 
-    mtl::span<data::track> scene_timeline_tracks()
+    mtl::span<data::track> scene_timeline::tracks()
     {
-        auto const all = g_pEngine->data().tracks();
-        return mtl::span<data::track>(all.data() + s_first, s_count);
+        auto const all = _data.tracks();
+        return mtl::span<data::track>(all.data() + _first, _count);
     }
 
-    void scene_timeline_load(data::scene const& scene)
+    void scene_timeline::load(data::scene const& scene)
     {
-        scene_timeline_clear();
+        unload();
 
         // Kept whatever the timeline turns out to be, so that a GFXI id in a
         // keyframe payload can be mapped to a scene-local slot.
-        s_gfxi_first = scene.graphic_instance_range.start;
-        s_gfxi_count = scene.graphic_instance_range.count;
+        _gfxi_first = scene.graphic_instance_range.start;
+        _gfxi_count = scene.graphic_instance_range.count;
 
         if (scene.timeline_id == data::NO_ID) return;
 
-        auto const timelines = g_pEngine->data().timelines();
+        auto const timelines = _data.timelines();
         if (scene.timeline_id >= timelines.size())
         {
             NE_LOG("scene names timeline %hu of %lu",
@@ -864,11 +703,11 @@ namespace NEONengine
         }
 
         auto const& time = timelines[scene.timeline_id];
-        auto const all   = g_pEngine->data().tracks();
+        auto const all   = _data.tracks();
 
         // An empty or out-of-bounds range simply leaves the scene inert.
-        auto const tracks = time.track_range.of(all);
-        if (tracks.is_empty())
+        auto const scene_tracks = time.track_range.of(all);
+        if (scene_tracks.is_empty())
         {
             if (time.track_range.count != 0)
             {
@@ -880,16 +719,16 @@ namespace NEONengine
             return;
         }
 
-        s_first = time.track_range.start;
-        s_count = to<u16>(tracks.size());
-        s_clocks.reserve(tracks.size());
-        s_key_base.reserve(tracks.size());
+        _first = time.track_range.start;
+        _count = to<u16>(scene_tracks.size());
+        _clocks.reserve(scene_tracks.size());
+        _key_base.reserve(scene_tracks.size());
 
         // One movement slot per instance, whether or not any track moves it:
         // an instance's position is its own, so two tracks moving it are settled
         // by which of them wrote last rather than by remembering both.
-        s_glides.reserve(s_gfxi_count);
-        for (u16 slot = 0; slot < s_gfxi_count; ++slot) s_glides.push_back(glide{});
+        _glides.reserve(_gfxi_count);
+        for (u16 slot = 0; slot < _gfxi_count; ++slot) _glides.push_back(glide{});
 
         u32 total_keys      = 0;
         u32 unknown_keys    = 0;  ///< Keyframes whose type this build cannot name.
@@ -897,12 +736,12 @@ namespace NEONengine
         // Only ever read back through NE_LOG, which a build without logging
         // expands to nothing.
         [[maybe_unused]] u8 first_unknown = 0;  ///< The first such type seen.
-        auto const all_keyframes = g_pEngine->data().keyframes();
+        auto const all_keyframes = _data.keyframes();
 
-        NE_LOG("%hu, %lu track(s)", scene.timeline_id, to<ULONG>(tracks.size()));
-        for (u16 index = 0; index < tracks.size(); ++index)
+        NE_LOG("%hu, %lu track(s)", scene.timeline_id, to<ULONG>(scene_tracks.size()));
+        for (u16 index = 0; index < scene_tracks.size(); ++index)
         {
-            auto const& track = tracks[index];
+            auto const& track = scene_tracks[index];
             NE_LOG("  track %hu: name %hu, keys %hu+%hu, %hu frames, %s x%hu, %s",
                 index,
                 track.name_id,
@@ -923,7 +762,7 @@ namespace NEONengine
 
             bool const in_range = keys_in_range(track);
 
-            s_key_base.push_back(total_keys);
+            _key_base.push_back(total_keys);
             total_keys += track.keyframe_range.count;
 
             track_clock clock;
@@ -971,7 +810,7 @@ namespace NEONengine
                 if (track.flags & data::TRACK_FLAG_AUTO_START) clock.start();
                 collect_cycles(index, track);
             }
-            s_clocks.push_back(clock);
+            _clocks.push_back(clock);
         }
 
         // A pak this far out of step is wrong as a whole, so one line says so
@@ -988,11 +827,11 @@ namespace NEONengine
         // The editor rejects a name repeated inside one scene, so this means the
         // pak was built by something else. ANIM_PLAY takes the first match,
         // which is at least deterministic, but the later one is unreachable.
-        for (u16 a = 0; a < tracks.size(); ++a)
+        for (u16 a = 0; a < scene_tracks.size(); ++a)
         {
-            for (u16 b = to<u16>(a + 1); b < tracks.size(); ++b)
+            for (u16 b = to<u16>(a + 1); b < scene_tracks.size(); ++b)
             {
-                if (tracks[a].name_id != tracks[b].name_id)
+                if (scene_tracks[a].name_id != scene_tracks[b].name_id)
                 {
                     continue;
                 }
@@ -1000,26 +839,26 @@ namespace NEONengine
                 NE_LOG("  tracks %hu and %hu share name %hu; only the first can be played",
                     a,
                     b,
-                    tracks[a].name_id);
+                    scene_tracks[a].name_id);
                 break;
             }
         }
 
-        s_fired.reserve((total_keys + 7) / 8);
-        for (u32 byte = 0; byte < (total_keys + 7) / 8; ++byte) s_fired.push_back(0);
+        _fired.reserve((total_keys + 7) / 8);
+        for (u32 byte = 0; byte < (total_keys + 7) / 8; ++byte) _fired.push_back(0);
 
-        // After s_fired exists, because priming has to see which fire_once keys
-        // are spent, and after scene_bobs_load(), because a movement with no
+        // After _fired exists, because priming has to see which fire_once keys
+        // are spent, and after scene_bobs::load(), because a movement with no
         // earlier one to lead it starts from where its instance already stands.
-        for (u16 index = 0; index < tracks.size(); ++index)
+        for (u16 index = 0; index < scene_tracks.size(); ++index)
         {
-            if (s_clocks[index].is_running()) prime_glides(index, tracks[index]);
+            if (_clocks[index].is_running()) prime_glides(index, scene_tracks[index]);
         }
     }
 
-    void scene_timeline_update()
+    void scene_timeline::update()
     {
-        if (s_count == 0) return;
+        if (_count == 0) return;
 
         // Ahead of the tracks, so that a movement is read off the playhead the
         // frame it is standing on rather than the one it is about to move to.
@@ -1032,23 +871,23 @@ namespace NEONengine
         // frame, not the one it is about to move to.
         update_cycles();
 
-        auto const tracks = scene_timeline_tracks();
-        for (u16 index = 0; index < s_count; ++index)
+        auto const scene_tracks = tracks();
+        for (u16 index = 0; index < _count; ++index)
         {
-            auto& clock = s_clocks[index];
+            auto& clock = _clocks[index];
             if (!clock.is_running()) continue;
 
             // Fire before ticking, so a run's very first frame plays whatever
             // sits at position 0 rather than stepping straight over it.
-            fire_keyframes(index, tracks[index]);
+            fire_keyframes(index, scene_tracks[index]);
 
-            switch (clock.tick(tracks[index]))
+            switch (clock.tick(scene_tracks[index]))
             {
                 case tick_result::LOOPED:
                     // Every cycle leads into its first movement the way the
                     // first cycle did, so a looping track glides into it rather
                     // than gliding once and teleporting ever after.
-                    prime_glides(index, tracks[index]);
+                    prime_glides(index, scene_tracks[index]);
 
                     // A short looping track turns over dozens of times a second,
                     // which would bury everything else in the log, so only the
@@ -1075,10 +914,10 @@ namespace NEONengine
 
         // Once every band has been turned, so that a frame which moved several
         // of them still rebuilds the hardware palette only the once.
-        palette_cycle_commit();
+        commit_palette();
     }
 
-    void scene_timeline_play(u16 name_id)
+    void scene_timeline::play(u16 name_id)
     {
         u16 const index = find_track(name_id);
         if (index == NO_TRACK)
@@ -1091,7 +930,7 @@ namespace NEONengine
         // begun again without deciding what happens to everything the first one
         // has already done. A script that means to start over says so: stop,
         // then play.
-        if (s_clocks[index].is_running())
+        if (_clocks[index].is_running())
         {
             NE_LOG("ANIM_PLAY ignored; track %hu (name %hu) is already running",
                 index,
@@ -1099,7 +938,7 @@ namespace NEONengine
             return;
         }
 
-        auto const& track = scene_timeline_tracks()[index];
+        auto const& track = tracks()[index];
         if (!keys_in_range(track))
         {
             NE_LOG("ANIM_PLAY cannot start track %hu; its keyframes are out of range",
@@ -1109,12 +948,12 @@ namespace NEONengine
 
         clear_fired(index, track);
         clear_cycles(index);
-        s_clocks[index].start();
+        _clocks[index].start();
         prime_glides(index, track);
         NE_LOG("ANIM_PLAY started track %hu (name %hu)", index, name_id);
     }
 
-    void scene_timeline_stop(u16 name_id)
+    void scene_timeline::stop(u16 name_id)
     {
         u16 const index = find_track(name_id);
         if (index == NO_TRACK)
@@ -1125,12 +964,12 @@ namespace NEONengine
 
         // Stopping a track that is not running is the ordinary way to make sure
         // of a track's state before playing it, so it passes quietly.
-        if (!s_clocks[index].is_running()) return;
+        if (!_clocks[index].is_running()) return;
 
-        s_clocks[index].stop();
+        _clocks[index].stop();
         NE_LOG("ANIM_STOP halted track %hu (name %hu) at position %hu",
             index,
             name_id,
-            s_clocks[index].position());
+            _clocks[index].position());
     }
 }  // namespace NEONengine

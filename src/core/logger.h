@@ -85,7 +85,7 @@ namespace NEONengine
      *
      * ACE's writers check a mute flag first, so this needs no ACE patch and
      * leaves ACE_DEBUG in place. ACE_DEBUG also enables bobCheckGood and the
-     * bob buffer auto-correction scene_bobs_draw depends on.
+     * bob buffer auto-correction scene_bobs::draw() depends on.
      *
      * The script VM's diagnostics and the assert and fatal paths still write
      * through ACE. Muting takes those with it.

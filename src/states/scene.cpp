@@ -19,11 +19,8 @@
 #include "core/music.h"
 #include "core/noir_vm.h"
 #include "core/mouse_pointer.h"
-#include "core/scene_audio.h"
-#include "core/scene_bobs.h"
-#include "core/scene_hotspots.h"
+#include "core/scene_runtime.h"
 #include "core/scene_text.h"
-#include "core/scene_timeline.h"
 #include "core/screen.h"
 #include "core/string_table.h"
 
@@ -101,7 +98,7 @@ namespace NEONengine
             // This runs for a language repaint as well as a scene load, and it
             // has to: that repaint reloads the very same palette, mid-scene,
             // with cycles still running.
-            scene_timeline_restore_palette();
+            g_pEngine->scene().timeline().restore_palette();
 
             if (sc.background_bitmap_id != data::NO_ID)
             {
@@ -208,7 +205,7 @@ namespace NEONengine
             if (g_pEngine->pending_system_kind() == system_kind::load_scene) return;
 
             mtl::system_use_guard guard;  // OS on for pak/disk access
-            scene_bobs_reload_captions();
+            g_pEngine->scene().bobs().reload_captions();
 
             // Repainting the backdrop is far more expensive than a caption,
             // so it is only marked here; sceneProcess picks the moment.
@@ -305,10 +302,7 @@ namespace NEONengine
                 mtl::system_use_guard guard;  // OS on for pak/disk access
 
                 draw_backdrop(sc);
-                scene_bobs_load(sc);
-                scene_audio_load(sc);
-                scene_hotspots_load(sc);
-                scene_timeline_load(sc);
+                g_pEngine->scene().load(sc);
 
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
@@ -428,7 +422,7 @@ namespace NEONengine
         // 'unused'. Drop to that baseline once (as splash does); load_scene
         // re-enters 'used' briefly via a system_use_guard for each pak access.
         systemUnuse();
-        scene_bobs_create();
+        g_pEngine->open_scene();
         {
             mtl::system_use_guard guard;  // OS on for the pak read.
             mousePointerCreate();
@@ -517,11 +511,13 @@ namespace NEONengine
         // painted back where it no longer is.
         bool const holding = g_pEngine->vm().blocked();
 
+        auto& runtime = g_pEngine->scene();
+
         // ── Timeline ─────────────────────────────────────────────────────────
-        if (!holding) scene_timeline_update();
+        if (!holding) runtime.timeline().update();
 
         // ── UI ───────────────────────────────────────────────────────────────
-        if (!holding) scene_hotspots_update();
+        if (!holding) runtime.hotspots().update();
 
         // ── Scripts ──────────────────────────────────────────────────────────
         // Last, so a session started this frame by a keyframe or a click runs
@@ -534,8 +530,8 @@ namespace NEONengine
         }
 
         mousePointerUpdate();
-        scene_bobs_update();
-        scene_bobs_draw();
+        runtime.bobs().update();
+        runtime.bobs().draw();
     }
 
     void sceneDestroy(void)
@@ -548,11 +544,8 @@ namespace NEONengine
         // that was still up owes nothing to anyone.
         g_pEngine->vm().reset_execution();
 
-        scene_hotspots_clear();
-        scene_timeline_clear();
         mousePointerDestroy();
-        scene_bobs_destroy();
-        scene_audio_clear();
+        g_pEngine->close_scene();
         musicFree();
         logBlockEnd("State: Scene");
     }

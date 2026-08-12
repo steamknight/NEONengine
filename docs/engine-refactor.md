@@ -33,7 +33,8 @@ The goals the work is measured against:
 
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
-4a, 4b and 1 are done. Item 2 is next.
+4a, 4b and 1 are done. Item 2 is half done: four modules have moved, and
+`mouse_pointer`, `asset_cache` and per-scene construction are left.
 
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
 context, went first: mechanical, self-contained, and what unlocks every later
@@ -144,6 +145,9 @@ order is what actually retires them.
 
 ## 2. The `scene_*` modules become objects
 
+**Half done.** Four modules have moved and a fifth was folded away; the rest of
+this section records what landed, and what is left.
+
 **Now.** `scene_bobs`, `scene_timeline`, `scene_hotspots`, `scene_audio`,
 `scene_text`, `mouse_pointer`, `dialogue_portraits`, `asset_cache` and
 `palette_cycle` are free functions over file-static state — around fifty `s_*`
@@ -152,14 +156,70 @@ that `sceneCreate` and `sceneDestroy` must call, in order, by hand.
 
 **Change.** One class per module, the `s_*` state as members, the destructor
 doing what `_clear()` does. A `scene_runtime` holds them by value in teardown
-order. No virtuals and no change in where anything is allocated: same memory,
-same generated code.
+order. No virtuals: same memory, same generated code.
+
+**A correction to the list.** Nine modules were named here. Only four belong in
+`scene_runtime`, because the other five have different lifetimes:
+
+- **`scene_text` has no state at all** — zero `s_*` variables, one function over
+  its argument. A class around it would be an abstraction earning nothing. Left
+  as it is.
+- **`dialogue_portraits` lives for one conversation**, not one scene, and only
+  `dialogue.cpp` touches it. It belongs to item 3's `state_host<dialogue_state>`.
+  Moving it here would only mean moving it again.
+- **`asset_cache` lives for the whole run**, opened and cleared in `main.cpp`.
+  It belongs on the engine, or on `game_data`, whose `open_asset()` is the
+  gateway everything already reads assets through.
+- **`mouse_pointer` is scene-*state*-scoped**, not scene-scoped: `mousePointerCreate()`
+  reads the pak once and every scene after the first reuses it.
+- **`palette_cycle` was folded into `scene_timeline`** rather than made a peer.
+  It owns no resources and has no paired lifetime — two dirty-band variables over
+  the screen palette, with one caller. Its own header already said which band
+  turns is the timeline's business.
+
+**What landed.** `scene_bobs`, `scene_hotspots`, `scene_timeline` and
+`scene_audio` — renamed **`scene_sound_effects`**, because it holds only effects
+and says so at length about music — are classes owned by a `scene_runtime`. The
+constructor takes the ACE bob manager where `scene_bobs_create()` had it; the
+destructors do what the four `_clear` functions did.
+
+`sceneDestroy` no longer calls them in a hand-maintained order. Member
+declaration order does, and the reason is written where the members are:
+`~scene_hotspots` takes its hover caption down through the bobs, so the bobs are
+declared first and outlive it. That is the correctness this item was ranked for —
+the ordering was already right, but nothing had been holding it there.
+
+Dependencies are arguments now. `scene_hotspots` and `scene_timeline` take
+`scene_bobs&` and `scene_sound_effects&`; every module takes `game_data&`, which
+retired about twenty `g_pEngine->data()` reaches. The graph turned out to be
+acyclic, so no back-pointers and no two-phase construction were needed.
+
+`scene_runtime` hangs off the engine, built by the scene state and dropped by it,
+because its parts want the screen and the pak and neither exists when the engine
+is built. `engine::scene()` returns a reference and dereferences its pointer
+unchecked, as `data()` and `vm()` do: every caller runs inside the scene state,
+and a box of text or a conversation is pushed *over* that state rather than
+swapped for it. The nullable accessor it replaced was guarding a case that cannot
+happen.
+
+**Left for the second half.** `mouse_pointer` and `asset_cache`, and the move
+from a long-lived runtime with `load()` to one constructed per scene, which is
+what would delete the last `_load`/`_clear` pair.
+
+That last step has an ordering constraint worth writing down before anyone tries
+it. `draw_backdrop()` calls the timeline's `restore_palette()` on the *outgoing*
+scene while loading the incoming one, so the old runtime cannot be dropped before
+the backdrop is painted: the order has to be restore, destroy, paint, construct.
+Moving the restore into the timeline's destructor does **not** work, because the
+same path runs mid-scene for a language repaint, with the timeline still live.
+Keep it an explicit method that both paths call.
 
 **Payoff.** This is the largest block of C left, and the one that costs
 correctness rather than only readability — a paired-call lifetime is invisible to
 the compiler, an object's is not. It also puts these modules within reach of the
-test runner, which cannot construct them today. And it thins the scene state down
-to an adapter: `sceneProcess()` becomes `_runtime.update()`.
+test runner, which cannot construct them today; injecting `game_data` is the
+first step of that, and the screen and the VM are the two reaches still in the
+way. And it thins the scene state down to an adapter.
 
 ## 3. States get a context
 

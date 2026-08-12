@@ -17,7 +17,7 @@
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/nine_patch.h"
-#include "core/scene_hotspots.h"
+#include "core/scene_runtime.h"
 #include "core/screen.h"
 #include "core/text_render.h"
 
@@ -892,7 +892,7 @@ namespace NEONengine
         // The scene has not seen the button since before the box went up, so
         // the press that closed it would read as a fresh click on whatever the
         // pointer happens to be over.
-        scene_hotspots_resync_button();
+        g_pEngine->scene().hotspots().resync_button();
     }
 
     tState g_stateDialogue = {

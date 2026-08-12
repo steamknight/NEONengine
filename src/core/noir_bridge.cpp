@@ -8,8 +8,7 @@
 
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
-#include "core/scene_hotspots.h"
-#include "core/scene_timeline.h"
+#include "core/scene_runtime.h"
 #include "core/screen.h"
 #include "core/string_table.h"
 #include "types.h"
@@ -43,8 +42,8 @@ namespace NEONengine
             e.request_system(system_kind::load_scene, scene_id);
         }
         u16 nb_get_scene(engine& e) { return e.current_scene(); }
-        void nb_hotspot_on(engine&, u16 id) { scene_hotspots_set_enabled(id, true); }
-        void nb_hotspot_off(engine&, u16 id) { scene_hotspots_set_enabled(id, false); }
+        void nb_hotspot_on(engine& e, u16 id) { e.scene().hotspots().set_enabled(id, true); }
+        void nb_hotspot_off(engine& e, u16 id) { e.scene().hotspots().set_enabled(id, false); }
 
         void nb_set_pointer(engine&, u16 type)
         {
@@ -106,8 +105,8 @@ namespace NEONengine
         // ── Timeline ─────────────────────────────────────────────────────────
         // A track name means a track in the current scene, so naming one that
         // another scene owns does nothing here.
-        void nb_anim_play(engine&, u16 name_id) { scene_timeline_play(name_id); }
-        void nb_anim_stop(engine&, u16 name_id) { scene_timeline_stop(name_id); }
+        void nb_anim_play(engine& e, u16 name_id) { e.scene().timeline().play(name_id); }
+        void nb_anim_stop(engine& e, u16 name_id) { e.scene().timeline().stop(name_id); }
 
         // ── System ───────────────────────────────────────────────────────────
         // Records the request; the state loop applies it at a safe point. Doing

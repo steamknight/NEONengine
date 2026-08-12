@@ -13,7 +13,6 @@
 #include "core/game_data.h"
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
-#include "core/scene_audio.h"
 #include "core/scene_bobs.h"
 #include "core/screen.h"
 
@@ -23,34 +22,7 @@ namespace NEONengine
 {
     namespace
     {
-        constexpr u16 NO_HOTSPOT      = 0xFFFF;
-        constexpr u8 FLAG_ENABLED     = 1 << 0;  ///< hotspot.flags bit 0.
-
-        u16 s_first = 0;  ///< First HOTS id this scene owns.
-        u16 s_count = 0;  ///< How many it owns; 0 disables the whole module.
-
-        /// One byte per hotspot, seeded from its record and flipped by scripts.
-        mtl::vector<u8> s_enabled;
-
-        u16 s_hovered = NO_HOTSPOT;  ///< Scene-local index under the pointer.
-        u16 s_pressed = NO_HOTSPOT;  ///< Scene-local index the press latched onto.
-        bool s_was_down    = false;       ///< Last frame's button state, for edges.
-        bool s_resyncButton = false;      ///< Adopt the button state, skip edges.
-
-        /// Scene-space box enclosing every hotspot; maxima are exclusive.
-        u16 s_min_x = 0;
-        u16 s_min_y = 0;
-        u16 s_max_x = 0;
-        u16 s_max_y = 0;
-
-        /**
-         * @brief The hotspot records this scene owns.
-         */
-        mtl::span<data::hotspot> scene_records()
-        {
-            auto const all = g_pEngine->data().hotspots();
-            return mtl::span<data::hotspot>(all.data() + s_first, s_count);
-        }
+        constexpr u8 FLAG_ENABLED = 1 << 0;  ///< hotspot.flags bit 0.
 
         /**
          * @brief True when scene-space @p x, @p y falls inside @p bounds.
@@ -60,86 +32,79 @@ namespace NEONengine
             return x >= bounds.pos.x && x < bounds.pos.x + bounds.width  //
                 && y >= bounds.pos.y && y < bounds.pos.y + bounds.height;
         }
-
-        /**
-         * @brief The frame the hotspot @p index's state graphic should show.
-         */
-        hotspot_frame state_frame(u16 index)
-        {
-            if (s_enabled[index] == 0) return hotspot_frame::DISABLED;
-            // A press only reads as pressed while the pointer is still over the
-            // hotspot it latched onto, matching the rule that decides the click.
-            if (s_pressed == index && s_hovered == index) return hotspot_frame::PRESSED;
-            if (s_hovered == index) return hotspot_frame::HOVERED;
-            return hotspot_frame::NORMAL;
-        }
-
-        /**
-         * @brief Pushes the hotspot @p index's current state to its graphic.
-         *
-         * Ignores NO_HOTSPOT so callers can pass a "previously hovered" slot
-         * without checking it first.
-         */
-        void refresh_state_frame(u16 index)
-        {
-            if (index == NO_HOTSPOT) return;
-            scene_bobs_set_hotspot_frame(index, state_frame(index));
-        }
-
-        /**
-         * @brief Run the hotspot @p index was clicked.
-         *
-         * The sound goes first so it is heard at all: the script may block on a
-         * dialogue for as long as it likes, and a goto_scene tears this scene
-         * down. Then the script runs, so it observes the state the click found,
-         * and finally the record's own transition is requested; a concrete
-         * goto_scene wins over whatever the script may have asked for.
-         */
-        void activate(u16 index)
-        {
-            auto const& hotspot = scene_records()[index];
-
-            NE_LOG("hotspot %hu clicked", to<UWORD>(s_first + index));
-
-            if (hotspot.click_sfx_hash != data::NO_ASSET)
-            {
-                scene_audio_play(hotspot.click_sfx_hash);
-            }
-            if (hotspot.click_function_id != data::NO_ID)
-            {
-                g_pEngine->vm().execute(hotspot.click_function_id);
-            }
-            if (hotspot.goto_scene_id != data::NO_ID)
-            {
-                g_pEngine->request_system(system_kind::load_scene, hotspot.goto_scene_id);
-            }
-        }
     }  // namespace
 
-    void scene_hotspots_clear()
+    scene_hotspots::~scene_hotspots()
     {
-        s_first   = 0;
-        s_count   = 0;
-        s_hovered = NO_HOTSPOT;
-        s_pressed = NO_HOTSPOT;
-        // The loop was blocked through the load, so whatever the button did in
-        // that time went unseen; the next update resamples instead of guessing.
-        s_resyncButton = true;
-        s_enabled.clear();
-        scene_bobs_hide_caption();
+        unload();
     }
 
-    void scene_hotspots_load(data::scene const& scene)
+    mtl::span<data::hotspot> scene_hotspots::scene_records()
     {
-        scene_hotspots_clear();
+        auto const all = _data.hotspots();
+        return mtl::span<data::hotspot>(all.data() + _first, _count);
+    }
+
+    hotspot_frame scene_hotspots::state_frame(u16 index)
+    {
+        if (_enabled[index] == 0) return hotspot_frame::DISABLED;
+        // A press only reads as pressed while the pointer is still over the
+        // hotspot it latched onto, matching the rule that decides the click.
+        if (_pressed == index && _hovered == index) return hotspot_frame::PRESSED;
+        if (_hovered == index) return hotspot_frame::HOVERED;
+        return hotspot_frame::NORMAL;
+    }
+
+    void scene_hotspots::refresh_state_frame(u16 index)
+    {
+        if (index == NO_HOTSPOT) return;
+        _bobs.set_hotspot_frame(index, state_frame(index));
+    }
+
+    void scene_hotspots::activate(u16 index)
+    {
+        auto const& hotspot = scene_records()[index];
+
+        NE_LOG("hotspot %hu clicked", to<UWORD>(_first + index));
+
+        if (hotspot.click_sfx_hash != data::NO_ASSET)
+        {
+            _sound_effects.play(hotspot.click_sfx_hash);
+        }
+        if (hotspot.click_function_id != data::NO_ID)
+        {
+            g_pEngine->vm().execute(hotspot.click_function_id);
+        }
+        if (hotspot.goto_scene_id != data::NO_ID)
+        {
+            g_pEngine->request_system(system_kind::load_scene, hotspot.goto_scene_id);
+        }
+    }
+
+    void scene_hotspots::unload()
+    {
+        _first   = 0;
+        _count   = 0;
+        _hovered = NO_HOTSPOT;
+        _pressed = NO_HOTSPOT;
+        // The loop was blocked through the load, so whatever the button did in
+        // that time went unseen; the next update resamples instead of guessing.
+        _resyncButton = true;
+        _enabled.clear();
+        _bobs.hide_caption();
+    }
+
+    void scene_hotspots::load(data::scene const& scene)
+    {
+        unload();
 
         // An empty or out-of-bounds range simply leaves the scene inert.
-        auto const hotspots = scene.hotspot_range.of(g_pEngine->data().hotspots());
+        auto const hotspots = scene.hotspot_range.of(_data.hotspots());
         if (hotspots.is_empty()) return;
 
-        s_first = scene.hotspot_range.start;
-        s_count = to<u16>(hotspots.size());
-        s_enabled.reserve(hotspots.size());
+        _first = scene.hotspot_range.start;
+        _count = to<u16>(hotspots.size());
+        _enabled.reserve(hotspots.size());
 
         u16 min_x = 0xFFFF;
         u16 min_y = 0xFFFF;
@@ -148,7 +113,7 @@ namespace NEONengine
 
         for (auto const& hotspot : scene_records())
         {
-            s_enabled.push_back((hotspot.flags & FLAG_ENABLED) != 0 ? 1 : 0);
+            _enabled.push_back((hotspot.flags & FLAG_ENABLED) != 0 ? 1 : 0);
 
             auto const& bounds = hotspot.bounds;
             min_x = MIN(min_x, bounds.pos.x);
@@ -157,38 +122,38 @@ namespace NEONengine
             max_y = MAX(max_y, to<u16>(bounds.pos.y + bounds.height));
         }
 
-        s_min_x = min_x;
-        s_min_y = min_y;
-        s_max_x = max_x;
-        s_max_y = max_y;
+        _min_x = min_x;
+        _min_y = min_y;
+        _max_x = max_x;
+        _max_y = max_y;
 
         // Bobs register on the normal frame, so a hotspot that starts disabled
         // needs its state applied before the first draw.
-        for (u16 index = 0; index < s_count; ++index)
+        for (u16 index = 0; index < _count; ++index)
         {
             refresh_state_frame(index);
         }
 
-        NE_LOG("%hu hotspot(s) loaded", s_count);
+        NE_LOG("%hu hotspot(s) loaded", _count);
     }
 
-    void scene_hotspots_set_enabled(u16 id, bool enabled)
+    void scene_hotspots::set_enabled(u16 id, bool enabled)
     {
         // Scripts address hotspots by global id, and may name one belonging to
         // another scene; that is simply not ours to change.
-        if (s_count == 0 || id < s_first || id >= s_first + s_count) return;
+        if (_count == 0 || id < _first || id >= _first + _count) return;
 
-        auto const index = to<u16>(id - s_first);
-        s_enabled[index] = enabled ? 1 : 0;
+        auto const index = to<u16>(id - _first);
+        _enabled[index]  = enabled ? 1 : 0;
 
         // A hotspot switched off mid-interaction must not stay hovered, nor
         // complete a click it can no longer respond to.
         if (!enabled)
         {
-            auto const was_hovered = s_hovered;
-            auto const was_pressed = s_pressed;
-            if (s_hovered == index) s_hovered = NO_HOTSPOT;
-            if (s_pressed == index) s_pressed = NO_HOTSPOT;
+            auto const was_hovered = _hovered;
+            auto const was_pressed = _pressed;
+            if (_hovered == index) _hovered = NO_HOTSPOT;
+            if (_pressed == index) _pressed = NO_HOTSPOT;
             // The hotspot that lost the press may be a different one from the
             // hotspot just disabled, and it too returns to its resting frame.
             refresh_state_frame(was_hovered);
@@ -198,32 +163,32 @@ namespace NEONengine
         refresh_state_frame(index);
     }
 
-    void scene_hotspots_resync_button()
+    void scene_hotspots::resync_button()
     {
-        s_resyncButton = true;
+        _resyncButton = true;
     }
 
-    void scene_hotspots_update()
+    void scene_hotspots::update()
     {
         auto const is_down = mouseCheck(MOUSE_PORT_1, MOUSE_LMB) != 0;
 
         // A transition blocks or skips this update for many frames, so the
         // button may have moved unseen. Adopt its state without inventing an
         // edge, or a press begun during a load would activate in the new scene.
-        if (s_resyncButton)
+        if (_resyncButton)
         {
-            s_resyncButton = false;
-            s_was_down     = is_down;
+            _resyncButton = false;
+            _was_down     = is_down;
         }
 
         // A scene with nothing interactive still has to release the pointer:
         // the transition that loaded it left the WAIT role showing, and nothing
         // below runs to put the default back.
-        if (s_count == 0)
+        if (_count == 0)
         {
-            scene_bobs_hide_caption();
+            _bobs.hide_caption();
             mousePointerSwitch(mouse_pointer::DEFAULT);
-            s_was_down = is_down;
+            _was_down = is_down;
             return;
         }
 
@@ -241,13 +206,13 @@ namespace NEONengine
 
             // One test rejects every frame the pointer spends away from the
             // scene's interactive area, which is most of them.
-            if (x >= s_min_x && x < s_max_x && y >= s_min_y && y < s_max_y)
+            if (x >= _min_x && x < _max_x && y >= _min_y && y < _max_y)
             {
                 auto const records = scene_records();
                 u16 best_z    = 0;
-                for (u16 index = 0; index < s_count; ++index)
+                for (u16 index = 0; index < _count; ++index)
                 {
-                    if (s_enabled[index] == 0) continue;
+                    if (_enabled[index] == 0) continue;
 
                     auto const& hotspot = records[index];
                     if (!contains(hotspot.bounds, x, y)) continue;
@@ -262,18 +227,18 @@ namespace NEONengine
             }
         }
 
-        auto const prev_hovered = s_hovered;
-        s_hovered = hit;
+        auto const prev_hovered = _hovered;
+        _hovered = hit;
 
         // The caption names what the pointer is over, so it follows the pointer
         // for as long as the hover lasts and disappears with it.
         if (hit != NO_HOTSPOT)
         {
-            scene_bobs_show_caption(hit, pointer_x, pointer_y);
+            _bobs.show_caption(hit, pointer_x, pointer_y);
         }
         else
         {
-            scene_bobs_hide_caption();
+            _bobs.hide_caption();
         }
 
         // The pointer shows what the hotspot under it would do, and falls back
@@ -283,34 +248,34 @@ namespace NEONengine
             : mouse_pointer::DEFAULT;
         mousePointerSwitch(role);
 
-        bool const pressed_edge  = is_down && !s_was_down;
-        bool const released_edge = !is_down && s_was_down;
-        s_was_down               = is_down;
+        bool const pressed_edge  = is_down && !_was_down;
+        bool const released_edge = !is_down && _was_down;
+        _was_down                = is_down;
 
-        auto const prev_pressed = s_pressed;
+        auto const prev_pressed = _pressed;
         u16 activated      = NO_HOTSPOT;
 
         if (pressed_edge)
         {
             // Latches even on empty space, so a press that began off a hotspot
             // cannot complete on one the pointer merely drifted onto.
-            s_pressed = hit;
+            _pressed = hit;
         }
         else if (released_edge)
         {
-            if (s_pressed != NO_HOTSPOT && s_pressed == hit) activated = hit;
-            s_pressed = NO_HOTSPOT;
+            if (_pressed != NO_HOTSPOT && _pressed == hit) activated = hit;
+            _pressed = NO_HOTSPOT;
         }
 
         // Repaint only what moved. At most one hotspot is hovered and one
         // pressed, so the four slots cover every transition; repeats simply
         // recompute the same frame, and NO_HOTSPOT is ignored.
-        if (s_hovered != prev_hovered || s_pressed != prev_pressed)
+        if (_hovered != prev_hovered || _pressed != prev_pressed)
         {
             refresh_state_frame(prev_hovered);
             refresh_state_frame(prev_pressed);
-            refresh_state_frame(s_hovered);
-            refresh_state_frame(s_pressed);
+            refresh_state_frame(_hovered);
+            refresh_state_frame(_pressed);
         }
 
         // Activate last so the click's own effects land on top: the script may
