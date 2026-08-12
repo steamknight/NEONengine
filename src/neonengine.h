@@ -178,15 +178,6 @@ namespace NEONengine
 
         using result = mtl::expected<engine_ptr, error_code>;
 
-        enum class request_failure
-        {
-            NONE,
-            LANGUAGE_LOAD_FAILED,
-            LANGUAGE_MISMATCH,
-        };
-
-        using request_result = mtl::expected<void, request_failure>;
-
         public:  //////////////////////////////////////////////////////////////////////////////////
         tFont* default_font() noexcept { return _pUiFont.get(); }
         text_renderer* default_text_renderer() noexcept { return _pTextRenderer.get(); }
@@ -295,14 +286,28 @@ namespace NEONengine
         u16 current_scene() const noexcept { return _current_scene; }
         void set_current_scene(u16 scene_id) noexcept { _current_scene = scene_id; }
 
-        void update() noexcept;
+        /**
+         * @brief Runs one frame, in the order a frame has to happen in.
+         */
+        void frame() noexcept;
 
         static result initialize();
 
         private: //////////////////////////////////////////////////////////////////////////////////
 
-        /** @brief Apply the pending language change, if any. */
-        request_result apply_pending_language() noexcept;
+        /** @brief Reads this frame's keys and mouse. */
+        void update_input() noexcept;
+
+        /** @brief Gives the music player its slice of the frame. */
+        void update_audio() noexcept;
+
+        /**
+         * @brief Swaps the string table when a script has asked for another.
+         *
+         * The new table is loaded before the old one is dropped, so a language
+         * that will not load leaves the current one live and the game readable.
+         */
+        void apply_pending_language() noexcept;
 
         private:  //////////////////////////////////////////////////////////////////////////////////
 

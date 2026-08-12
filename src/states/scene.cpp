@@ -196,7 +196,7 @@ namespace NEONengine
         /**
          * @brief Rebuild what the scene had built out of the string table.
          *
-         * The engine has already swapped the table, in engine::update(), before
+         * The engine has already swapped the table, in engine::frame(), before
          * any state ran this frame. What is left is the scene's own share of the
          * change: the text it drew out of the old table.
          */
@@ -464,7 +464,7 @@ namespace NEONengine
 
         // Language before scene: a script that switches language and then leaves
         // should present the next scene in the language it just chose. The
-        // engine has already swapped the table by now, in engine::update(); this
+        // engine has already swapped the table by now, in engine::frame(); this
         // is the scene catching up with it.
         if (g_pEngine->language_changed())
         {

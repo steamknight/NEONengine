@@ -5,6 +5,11 @@
 #include "core/logger.h"
 #include "core/noir_bridge.h"
 
+#include <ace/managers/key.h>
+#include <ace/managers/mouse.h>
+#include <ace/managers/ptplayer.h>
+#include <ace/managers/state.h>
+
 #include <ace++/bitmap.h>
 #include <ace++/palette.h>
 
@@ -163,13 +168,15 @@ namespace NEONengine
         return result;
     }
 
-    engine::request_result engine::apply_pending_language() noexcept
+    void engine::apply_pending_language() noexcept
     {
-        if (!_pending_language.has()) return request_result{};
+        _language_changed = false;
+
+        if (!_pending_language.has()) return;
 
         auto lang_id = _pending_language.take();
 
-        if (_pStrings && _pStrings->language_id() == lang_id) return request_result{};
+        if (_pStrings && _pStrings->language_id() == lang_id) return;
 
         // Load first, swap second: on failure the current table stays live.
         mtl::system_use_guard guard;
@@ -177,16 +184,18 @@ namespace NEONengine
         auto strings = string_table::create(lang_id);
         if (!strings)
         {
+            // TODO: tell the player, once there is a message for it.
             NE_LOG("Could not load language '%s'. Error %d.",
                 language_code(lang_id), to<int>(strings.error()));
-            return mtl::unexpected(request_failure::LANGUAGE_LOAD_FAILED);
+            return;
         }
 
         if (!matches_build(*_pGameData, *strings.value()))
         {
+            // TODO: tell the player, once there is a message for it.
             NE_LOG("Language '%s' is from another build; keeping the current one.",
                 language_code(lang_id));
-            return mtl::unexpected(request_failure::LANGUAGE_MISMATCH);
+            return;
         }
 
         _pStrings = mtl::move(strings.value());
@@ -196,19 +205,26 @@ namespace NEONengine
         // always carry a terminator, so the view goes straight to "%s".
         NE_LOG("language is now '%s' (%s)",
             language_code(lang_id), _pStrings->language_name().data());
-
-        return request_result{};
     }
 
-    void engine::update() noexcept
+    void engine::update_input() noexcept
     {
-        _language_changed = false;
+        keyProcess();
+        mouseProcess();
+    }
 
-        auto result = apply_pending_language();
-        if (!result)
-        {
-            // TODO: request an error message to be displayed to the player.
-        }
+    void engine::update_audio() noexcept
+    {
+        ptplayerProcess();
+    }
 
+    void engine::frame() noexcept
+    {
+        update_input();
+        update_audio();
+        apply_pending_language();
+        _overlays.present(g_gameStateManager);
+        stateProcess(g_gameStateManager);
+        screenProcess(g_mainScreen);
     }
 }  // namespace NEONengine

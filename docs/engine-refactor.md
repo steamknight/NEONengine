@@ -33,7 +33,7 @@ The goals the work is measured against:
 
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
-4a and 4b are done. Item 1 is two steps into four.
+4a, 4b and 1 are done. Item 2 is next.
 
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
 context, went first: mechanical, self-contained, and what unlocks every later
@@ -46,7 +46,7 @@ before we decide what the scene runtime is a member of.
 
 ## 1. The engine owns the frame
 
-**Two steps of four done.** Steps 1 and 2 have landed; 3 and 4 have not.
+**Done.** The rest of this section records what the change was and why.
 
 **Now.** `genericProcess()` pumps input, presents the pending overlay, calls
 `engine::update()`, then `stateProcess()` and `screenProcess()`, then the debug
@@ -83,35 +83,52 @@ the test runner has neither and binds nothing. The engine hands the system out
 rather than forwarding to it: five engine methods went for one, and
 `neonengine.h` lost 175 lines against 20 gained.
 
-*Step 3 — `engine::frame()`.* Six lines that are the frame order:
+*Step 3 — `engine::frame()`.* **Done.** Six lines that are the frame order:
 
 ```cpp
 void engine::frame() noexcept
 {
-    pump_input();                       // key, mouse, ptplayer
-    apply_pending_language();
+    update_input();
+    update_audio();
+    settle_language();
     _overlays.present(g_gameStateManager);
     stateProcess(g_gameStateManager);
     screenProcess(g_mainScreen);
 }
 ```
 
-`genericProcess()` becomes `g_pEngine->frame();` then `debug_keys_process();`.
-`engine::update()` retires into it. The invariant to hold: **`frame()` contains
-calls only, never logic** — that is what stops it growing into the god function.
+`genericProcess()` is now `g_pEngine->frame();` then `debug_keys_process();`.
+`engine::update()` retired into it, and the language swap became
+`settle_language()` — a phase with a name rather than a four-line function with
+a grand one. Input and audio are pumped separately because they are separate
+things; an `update_input()` that also drove the music player would be a small lie
+in the one place the frame is meant to be read literally.
 
-*Step 4 — record the drain order*, which is 4b's unfinished half. It now has
-somewhere to live: a comment on `frame()` saying that language settles before
-anything is drawn, and why the scene drains modal and system requests rather than
-the engine.
+The invariant, written on the function: **`frame()` holds calls and no logic.** A
+test in it would be a rule about the frame hiding where nobody thinks to look.
 
-**One ordering change, deliberate.** Today the overlay push runs *before*
-`engine::update()`; in `frame()` it runs after. That inversion was unsafe until
-4b — `statePush` calls `cbCreate` synchronously, so `messageCreate` rendered the
-text before the swap freed the table under it. 4b's copy is what makes the order
-free to choose. Settling engine state before drawing is the more defensible
-order, and the text is identical either way because the copy is taken as the
-message is posted.
+That invariant nearly bought a wrapper it did not need. `settle_language()` was
+first written around `apply_pending_language()`, whose only job was to reset a
+flag and discard a `request_result` that its one caller tested for truthiness and
+never read — while both failure paths already logged their own reason. The two
+merged into one function, and `engine::request_failure` and
+`engine::request_result` went with them, having no other user. The rule is that
+`frame()` holds no logic, not that every phase is owed a function.
+
+*Step 4 — record the drain order.* **Done**, as the doc comment on `frame()`,
+which is 4b's unfinished half closed. It states why each phase sits where it
+does, and says plainly that modal and system requests are *not* drained there:
+they mean something only while a scene is on top, so the scene drains them in its
+own pass. The second ordering is named as deliberate rather than left to be
+discovered.
+
+**One ordering change, deliberate.** The overlay push used to run *before*
+`engine::update()`; in `frame()` it runs after the language settles. That
+inversion was unsafe until 4b — `statePush` calls `cbCreate` synchronously, so
+`messageCreate` rendered the text before the swap freed the table under it. 4b's
+copy is what makes the order free to choose. Settling engine state before drawing
+is the more defensible order, and the text is identical either way because the
+copy is taken as the message is posted.
 
 **Out of scope, deliberately.** `g_mainScreen` has about eighty call sites across
 twelve files and `g_gameStateManager` about twenty-four, nearly all `statePop`

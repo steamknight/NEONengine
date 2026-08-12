@@ -61,16 +61,7 @@ void genericCreate(void)
 
 void genericProcess(void)
 {
-    keyProcess();
-    mouseProcess();
-    ptplayerProcess();
-
-    g_pEngine->overlays().present(g_gameStateManager);
-
-    g_pEngine->update();
-
-    stateProcess(g_gameStateManager);
-    screenProcess(NEONengine::g_mainScreen);
+    g_pEngine->frame();
 
     debug_keys_process();
 }
