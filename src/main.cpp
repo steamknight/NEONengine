@@ -42,6 +42,7 @@ void genericCreate(void)
         return;
     }
     g_pEngine = mtl::move(engineResult.value());
+    g_pEngine->overlays().bind(&g_stateMessage, &g_stateDialogue);
 
     screenLoad(NEONengine::g_mainScreen);
     screenBindMouse(NEONengine::g_mainScreen);
@@ -64,34 +65,7 @@ void genericProcess(void)
     mouseProcess();
     ptplayerProcess();
 
-    // Pushed here rather than by whoever asked for it. A bridge call runs deep
-    // inside the running state's own callback, and pushing from there would
-    // draw the box and then let the rest of that callback paint over it. 
-    //
-    // Never over an overlay that is already up, either: the freeze that holds a
-    // buffer back is not nested, so a box closing on top would resume the
-    // display out from under the one beneath and restore its rectangle from a
-    // buffer that never held it. A script that died inside a conversation says
-    // so once the conversation has come down, which is the frame the scene has
-    // the screen back.
-    tState const* const on_top = g_gameStateManager->pCurrent;
-    bool const overlay_up = on_top == &g_stateMessage || on_top == &g_stateDialogue;
-
-    if (!overlay_up)
-    {
-        switch (g_pEngine->pending_overlay_kind())
-        {
-            case overlay_kind::message:
-                statePush(g_gameStateManager, &g_stateMessage);
-                break;
-
-            case overlay_kind::dialogue:
-                statePush(g_gameStateManager, &g_stateDialogue);
-                break;
-
-            case overlay_kind::none: break;
-        }
-    }
+    g_pEngine->overlays().present(g_gameStateManager);
 
     g_pEngine->update();
 

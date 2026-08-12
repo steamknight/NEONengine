@@ -66,7 +66,7 @@ namespace NEONengine
         {
             if (!message) return;
 
-            e.show_message(message_request{
+            e.overlays().post_message(message_request{
                 .text          = bstr_view(message),
                 .caption       = "Script Error",
                 .color         = MESSAGE_ERROR_COLOR,
@@ -89,7 +89,7 @@ namespace NEONengine
         // ── Dialogue / Audio ─────────────────────────────────────────────────
         void nb_say(engine& e, u16 string_id, u16)
         {
-            e.show_message(message_request{
+            e.overlays().post_message(message_request{
                 .text = e.strings().get_string(string_id),
             });
         }

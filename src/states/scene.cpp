@@ -380,7 +380,7 @@ namespace NEONengine
                 case modal_kind::show_dialog:
                     // The main loop pushes the dialogue state next frame and
                     // dialogueDestroy() lifts the latch when it comes down.
-                    g_pEngine->request_dialogue(request.arg1);
+                    g_pEngine->overlays().post_dialogue(request.arg1);
                     return;
 
                 case modal_kind::none: return;

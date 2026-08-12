@@ -746,7 +746,7 @@ namespace NEONengine
 
     void dialogueCreate(void)
     {
-        u16 const dialogue_id = g_pEngine->take_pending_dialogue();
+        u16 const dialogue_id = g_pEngine->overlays().take_dialogue();
 
         s_frameWidth     = 0;
         s_frameHeight    = 0;

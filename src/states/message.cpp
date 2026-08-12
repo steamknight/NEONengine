@@ -52,7 +52,7 @@ namespace NEONengine
 
     void messageCreate(void)
     {
-        auto const request = g_pEngine->take_pending_message();
+        auto const request = g_pEngine->overlays().take_message();
 
         auto* renderer = g_pEngine->default_text_renderer();
 

@@ -31,63 +31,6 @@ namespace NEONengine
             return strings.build_period() == hd.build_period
                 && strings.build_number() == hd.build_number;
         }
-
-        /**
-         * @brief Copies as much of @p source into @p buffer as it holds.
-         *
-         * @return A view of the copy, terminated so it can be read as a C string.
-         */
-        bstr_view copy_into(char* buffer, size_t capacity, bstr_view source) noexcept
-        {
-            size_t const limit  = capacity - 1;
-            size_t const length = source.length() < limit ? source.length() : limit;
-
-            for (size_t i = 0; i < length; ++i) buffer[i] = source.data()[i];
-            buffer[length] = '\0';
-
-            return bstr_view(buffer, length);
-        }
-    }
-
-    void pending_overlay::post_message(message_request const& request) noexcept
-    {
-        if (_kind != overlay_kind::none || request.text.is_empty()) return;
-
-        if (request.text.length() >= MESSAGE_TEXT_CAPACITY)
-        {
-            NE_LOG("message of %lu bytes cut to %lu",
-                to<ULONG>(request.text.length()),
-                to<ULONG>(MESSAGE_TEXT_CAPACITY - 1));
-        }
-
-        _message         = request;
-        _message.text    = copy_into(_text, sizeof(_text), request.text);
-        _message.caption = copy_into(_caption, sizeof(_caption), request.caption);
-        _kind            = overlay_kind::message;
-    }
-
-    void pending_overlay::post_dialogue(u16 dialogue_id) noexcept
-    {
-        if (_kind != overlay_kind::none) return;
-
-        _dialogue = dialogue_id;
-        _kind     = overlay_kind::dialogue;
-    }
-
-    message_request pending_overlay::take_message() noexcept
-    {
-        if (_kind != overlay_kind::message) return message_request{};
-
-        clear();
-        return _message;
-    }
-
-    u16 pending_overlay::take_dialogue() noexcept
-    {
-        if (_kind != overlay_kind::dialogue) return 0;
-
-        clear();
-        return _dialogue;
     }
 
     tStateManager* g_gameStateManager = nullptr;
