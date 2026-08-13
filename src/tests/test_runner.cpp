@@ -220,6 +220,9 @@ namespace NEONengine::tests
         .cbCreate  = testRunnerCreate,
         .cbLoop    = testRunnerProcess,
         .cbDestroy = NULL,
+        .cbSuspend = NULL,
+        .cbResume  = NULL,
+        .pPrev     = NULL,  // Set by statePush.
     };
 }  // namespace NEONengine::tests
 

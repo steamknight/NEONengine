@@ -188,5 +188,8 @@ namespace NEONengine
         .cbCreate  = messageCreate,
         .cbLoop    = messageProcess,
         .cbDestroy = messageDestroy,
+        .cbSuspend = nullptr,
+        .cbResume  = nullptr,
+        .pPrev     = nullptr,  // Set by statePush.
     };
 }  // namespace NEONengine

@@ -92,10 +92,11 @@ static constexpr uint32_t CANARY_VALUE = 0xDEADBEEF;
  *
  * @param size      Number of user bytes requested.
  * @param memFlags  Amiga memory flags (FAST / CHIP etc.).
- * @param errorMsg  Message to log upon allocation failure.
+ * @param errorMsg  Message to log upon allocation failure. Reaches nothing when
+ *                  ACE compiles logWrite away.
  * @return Pointer to usable memory (or nullptr on failure).
  */
-static void* allocWithSizeTracking(size_t size, ULONG memFlags, char const* errorMsg)
+static void* allocWithSizeTracking(size_t size, ULONG memFlags, [[maybe_unused]] char const* errorMsg)
 {
     size_t totalSize = blockSize(size);
 

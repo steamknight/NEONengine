@@ -65,8 +65,8 @@ namespace NEONengine
      */
     struct message_request
     {
-        bstr_view text;
-        bstr_view caption;  ///< Drawn above the text. Empty when there is none.
+        bstr_view text{};
+        bstr_view caption{};  ///< Drawn above the text. Empty when there is none.
         u16 max_width{ MESSAGE_MAX_WIDTH };
         text_justify justify{ text_justify::LEFT };
         u8 color{ MESSAGE_TEXT_COLOR };

@@ -120,6 +120,7 @@ if(ACE_TEST_RUNNER)
     add_compile_definitions(ACE_TEST_RUNNER)
 endif()
 
+
 # Engine logging, independent of ACE_DEBUG on purpose. ACE gates its own
 # logWrite on ACE_DEBUG, which also turns on bobCheckGood and the bob buffer
 # auto-correction scene_bobs relies on, so the two switches have to be separate:
@@ -134,7 +135,27 @@ endif()
 # ACE
 set(ACE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/ace" CACHE PATH "Path to the ACE source tree (defaults to the modules/ace submodule)")
 add_subdirectory(${ACE_SOURCE_DIR} ace)
-include_directories(${ACE_SOURCE_DIR}/include)
+
+# ACE's headers arrive through target_link_libraries below, as -isystem rather
+# than -I, so warnings raised inside them are not ours to answer. A plain
+# include_directories() here would defeat that: GCC ignores -isystem for a
+# directory already named by -I, and the header would report against us again.
+#
+# INTERFACE_SYSTEM_INCLUDE_DIRECTORIES rather than the SYSTEM target property,
+# which wants CMake 3.25 and this project asks for 3.14.
+foreach(dependency ace bartman_gcc_support)
+    if(TARGET ${dependency})
+        set_property(TARGET ${dependency} APPEND PROPERTY
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+            $<TARGET_PROPERTY:${dependency},INTERFACE_INCLUDE_DIRECTORIES>)
+
+        # And silence the warnings from building it. ACE sets its own -Wall
+        # -Wextra; -w lands after that and wins. These are vendored submodules
+        # we do not patch, so their warnings are noise we would learn to scroll
+        # past - which is the habit that hides ours.
+        target_compile_options(${dependency} PRIVATE -w)
+    endif()
+endforeach()
 
 # Force lower-case binary name for Linux etc.
 set(TARGET_NAME ${PROJECT_NAME_LOWER})
@@ -176,9 +197,19 @@ if(NOT NE_ELF2HUNK)
     target_compile_options(ace PRIVATE -fno-optimize-sibling-calls)
 endif()
 
+# Our sources answer for their own warnings. ACE is a separate target with its
+# own flags, so none of this reaches it, and its headers come in through
+# -isystem above.
+#
 # logWrite() takes char*, so every string literal passed to it trips
 # -Wwrite-strings. Kept out of the toolchain flags so a fresh configure gets it.
-target_compile_options(${GAME_LINKED} PRIVATE -Wall -Wno-write-strings)
+set(NE_WARNINGS_AS_ERRORS ON CACHE BOOL "Fail the build on a warning in NEONengine's own sources")
+
+target_compile_options(${GAME_LINKED} PRIVATE -Wall -Wextra -Wno-write-strings)
+
+if(NE_WARNINGS_AS_ERRORS)
+    target_compile_options(${GAME_LINKED} PRIVATE -Werror)
+endif()
 add_custom_command(
     TARGET ${GAME_LINKED}
     PRE_BUILD

@@ -94,5 +94,8 @@ namespace NEONengine
         .cbCreate = debugViewCreate,
         .cbLoop = debugViewProcess,
         .cbDestroy = debugViewDestroy,
+        .cbSuspend = nullptr,
+        .cbResume = nullptr,
+        .pPrev = nullptr,  // Set by statePush.
     };
 }

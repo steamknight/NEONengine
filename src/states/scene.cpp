@@ -554,5 +554,14 @@ namespace NEONengine
         .cbCreate  = sceneCreate,
         .cbLoop    = sceneProcess,
         .cbDestroy = sceneDestroy,
+        // No suspend or resume. A message box or a conversation is pushed over
+        // this state, and what the scene owes that is settled the other way
+        // round: those states call resync_button() as they come down, because
+        // only they know the button was theirs. A pair of hooks here would be a
+        // second place to look for the same rule.
+        .cbSuspend = nullptr,
+        .cbResume  = nullptr,
+        // Set by statePush.
+        .pPrev     = nullptr,
     };
 }  // namespace NEONengine

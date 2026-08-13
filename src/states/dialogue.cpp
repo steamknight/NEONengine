@@ -899,5 +899,8 @@ namespace NEONengine
         .cbCreate  = dialogueCreate,
         .cbLoop    = dialogueProcess,
         .cbDestroy = dialogueDestroy,
+        .cbSuspend = nullptr,
+        .cbResume  = nullptr,
+        .pPrev     = nullptr,  // Set by statePush.
     };
 }  // namespace NEONengine
