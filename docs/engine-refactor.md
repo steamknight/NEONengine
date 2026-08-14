@@ -34,7 +34,7 @@ The goals the work is measured against:
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
 4a, 4b and 1 are done. Item 2 is half done: four modules have moved, the asset
-cache is now the engine's, and `mouse_pointer` and per-scene construction are
+cache and the mouse pointer are now the engine's, and per-scene construction is
 left.
 
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
@@ -217,9 +217,25 @@ so a test can build one over a bare pak. Its reporting no longer reaches
 `g_pEngine`: `log()` takes the game data as an argument. `scene_bobs` and
 `scene_sound_effects` take an `asset_cache&` beside their `game_data&`.
 
-**Left for the second half.** `mouse_pointer`, and the move from a long-lived
-runtime with `load()` to one constructed per scene, which is what would delete
-the last `_load`/`_clear` pair.
+**`mouse_pointer` landed on the engine.** The enum keeping the name became
+`pointer_role`, and the class holding the cursors took it. `engine::initialize()`
+builds it and the engine's destructor frees it, so `sceneCreate` and
+`sceneDestroy` lose their create/destroy pair. `scene_hotspots` takes a
+`mouse_pointer&`; the states and the bridge reach it through the engine, as they
+already did for everything else.
+
+That moves cursor creation ahead of `screenLoad()`, which holds: the view exists
+from `screenCreate()`, and the sprite manager only has to be attached to it
+before the view is published.
+
+It also moved the pointer's teardown. `genericDestroy` now releases the engine
+straight after `stateManagerDestroy`, because the pointer's destructor reads the
+view and the OS, and both used to be gone by the time global destructors ran.
+Anything the engine gains that touches ACE state depends on that ordering.
+
+**Left for the second half.** The move from a long-lived runtime with `load()`
+to one constructed per scene, which is what would delete the last
+`_load`/`_clear` pair.
 
 That last step has an ordering constraint worth writing down before anyone tries
 it. `draw_backdrop()` calls the timeline's `restore_palette()` on the *outgoing*

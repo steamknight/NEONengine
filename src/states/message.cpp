@@ -140,7 +140,7 @@ namespace NEONengine
 
         // The pointer keeps its own role while the box is up, so nothing has to
         // be put back on the way out.
-        mousePointerUpdate();
+        g_pEngine->pointer().update();
 
         // The press that started the script that spoke is still unspent - the
         // hotspots only ever look at it - and would close the box on the frame
@@ -153,7 +153,7 @@ namespace NEONengine
     {
         // Nothing else runs while the box is up, so the sprite would sit where
         // it was until the box came down.
-        mousePointerUpdate();
+        g_pEngine->pointer().update();
 
         if (!mouseUse(MOUSE_PORT_1, MOUSE_LMB) && !keyUse(KEY_SPACE)) return;
 

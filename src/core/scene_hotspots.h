@@ -14,6 +14,7 @@
 #include <mtl/vector.h>
 
 #include "core/game_data.h"
+#include "core/mouse_pointer.h"
 #include "core/scene_bobs.h"
 #include "core/scene_sound_effects.h"
 #include "game_data_format.h"
@@ -23,8 +24,11 @@ namespace NEONengine
     class scene_hotspots
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
-        scene_hotspots(game_data& data, scene_bobs& bobs, scene_sound_effects& sound_effects)
-            : _data(data), _bobs(bobs), _sound_effects(sound_effects)
+        scene_hotspots(game_data& data,
+            scene_bobs&          bobs,
+            scene_sound_effects& sound_effects,
+            mouse_pointer&       pointer)
+            : _data(data), _bobs(bobs), _sound_effects(sound_effects), _pointer(pointer)
         {
         }
         scene_hotspots(scene_hotspots const&)            = delete;
@@ -114,6 +118,7 @@ namespace NEONengine
         game_data&           _data;
         scene_bobs&          _bobs;
         scene_sound_effects& _sound_effects;
+        mouse_pointer&       _pointer;
 
         u16 _first = 0;  ///< First HOTS id this scene owns.
         u16 _count = 0;  ///< How many it owns; 0 disables the whole set.

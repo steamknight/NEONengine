@@ -45,11 +45,11 @@ namespace NEONengine
         void nb_hotspot_on(engine& e, u16 id) { e.scene().hotspots().set_enabled(id, true); }
         void nb_hotspot_off(engine& e, u16 id) { e.scene().hotspots().set_enabled(id, false); }
 
-        void nb_set_pointer(engine&, u16 type)
+        void nb_set_pointer(engine& e, u16 type)
         {
-            if (type < to<u16>(mouse_pointer::COUNT))
+            if (type < to<u16>(pointer_role::COUNT))
             {
-                mousePointerSwitch(to<mouse_pointer>(type));
+                e.pointer().switch_to(to<pointer_role>(type));
             }
         }
 

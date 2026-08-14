@@ -60,7 +60,7 @@ namespace NEONengine
          * The engine's clickable role, reused rather than a hand of its own:
          * the roles are a closed set matching the authored cursor sheet.
          */
-        constexpr mouse_pointer CHOICE_CURSOR = mouse_pointer::USE;
+        constexpr pointer_role CHOICE_CURSOR = pointer_role::USE;
 
         /**
          * @brief One slot of the choice set, as it stands on screen.
@@ -790,7 +790,7 @@ namespace NEONengine
         // The pointer takes a role of its own while the box is up - the
         // clickable one over a choice - so the scene's is put back on the way
         // out.
-        mousePointerUpdate();
+        g_pEngine->pointer().update();
 
         // The press that started the script that spoke is still unspent - the
         // hotspots only ever look at it - and would advance the conversation on
@@ -808,12 +808,13 @@ namespace NEONengine
         {
             u8 const hovered = s_slot_count ? slot_under_pointer() : NO_SLOT;
             set_highlight(hovered);
-            mousePointerSwitch(hovered == NO_SLOT ? mouse_pointer::DEFAULT : CHOICE_CURSOR);
+            g_pEngine->pointer().switch_to(
+                hovered == NO_SLOT ? pointer_role::DEFAULT : CHOICE_CURSOR);
         }
 
         // Nothing else runs while the box is up, so the sprite would sit where
         // it was until the box came down.
-        mousePointerUpdate();
+        g_pEngine->pointer().update();
 
         if (s_hold_frames > 0)
         {
@@ -873,7 +874,7 @@ namespace NEONengine
 
         // The box put the clickable role up over a choice; the scene decides
         // what the pointer shows from its own hotspots, and starts from here.
-        mousePointerSwitch(mouse_pointer::DEFAULT);
+        g_pEngine->pointer().switch_to(pointer_role::DEFAULT);
 
         // After the erase: it hands the palette band back to the scene's bobs,
         // and the pixels underneath have to be the scene's again by then.

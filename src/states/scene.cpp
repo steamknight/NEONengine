@@ -69,8 +69,8 @@ namespace NEONengine
          */
         void show_wait_pointer()
         {
-            mousePointerSwitch(mouse_pointer::WAIT);
-            mousePointerUpdate();
+            g_pEngine->pointer().switch_to(pointer_role::WAIT);
+            g_pEngine->pointer().update();
             copProcessBlocks();
         }
 
@@ -150,7 +150,7 @@ namespace NEONengine
             // and the pointer has to go, or it would draw itself in whatever
             // colors the background put in its band.
             screenSetCursorBandExempt(g_mainScreen, showsUi);
-            mousePointerSetVisible(showsUi);
+            g_pEngine->pointer().set_visible(showsUi);
 
             scene_text_draw(sc);
             screenDuplicateBackToFront(g_mainScreen);
@@ -423,10 +423,6 @@ namespace NEONengine
         // re-enters 'used' briefly via a system_use_guard for each pak access.
         systemUnuse();
         g_pEngine->open_scene();
-        {
-            mtl::system_use_guard guard;  // OS on for the pak read.
-            mousePointerCreate();
-        }
         // The boot load blocks for over a second with the pointer on screen, and
         // draw_backdrop only settles the band once it has the scene in hand.
         screenSetCursorBandExempt(g_mainScreen, true);
@@ -452,9 +448,9 @@ namespace NEONengine
             || g_pEngine->pending_system_kind() == system_kind::load_scene
             || screenIsFadingOut(g_mainScreen);
 
-        // Cheap and idempotent: the frame's own mousePointerUpdate() and
+        // Cheap and idempotent: the frame's own pointer update and
         // screenProcess() publish it, so the fade needs nothing special.
-        if (transitioning) mousePointerSwitch(mouse_pointer::WAIT);
+        if (transitioning) g_pEngine->pointer().switch_to(pointer_role::WAIT);
 
         // Language before scene: a script that switches language and then leaves
         // should present the next scene in the language it just chose. The
@@ -529,7 +525,7 @@ namespace NEONengine
             g_pEngine->vm().update();
         }
 
-        mousePointerUpdate();
+        g_pEngine->pointer().update();
         runtime.bobs().update();
         runtime.bobs().draw();
     }
@@ -544,7 +540,6 @@ namespace NEONengine
         // that was still up owes nothing to anyone.
         g_pEngine->vm().reset_execution();
 
-        mousePointerDestroy();
         g_pEngine->close_scene();
         musicFree();
         logBlockEnd("State: Scene");

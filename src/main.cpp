@@ -69,6 +69,14 @@ void genericProcess(void)
 void genericDestroy(void)
 {
     stateManagerDestroy(g_gameStateManager);
+
+    // The engine holds sprites and bitmaps that read the view and the OS on
+    // their way out, so it goes down while both are still up.
+    {
+        mtl::system_use_guard guard;
+        NEONengine::g_pEngine = nullptr;
+    }
+
     screenDestroy(NEONengine::g_mainScreen);
     musicFree();
     ptplayerDestroy();

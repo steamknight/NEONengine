@@ -22,32 +22,15 @@ NE_LOG_DOMAIN(Cursor);
 
 namespace NEONengine
 {
-    namespace
-    {
-        constexpr auto POINTER_COUNT = to<int>(mouse_pointer::COUNT);
-    }
-
-    static tBitMap *s_pPointersLo[POINTER_COUNT];
-    static tBitMap *s_pPointersHi[POINTER_COUNT];
-    static tSprite *s_pCurrentPointer0;
-    static tSprite *s_pCurrentPointer1;  // attached sprite.
-
-    /// Each role's click offset within its frame, from its CURS record.
-    static data::point<u16> s_hotspots[POINTER_COUNT];
-    static mouse_pointer s_current = mouse_pointer::DEFAULT;
-    static bool s_ready            = false;
-    static bool s_visible          = false;  ///< Tracks spriteSetEnabled to avoid needless regens.
-
 #define POINTER_WIDTH  16
 #define POINTER_HEIGHT 16
 #define POINTER_BPP    4
 #define SPRITE_BPP     2
 
-    bool mousePointerCreate()
+    mouse_pointer::mouse_pointer(game_data const& data, asset_cache& cache)
     {
-        auto& gd        = g_pEngine->data();
-        auto const& ui  = gd.ui_state();
-        auto const bitmaps = gd.bitmaps();
+        auto const& ui     = data.ui_state();
+        auto const bitmaps = data.bitmaps();
 
         // The sheet's frames are fixed at 16x16 so each fits one sprite; a
         // project that says otherwise cannot be shown as a hardware pointer.
@@ -57,41 +40,39 @@ namespace NEONengine
         {
             NE_LOG("no usable cursor sheet (id %hu, %hux%hu)",
                 ui.cursor_bitmap_id, ui.cursor_frame_width, ui.cursor_frame_height);
-            return false;
+            return;
         }
 
-        auto const cursors = ui.cursor_range.of(gd.cursors());
+        auto const cursors = ui.cursor_range.of(data.cursors());
         if (cursors.is_empty())
         {
             NE_LOG("cursor range %hu+%hu does not resolve",
                 ui.cursor_range.start, ui.cursor_range.count);
-            return false;
+            return;
         }
 
-        systemUse();
         auto pSheet = ace::bitmapCreateFromFd(
-            g_pEngine->assets().open(bitmaps[ui.cursor_bitmap_id].bitmap_hash), 0);
+            cache.open(bitmaps[ui.cursor_bitmap_id].bitmap_hash), 0);
         if (!pSheet)
         {
             NE_LOG("could not load the cursor sheet");
-            systemUnuse();
-            return false;
+            return;
         }
 
         // Frames are packed row-major from the sheet's top-left, so a frame id
         // resolves to its column and row. Both divisions happen once per role.
         UWORD const columns = to<UWORD>(bitmapGetByteWidth(pSheet.get()) * 8 / POINTER_WIDTH);
 
-        for (auto idx = 0; idx < POINTER_COUNT; idx++)
+        for (auto idx = 0; idx < ROLE_COUNT; idx++)
         {
             // Sprites need to have one extra line above and below the image.
             tBitMap *pPointer = bitmapCreate(
                 POINTER_WIDTH, POINTER_HEIGHT + 2, POINTER_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
-            s_pPointersHi[idx] = bitmapCreate(
+            _high[idx] = bitmapCreate(
                 POINTER_WIDTH, POINTER_HEIGHT + 2, SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
-            s_pPointersLo[idx] = bitmapCreate(
+            _low[idx] = bitmapCreate(
                 POINTER_WIDTH, POINTER_HEIGHT + 2, SPRITE_BPP, BMF_CLEAR | BMF_INTERLEAVED);
 
             // A role the project did not configure keeps an empty frame and a
@@ -101,7 +82,7 @@ namespace NEONengine
             {
                 auto const& record = cursors[idx];
                 frame           = record.frame;
-                s_hotspots[idx] = record.hotspot;
+                _hotspots[idx] = record.hotspot;
             }
 
             blitCopyAligned(pSheet.get(),
@@ -118,17 +99,17 @@ namespace NEONengine
             for (UWORD r = 0; r < pPointer->Rows; r++)
             {
                 UWORD uwOffsetSrc = r * pPointer->BytesPerRow;
-                UWORD uwOffsetDst = r * s_pPointersLo[idx]->BytesPerRow;
-                memcpy(s_pPointersLo[idx]->Planes[0] + uwOffsetDst,
+                UWORD uwOffsetDst = r * _low[idx]->BytesPerRow;
+                memcpy(_low[idx]->Planes[0] + uwOffsetDst,
                        pPointer->Planes[0] + uwOffsetSrc,
                        uwSourceWidth);
-                memcpy(s_pPointersLo[idx]->Planes[1] + uwOffsetDst,
+                memcpy(_low[idx]->Planes[1] + uwOffsetDst,
                        pPointer->Planes[1] + uwOffsetSrc,
                        uwSourceWidth);
-                memcpy(s_pPointersHi[idx]->Planes[0] + uwOffsetDst,
+                memcpy(_high[idx]->Planes[0] + uwOffsetDst,
                        pPointer->Planes[2] + uwOffsetSrc,
                        uwSourceWidth);
-                memcpy(s_pPointersHi[idx]->Planes[1] + uwOffsetDst,
+                memcpy(_high[idx]->Planes[1] + uwOffsetDst,
                        pPointer->Planes[3] + uwOffsetSrc,
                        uwSourceWidth);
             }
@@ -141,83 +122,78 @@ namespace NEONengine
         spriteManagerCreate(screenGetView(g_mainScreen), 0, NULL);
         systemSetDmaBit(DMAB_SPRITE, 1);
 
-        s_current          = mouse_pointer::DEFAULT;
         // An attached pair indexes a 16-aligned bank, here entries 16..31. The
         // sheet only names values 8..15, so the pointer reads 24..31 and the
         // lower half of the bank stays free for the UI.
-        s_pCurrentPointer0 = spriteAdd(0, s_pPointersLo[0]);
-        spriteSetEnabled(s_pCurrentPointer0, 1);
+        _sprite0 = spriteAdd(0, _low[0]);
+        spriteSetEnabled(_sprite0, 1);
 
-        s_pCurrentPointer1 = spriteAdd(1, s_pPointersHi[0]);
-        spriteSetEnabled(s_pCurrentPointer1, 1);
-        spriteSetAttached(s_pCurrentPointer1, 1);
+        _sprite1 = spriteAdd(1, _high[0]);
+        spriteSetEnabled(_sprite1, 1);
+        spriteSetAttached(_sprite1, 1);
 
-        systemUnuse();
-
-        s_ready   = true;
-        s_visible = true;
+        _ready   = true;
+        _visible = true;
         NE_LOG("%lu cursor role(s) ready", to<ULONG>(cursors.size()));
-        return true;
     }
 
-    void mousePointerSwitch(mouse_pointer newPointer)
+    mouse_pointer::~mouse_pointer()
     {
-        if (!s_ready || newPointer == s_current || newPointer >= mouse_pointer::COUNT) return;
+        if (!_ready) return;
 
-        s_current       = newPointer;
-        auto const idx  = to<int>(newPointer);
-        spriteSetBitmap(s_pCurrentPointer0, s_pPointersLo[idx]);
-        spriteSetBitmap(s_pCurrentPointer1, s_pPointersHi[idx]);
+        for (auto idx = 0; idx < ROLE_COUNT; idx++)
+        {
+            bitmapDestroy(_low[idx]);
+            bitmapDestroy(_high[idx]);
+        }
+
+        spriteRemove(_sprite0);
+        spriteRemove(_sprite1);
+
+        systemSetDmaBit(DMAB_SPRITE, 0);
+        spriteManagerDestroy();
     }
 
-    void mousePointerSetVisible(bool visible)
+    void mouse_pointer::switch_to(pointer_role role)
+    {
+        if (!_ready || role == _current || role >= pointer_role::COUNT) return;
+
+        _current       = role;
+        auto const idx = to<int>(role);
+        spriteSetBitmap(_sprite0, _low[idx]);
+        spriteSetBitmap(_sprite1, _high[idx]);
+    }
+
+    void mouse_pointer::set_visible(bool visible)
     {
         // spriteSetEnabled() schedules a copper regeneration for both buffers,
         // so this is guarded rather than left idempotent: every scene load would
         // otherwise pay for a regeneration it does not need.
-        if (!s_ready || visible == s_visible) return;
+        if (!_ready || visible == _visible) return;
 
-        s_visible = visible;
-        spriteSetEnabled(s_pCurrentPointer0, visible ? 1 : 0);
-        spriteSetEnabled(s_pCurrentPointer1, visible ? 1 : 0);
+        _visible = visible;
+        spriteSetEnabled(_sprite0, visible ? 1 : 0);
+        spriteSetEnabled(_sprite1, visible ? 1 : 0);
     }
 
-    void mousePointerUpdate(void)
+    void mouse_pointer::update()
     {
-        if (!s_ready) return;
+        if (!_ready) return;
 
         // The sheet marks where inside the frame the cursor actually points, so
         // the sprite trails the mouse by that much for the tip to land on it.
-        auto const& hotspot = s_hotspots[to<int>(s_current)];
+        auto const& hotspot = _hotspots[to<int>(_current)];
 
-        s_pCurrentPointer0->wX = to<WORD>(mouseGetX(MOUSE_PORT_1) - hotspot.x);
-        s_pCurrentPointer0->wY = to<WORD>(mouseGetY(MOUSE_PORT_1) - hotspot.y);
-        s_pCurrentPointer1->wX = s_pCurrentPointer0->wX;
-        s_pCurrentPointer1->wY = s_pCurrentPointer0->wY;
-        spriteRequestMetadataUpdate(s_pCurrentPointer0);
-        spriteRequestMetadataUpdate(s_pCurrentPointer1);
+        _sprite0->wX = to<WORD>(mouseGetX(MOUSE_PORT_1) - hotspot.x);
+        _sprite0->wY = to<WORD>(mouseGetY(MOUSE_PORT_1) - hotspot.y);
+        _sprite1->wX = _sprite0->wX;
+        _sprite1->wY = _sprite0->wY;
+        spriteRequestMetadataUpdate(_sprite0);
+        spriteRequestMetadataUpdate(_sprite1);
 
         spriteProcessChannel(0);
         spriteProcessChannel(1);
-        spriteProcess(s_pCurrentPointer0);
-        spriteProcess(s_pCurrentPointer1);
-    }
-
-    void mousePointerDestroy(void)
-    {
-        if (!s_ready) return;
-        s_ready = false;
-
-        for (auto idx = 0; idx < POINTER_COUNT; idx++)
-        {
-            bitmapDestroy(s_pPointersLo[idx]);
-            bitmapDestroy(s_pPointersHi[idx]);
-        }
-
-        spriteRemove(s_pCurrentPointer0);
-        spriteRemove(s_pCurrentPointer1);
-
-        systemSetDmaBit(DMAB_SPRITE, 0);
-        spriteManagerDestroy();
+        spriteProcess(_sprite0);
+        spriteProcess(_sprite1);
     }
 }  // namespace NEONengine

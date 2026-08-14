@@ -27,10 +27,10 @@ namespace NEONengine
     class scene_runtime
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
-        scene_runtime(game_data& data, asset_cache& cache)
+        scene_runtime(game_data& data, asset_cache& cache, mouse_pointer& pointer)
             : _bobs(data, cache),
               _sound_effects(data, cache),
-              _hotspots(data, _bobs, _sound_effects),
+              _hotspots(data, _bobs, _sound_effects, pointer),
               _timeline(data, _bobs, _sound_effects)
         {
         }

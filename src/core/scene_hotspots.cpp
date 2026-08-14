@@ -187,7 +187,7 @@ namespace NEONengine
         if (_count == 0)
         {
             _bobs.hide_caption();
-            mousePointerSwitch(mouse_pointer::DEFAULT);
+            _pointer.switch_to(pointer_role::DEFAULT);
             _was_down = is_down;
             return;
         }
@@ -244,9 +244,9 @@ namespace NEONengine
         // The pointer shows what the hotspot under it would do, and falls back
         // to the plain arrow over open scenery.
         auto const role = (hit != NO_HOTSPOT)
-            ? to<mouse_pointer>(scene_records()[hit].cursor)
-            : mouse_pointer::DEFAULT;
-        mousePointerSwitch(role);
+            ? to<pointer_role>(scene_records()[hit].cursor)
+            : pointer_role::DEFAULT;
+        _pointer.switch_to(role);
 
         bool const pressed_edge  = is_down && !_was_down;
         bool const released_edge = !is_down && _was_down;

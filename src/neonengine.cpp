@@ -122,6 +122,8 @@ namespace NEONengine
             NE_LOG("The project ships no UI nine-patch");
         }
 
+        auto pointer = mouse_pointer_ptr(new (mtl::MemF::Fast) mouse_pointer(*gd, *assets));
+
         // English is the one language the format guarantees is present, so it is
         // the boot language; set_language() swaps to another once one is chosen.
         auto strings = string_table::create(language::EN);
@@ -141,6 +143,7 @@ namespace NEONengine
         auto result            = engine_ptr(new (mtl::MemF::Fast) engine());
         result->_pGameData     = mtl::move(gameData.value());
         result->_assets        = mtl::move(assets);
+        result->_pointer       = mtl::move(pointer);
         result->_pUiFont       = mtl::move(uiFont);
         result->_pTextRenderer = mtl::move(textRenderer.value());
         result->_pNinePatch    = mtl::move(uiFrame);
@@ -229,7 +232,8 @@ namespace NEONengine
 
     void engine::open_scene() noexcept
     {
-        _scene = scene_runtime_ptr(new (mtl::MemF::Fast) scene_runtime(data(), assets()));
+        _scene = scene_runtime_ptr(
+            new (mtl::MemF::Fast) scene_runtime(data(), assets(), pointer()));
     }
 
     void engine::close_scene() noexcept

@@ -49,7 +49,7 @@ namespace NEONengine
     {
         // Nothing else runs while the stats are up, so the sprite would sit
         // where it was until they came down.
-        mousePointerUpdate();
+        g_pEngine->pointer().update();
 
         ULONG ulNow = timerGet();
         ULONG ulDelta = timerGetDelta(s_ulDelta, ulNow);
