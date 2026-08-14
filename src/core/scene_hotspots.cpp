@@ -89,7 +89,7 @@ namespace NEONengine
         _pressed = NO_HOTSPOT;
         // The loop was blocked through the load, so whatever the button did in
         // that time went unseen; the next update resamples instead of guessing.
-        _resyncButton = true;
+        _resync_button = true;
         _enabled.clear();
         _bobs.hide_caption();
     }
@@ -165,7 +165,7 @@ namespace NEONengine
 
     void scene_hotspots::resync_button()
     {
-        _resyncButton = true;
+        _resync_button = true;
     }
 
     void scene_hotspots::update()
@@ -175,9 +175,9 @@ namespace NEONengine
         // A transition blocks or skips this update for many frames, so the
         // button may have moved unseen. Adopt its state without inventing an
         // edge, or a press begun during a load would activate in the new scene.
-        if (_resyncButton)
+        if (_resync_button)
         {
-            _resyncButton = false;
+            _resync_button = false;
             _was_down     = is_down;
         }
 

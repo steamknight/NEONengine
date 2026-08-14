@@ -141,21 +141,21 @@ namespace NEONengine
         }
 
         auto result            = engine_ptr(new (mtl::MemF::Fast) engine());
-        result->_pGameData     = mtl::move(gameData.value());
+        result->_game_data     = mtl::move(gameData.value());
         result->_assets        = mtl::move(assets);
         result->_pointer       = mtl::move(pointer);
-        result->_pUiFont       = mtl::move(uiFont);
-        result->_pTextRenderer = mtl::move(textRenderer.value());
-        result->_pNinePatch    = mtl::move(uiFrame);
-        result->_pStrings      = mtl::move(strings.value());
+        result->_ui_font       = mtl::move(uiFont);
+        result->_text_renderer = mtl::move(textRenderer.value());
+        result->_nine_patch    = mtl::move(uiFrame);
+        result->_strings      = mtl::move(strings.value());
 
         // The playthrough's memory of what the player has read and taken, sized
         // from the data just loaded. Nothing reads or writes it yet.
-        result->_session.create_from(*result->_pGameData);
+        result->_session.create_from(*result->_game_data);
         result->_session.set_invalid_item_id_reporter(report_invalid_inventory_item_id);
 
-        auto const scripts   = result->_pGameData->scripts();
-        auto const functions = result->_pGameData->function_offsets();
+        auto const scripts   = result->_game_data->scripts();
+        auto const functions = result->_game_data->function_offsets();
         result->_vm          = noir_vm_ptr(new (mtl::MemF::Fast) noir_vm(  //
             result->_session.get_flags(),
             result->_session.get_values(),
@@ -183,7 +183,7 @@ namespace NEONengine
 
         auto lang_id = _pending_language.take();
 
-        if (_pStrings && _pStrings->language_id() == lang_id) return;
+        if (_strings && _strings->language_id() == lang_id) return;
 
         // Load first, swap second: on failure the current table stays live.
         mtl::system_use_guard guard;
@@ -197,7 +197,7 @@ namespace NEONengine
             return;
         }
 
-        if (!matches_build(*_pGameData, *strings.value()))
+        if (!matches_build(*_game_data, *strings.value()))
         {
             // TODO: tell the player, once there is a message for it.
             NE_LOG("Language '%s' is from another build; keeping the current one.",
@@ -205,13 +205,13 @@ namespace NEONengine
             return;
         }
 
-        _pStrings = mtl::move(strings.value());
+        _strings = mtl::move(strings.value());
         _language_changed = true;
 
         // The language's own name proves the table really swapped. Records
         // always carry a terminator, so the view goes straight to "%s".
         NE_LOG("language is now '%s' (%s)",
-            language_code(lang_id), _pStrings->language_name().data());
+            language_code(lang_id), _strings->language_name().data());
     }
 
     void engine::update_input() noexcept

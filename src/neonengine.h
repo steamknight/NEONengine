@@ -196,8 +196,8 @@ namespace NEONengine
         using result = mtl::expected<engine_ptr, error_code>;
 
         public:  //////////////////////////////////////////////////////////////////////////////////
-        tFont* default_font() noexcept { return _pUiFont.get(); }
-        text_renderer* default_text_renderer() noexcept { return _pTextRenderer.get(); }
+        tFont* default_font() noexcept { return _ui_font.get(); }
+        text_renderer* default_text_renderer() noexcept { return _text_renderer.get(); }
 
         /**
          * @brief The frame every box of text is drawn in.
@@ -207,9 +207,9 @@ namespace NEONengine
          *
          * @return Null when the project ships no nine-patch.
          */
-        nine_patch* default_nine_patch() noexcept { return _pNinePatch.get(); }
+        nine_patch* default_nine_patch() noexcept { return _nine_patch.get(); }
 
-        game_data& data() noexcept { return *_pGameData; }
+        game_data& data() noexcept { return *_game_data; }
 
         /** @brief The Fast RAM cache asset reads go through. */
         asset_cache& assets() noexcept { return *_assets; }
@@ -227,10 +227,10 @@ namespace NEONengine
 
 
         /** @brief The active language's strings. */
-        string_table& strings() noexcept { return *_pStrings; }
+        string_table& strings() noexcept { return *_strings; }
 
         /** @brief The language currently loaded. */
-        language current_language() const noexcept { return _pStrings->language_id(); }
+        language current_language() const noexcept { return _strings->language_id(); }
 
         /**
          * @brief Post a system request - a scene change, a save, a new game.
@@ -359,15 +359,15 @@ namespace NEONengine
 
         private:  //////////////////////////////////////////////////////////////////////////////////
 
-        game_data_ptr                    _pGameData{ nullptr };
+        game_data_ptr                    _game_data{ nullptr };
         // Declared after the game data: it borrows that object's pak, so it has
         // to go down first.
         asset_cache_ptr                  _assets{ nullptr };
         mouse_pointer_ptr                _pointer{ nullptr };
-        ace::font_ptr                    _pUiFont{ nullptr };
-        text_renderer_ptr                _pTextRenderer{ nullptr };
-        mtl::unique_ptr<nine_patch>      _pNinePatch{ nullptr };
-        string_table_ptr                 _pStrings{ nullptr };
+        ace::font_ptr                    _ui_font{ nullptr };
+        text_renderer_ptr                _text_renderer{ nullptr };
+        mtl::unique_ptr<nine_patch>      _nine_patch{ nullptr };
+        string_table_ptr                 _strings{ nullptr };
         noir_vm_ptr                      _vm{ nullptr };
 
         // Current game session, overwriten on new/save/load game.

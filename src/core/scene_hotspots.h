@@ -129,7 +129,7 @@ namespace NEONengine
         u16 _hovered = NO_HOTSPOT;  ///< Scene-local index under the pointer.
         u16 _pressed = NO_HOTSPOT;  ///< Scene-local index the press latched onto.
         bool _was_down     = false;  ///< Last frame's button state, for edges.
-        bool _resyncButton = false;  ///< Adopt the button state, skip edges.
+        bool _resync_button = false;  ///< Adopt the button state, skip edges.
 
         /// Scene-space box enclosing every hotspot; maxima are exclusive.
         u16 _min_x = 0;

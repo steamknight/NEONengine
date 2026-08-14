@@ -123,11 +123,11 @@ namespace NEONengine
         void ensure_line_bitmap(u16 width);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
-        tFont* _pFont;
-        mtl::vector<char> _scratchArea;
-        mtl::array<u16, 256> _glyphCache;
-        ace::text_bitmap_ptr _pLineBitmap;
-        u16 _lineBitmapWidth;
+        tFont* _font;
+        mtl::vector<char> _scratch_area;
+        mtl::array<u16, 256> _glyph_cache;
+        ace::text_bitmap_ptr _line_bitmap;
+        u16 _line_bitmap_width;
     };
 
 }  // namespace NEONengine

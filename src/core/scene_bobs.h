@@ -259,16 +259,16 @@ namespace NEONengine
         /// Scene-local GFXI index -> index into _assets, or NO_BOB.
         /// An instance naming a missing graphic, or whose frames fail to load,
         /// registers no bob, so the two are not the same numbering.
-        mtl::vector<u16> _instanceBob;
+        mtl::vector<u16> _instance_bob;
 
         /// Hotspot state graphics, drawn above the instances.
-        mtl::vector<graphic_asset> _hotspotAssets;
+        mtl::vector<graphic_asset> _hotspot_assets;
 
-        /// Scene-local hotspot index -> index into _hotspotAssets, or NO_BOB.
+        /// Scene-local hotspot index -> index into _hotspot_assets, or NO_BOB.
         /// Most hotspots carry no graphic, so the mapping is kept out of line.
-        mtl::vector<u16> _hotspotBob;
+        mtl::vector<u16> _hotspot_bob;
 
-        bool _managerReady = false;
+        bool _manager_ready = false;
 
         // Hover captions. A bob blits its frame through its mask, so a single
         // bitmap flooded with the caption color serves as the frame for every
@@ -276,17 +276,17 @@ namespace NEONengine
         // and the height, with nothing to render, allocate or blit at hover time.
 
         /// Every pixel is CAPTION_COLOR; the mask decides which ones land.
-        ace::bitmap_ptr _captionInk{ nullptr };
+        ace::bitmap_ptr _caption_ink{ nullptr };
 
         /// Scene-local hotspot index -> its caption; empty entries render nothing.
         mtl::vector<caption> _captions;
 
-        tBob _captionBob{};
-        bool _captionReady   = false;  ///< A caption bob was registered this scene.
-        bool _captionVisible = false;  ///< It should be drawn this frame.
+        tBob _caption_bob{};
+        bool _caption_ready   = false;  ///< A caption bob was registered this scene.
+        bool _caption_visible = false;  ///< It should be drawn this frame.
 
         /// The fixed height the caption bob and every mask are built at.
-        u16 _captionBoxHeight = 0;
+        u16 _caption_box_height = 0;
     };
 }  // namespace NEONengine
 

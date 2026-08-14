@@ -71,7 +71,7 @@ namespace NEONengine
             }
 
             // Measure width (1px inter-character spacing per ACE font spec)
-            u32 const glyphWidth = _glyphCache[to<u8>(c)] + 1;
+            u32 const glyphWidth = _glyph_cache[to<u8>(c)] + 1;
             lineWidth += glyphWidth;
 
             // Soft wrap when exceeding maxWidth (0 = no wrapping)
@@ -107,9 +107,9 @@ namespace NEONengine
     }
 
     text_renderer::text_renderer(tFont* pFont)
-        : _pFont(pFont)
-        , _pLineBitmap(nullptr)
-        , _lineBitmapWidth(0)
+        : _font(pFont)
+        , _line_bitmap(nullptr)
+        , _line_bitmap_width(0)
     {
         ACE_LOG_BLOCK("NEONengine::text_renderer::text_renderer");
 
@@ -121,10 +121,10 @@ namespace NEONengine
 
         for (auto glyph = 0; glyph < 256; ++glyph)
         {
-            _glyphCache[glyph] = fontGlyphWidth(_pFont, (char)glyph);
+            _glyph_cache[glyph] = fontGlyphWidth(_font, (char)glyph);
         }
 
-        _scratchArea.resize(DEFAULT_SCRATCH_CAPACITY);
+        _scratch_area.resize(DEFAULT_SCRATCH_CAPACITY);
     }
 
     text_renderer::result text_renderer::create(tFont* pFont)
@@ -141,14 +141,14 @@ namespace NEONengine
     void text_renderer::ensure_line_bitmap(u16 width)
     {
         auto const alignedWidth = mtl::round_up<16>(width);
-        if (_pLineBitmap && _lineBitmapWidth >= alignedWidth) { return; }
+        if (_line_bitmap && _line_bitmap_width >= alignedWidth) { return; }
 
         systemUse();
-        _pLineBitmap = ace::fontCreateTextBitMap(
-            alignedWidth, mtl::round_up<16>(_pFont->uwHeight));
+        _line_bitmap = ace::fontCreateTextBitMap(
+            alignedWidth, mtl::round_up<16>(_font->uwHeight));
         systemUnuse();
 
-        _lineBitmapWidth = alignedWidth;
+        _line_bitmap_width = alignedWidth;
     }
 
     u32 text_renderer::lay_out_lines(bstr_view const& text, u16 maxWidth, line_data* pLines)
@@ -181,14 +181,14 @@ namespace NEONengine
 
     text_extent text_renderer::measure_text(bstr_view const& text, u16 maxWidth)
     {
-        if (text.is_empty() || !_pFont) return text_extent{};
+        if (text.is_empty() || !_font) return text_extent{};
 
         auto lines          = mtl::array<line_data, MAX_LINES>();
         u32 const lineCount = lay_out_lines(text, maxWidth, lines.begin());
         if (lineCount == 0) return text_extent{};
 
         return text_extent{ content_width(lines.begin(), lineCount, maxWidth),
-            to<u16>(_pFont->uwHeight * lineCount) };
+            to<u16>(_font->uwHeight * lineCount) };
     }
 
     ace::text_bitmap_ptr text_renderer::create_text(bstr_view const& text,
@@ -201,7 +201,7 @@ namespace NEONengine
             return ace::text_bitmap_ptr(nullptr);
         }
 
-        if (!_pFont)
+        if (!_font)
         {
             NE_LOG("Default font is not initialized.");
             return ace::text_bitmap_ptr(nullptr);
@@ -219,7 +219,7 @@ namespace NEONengine
         u16 const contentWidth = content_width(lines.begin(), lineCount, maxWidth);
 
         // Allocate the result bitmap
-        u16 height = _pFont->uwHeight * lineCount;
+        u16 height = _font->uwHeight * lineCount;
         auto pResult
             = ace::fontCreateTextBitMap(mtl::round_up<16>(contentWidth), mtl::round_up<16>(height));
 
@@ -239,20 +239,20 @@ namespace NEONengine
             auto lineLength = line.length();
             if (lineLength == 0) continue;
 
-            if (_scratchArea.size() < lineLength + 1) { _scratchArea.resize(lineLength + 1); }
+            if (_scratch_area.size() < lineLength + 1) { _scratch_area.resize(lineLength + 1); }
 
             char const* srcStart = text.data() + line.start;
-            memcpy(_scratchArea.data(), srcStart, lineLength);
-            _scratchArea[lineLength] = '\0';
+            memcpy(_scratch_area.data(), srcStart, lineLength);
+            _scratch_area[lineLength] = '\0';
 
-            fontFillTextBitMap(_pFont, _pLineBitmap.get(), _scratchArea.data());
-            NE_LOG("-> %s", _scratchArea.data());
+            fontFillTextBitMap(_font, _line_bitmap.get(), _scratch_area.data());
+            NE_LOG("-> %s", _scratch_area.data());
 
             // Justified within the text's own width, not the width it was
             // allowed, so the bitmap holds no empty margin for a caller to
             // draw a box around.
-            u16 const slack = contentWidth > _pLineBitmap->uwActualWidth
-                ? to<u16>(contentWidth - _pLineBitmap->uwActualWidth)
+            u16 const slack = contentWidth > _line_bitmap->uwActualWidth
+                ? to<u16>(contentWidth - _line_bitmap->uwActualWidth)
                 : u16(0);
 
             u16 x = 0;
@@ -267,7 +267,7 @@ namespace NEONengine
             }
 
             fontDrawTextBitMap(
-                pResult->pBitMap, _pLineBitmap.get(), x, idx * _pFont->uwHeight, 1, 0);
+                pResult->pBitMap, _line_bitmap.get(), x, idx * _font->uwHeight, 1, 0);
         }
 
         return pResult;

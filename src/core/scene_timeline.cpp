@@ -342,21 +342,21 @@ namespace NEONengine
         reverse(entries, first, to<u16>(first + steps - 1));
         reverse(entries, to<u16>(first + steps), last);
 
-        if (_paletteDirtyFirst == NO_ENTRY || first < _paletteDirtyFirst)
+        if (_palette_dirty_first == NO_ENTRY || first < _palette_dirty_first)
         {
-            _paletteDirtyFirst = first;
+            _palette_dirty_first = first;
         }
-        if (_paletteDirtyLast < last) _paletteDirtyLast = last;
+        if (_palette_dirty_last < last) _palette_dirty_last = last;
     }
 
     void scene_timeline::commit_palette()
     {
-        if (_paletteDirtyFirst == NO_ENTRY) return;
+        if (_palette_dirty_first == NO_ENTRY) return;
 
-        u16 const first = _paletteDirtyFirst;
-        u16 const last  = _paletteDirtyLast;
-        _paletteDirtyFirst = NO_ENTRY;
-        _paletteDirtyLast  = 0;
+        u16 const first = _palette_dirty_first;
+        u16 const last  = _palette_dirty_last;
+        _palette_dirty_first = NO_ENTRY;
+        _palette_dirty_last  = 0;
 
         // A fade rebuilds the display from the reference for the whole palette
         // this frame anyway, and it runs after this does, so it will carry the

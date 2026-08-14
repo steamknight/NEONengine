@@ -467,8 +467,8 @@ namespace NEONengine
         mtl::vector<cycle_span> _cycles;
 
         /// Lowest and highest palette entry turned since the last commit, inclusive.
-        u16 _paletteDirtyFirst = NO_ENTRY;
-        u16 _paletteDirtyLast  = 0;
+        u16 _palette_dirty_first = NO_ENTRY;
+        u16 _palette_dirty_last  = 0;
     };
 }  // namespace NEONengine
 

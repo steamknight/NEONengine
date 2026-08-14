@@ -64,23 +64,23 @@ namespace NEONengine
         auto* pFront = screenGetFrontBuffer(g_mainScreen);
         auto* pBack  = screenGetBackBuffer(g_mainScreen);
         bobManagerCreate(pFront, pBack, pBack->Rows);
-        _managerReady = true;
+        _manager_ready = true;
     }
 
     scene_bobs::~scene_bobs()
     {
         _assets.clear();
-        _instanceBob.clear();
-        _hotspotAssets.clear();
-        _hotspotBob.clear();
+        _instance_bob.clear();
+        _hotspot_assets.clear();
+        _hotspot_bob.clear();
         _captions.clear();
-        _captionInk     = nullptr;
-        _captionReady   = false;
-        _captionVisible = false;
-        if (_managerReady)
+        _caption_ink     = nullptr;
+        _caption_ready   = false;
+        _caption_visible = false;
+        if (_manager_ready)
         {
             bobManagerDestroy();
-            _managerReady = false;
+            _manager_ready = false;
         }
     }
 
@@ -95,8 +95,8 @@ namespace NEONengine
 
     scene_bobs::graphic_asset* scene_bobs::instance_at(u16 index)
     {
-        if (index >= _instanceBob.size()) return nullptr;
-        u16 const slot = _instanceBob[index];
+        if (index >= _instance_bob.size()) return nullptr;
+        u16 const slot = _instance_bob[index];
         if (slot == NO_BOB) return nullptr;
         return &_assets[slot];
     }
@@ -142,12 +142,12 @@ namespace NEONengine
         // Sized to every hotspot so the mapping is indexed directly; the
         // assets themselves are reserved for the worst case so that neither
         // vector moves after bobInit() has taken pointers into them.
-        _hotspotBob.reserve(hotspots.size());
-        _hotspotAssets.reserve(hotspots.size());
+        _hotspot_bob.reserve(hotspots.size());
+        _hotspot_assets.reserve(hotspots.size());
 
         for (u16 i = 0; i < hotspots.size(); ++i)
         {
-            _hotspotBob.push_back(NO_BOB);
+            _hotspot_bob.push_back(NO_BOB);
 
             data::hotspot const& hotspot = hotspots[i];
             if (hotspot.graphic_id == data::NO_ID) continue;
@@ -171,10 +171,10 @@ namespace NEONengine
             if (!load_graphic(gfx, pPalette, asset)) continue;
 
             asset.visible = true;
-            _hotspotAssets.push_back(mtl::move(asset));
-            _hotspotBob[i] = to<u16>(_hotspotAssets.size() - 1);
+            _hotspot_assets.push_back(mtl::move(asset));
+            _hotspot_bob[i] = to<u16>(_hotspot_assets.size() - 1);
 
-            graphic_asset& stored      = _hotspotAssets.back();
+            graphic_asset& stored      = _hotspot_assets.back();
             auto const [pFrame, pMask] = frame_at(stored, 0);
             auto const at              = hotspot.bounds.pos + screenOffset;
             bobInit(&stored.bob,
@@ -256,36 +256,36 @@ namespace NEONengine
 
     void scene_bobs::load_captions(data::scene const& scene)
     {
-        _captionReady   = false;
-        _captionVisible = false;
+        _caption_ready   = false;
+        _caption_visible = false;
 
         u16 const maxHeight = caption_max_height();
         if (maxHeight == 0) return;
         if (!render_captions(scene, maxHeight)) return;
 
-        if (!_captionInk)
+        if (!_caption_ink)
         {
-            _captionInk = ace::bitmapCreate(CAPTION_MAX_WIDTH,
+            _caption_ink = ace::bitmapCreate(CAPTION_MAX_WIDTH,
                 maxHeight,
                 screenGetBackBuffer(g_mainScreen)->Depth,
                 BMF_INTERLEAVED);
-            if (!_captionInk) return;
-            blitRect(_captionInk.get(), 0, 0, CAPTION_MAX_WIDTH, maxHeight, CAPTION_COLOR);
+            if (!_caption_ink) return;
+            blitRect(_caption_ink.get(), 0, 0, CAPTION_MAX_WIDTH, maxHeight, CAPTION_COLOR);
         }
 
         // One fixed size for the bob's whole life, so the undraw background
         // saved on one frame is always the same byte count restored on the
         // next. The mask is supplied when a caption is actually shown.
-        bobInit(&_captionBob,
+        bobInit(&_caption_bob,
             CAPTION_MAX_WIDTH,
             maxHeight,
             1,
-            _captionInk->Planes[0],
+            _caption_ink->Planes[0],
             nullptr,
             0,
             0);
-        _captionBoxHeight = maxHeight;
-        _captionReady     = true;
+        _caption_box_height = maxHeight;
+        _caption_ready     = true;
     }
 
     void scene_bobs::load(data::scene const& scene)
@@ -295,9 +295,9 @@ namespace NEONengine
         // kinds are registered below, between this reset and that single call.
         bobManagerReset();
         _assets.clear();
-        _instanceBob.clear();
-        _hotspotAssets.clear();
-        _hotspotBob.clear();
+        _instance_bob.clear();
+        _hotspot_assets.clear();
+        _hotspot_bob.clear();
         _captions.clear();
 
         auto instances = scene.graphic_instance_range.of(_data.graphic_instances());
@@ -316,13 +316,13 @@ namespace NEONengine
             // both stay valid, so the storage must not move after bobInit():
             // reserve the worst case up front.
             _assets.reserve(instances.size());
-            _instanceBob.reserve(instances.size());
+            _instance_bob.reserve(instances.size());
 
             for (u16 i = 0; i < instances.size(); ++i)
             {
                 // Every instance gets an entry, so a caller can index by the
                 // scene-local id whether or not this one ended up drawable.
-                _instanceBob.push_back(NO_BOB);
+                _instance_bob.push_back(NO_BOB);
 
                 data::graphic_instance const& inst = instances[i];
                 if (inst.graphic_id >= graphics.size()) continue;
@@ -334,7 +334,7 @@ namespace NEONengine
                 asset.visible     = (inst.flags & GFXI_FLAG_VISIBLE) != 0;
                 asset.frame_delay = gfx.frame_delay;
                 _assets.push_back(mtl::move(asset));
-                _instanceBob[i] = to<u16>(_assets.size() - 1);
+                _instance_bob[i] = to<u16>(_assets.size() - 1);
 
                 // frames/mask now live in the asset; resolve frame 0 from that
                 // stable storage and register the bob on it.
@@ -360,24 +360,24 @@ namespace NEONengine
         // zero-height bitmaps, which it reports as errors. A scene with no
         // graphics at all simply leaves the manager unsized; draw() skips it as
         // well.
-        if (!_assets.empty() || !_hotspotAssets.empty() || _captionReady)
+        if (!_assets.empty() || !_hotspot_assets.empty() || _caption_ready)
         {
             bobReallocateBuffers();
         }
 
         NE_LOG("%lu bob(s), %lu hotspot graphic(s), caption %s",
             to<ULONG>(_assets.size()),
-            to<ULONG>(_hotspotAssets.size()),
-            _captionReady ? "ready" : "none");
+            to<ULONG>(_hotspot_assets.size()),
+            _caption_ready ? "ready" : "none");
     }
 
     void scene_bobs::set_hotspot_frame(u16 index, hotspot_frame frame)
     {
-        if (index >= _hotspotBob.size()) return;
-        u16 const slot = _hotspotBob[index];
+        if (index >= _hotspot_bob.size()) return;
+        u16 const slot = _hotspot_bob[index];
         if (slot == NO_BOB) return;
 
-        graphic_asset& asset = _hotspotAssets[slot];
+        graphic_asset& asset = _hotspot_assets[slot];
         auto const wanted    = to<u8>(frame);
         if (asset.frame_index == wanted) return;
 
@@ -435,7 +435,7 @@ namespace NEONengine
 
     void scene_bobs::draw()
     {
-        if (_assets.empty() && _hotspotAssets.empty() && !_captionReady) return;
+        if (_assets.empty() && _hotspot_assets.empty() && !_caption_ready) return;
 
         // The main loop flips the double buffer every frame, but the bob manager
         // only advances while this state runs. An overlay state (e.g. the F1 debug
@@ -452,19 +452,19 @@ namespace NEONengine
         }
         // Hotspot graphics sit above the placed instances: they are interactive
         // affordances, so being hidden behind scenery would misinform the player.
-        for (auto& asset : _hotspotAssets)
+        for (auto& asset : _hotspot_assets)
         {
             bobPush(&asset.bob);
         }
         // The caption names what the pointer is over, so nothing may cover it.
-        if (_captionVisible) bobPush(&_captionBob);
+        if (_caption_visible) bobPush(&_caption_bob);
         bobEnd();
     }
 
     void scene_bobs::show_caption(u16 index, u16 anchorX, u16 anchorY)
     {
-        _captionVisible = false;
-        if (!_captionReady || index >= _captions.size()) return;
+        _caption_visible = false;
+        if (!_caption_ready || index >= _captions.size()) return;
 
         caption const& text = _captions[index];
         if (!text.mask || text.height == 0) return;
@@ -477,7 +477,7 @@ namespace NEONengine
         // The box is always the full height even when the text is shorter, so it
         // is the box that has to stay on screen.
         WORD const top    = to<WORD>(screenGetOffset(g_mainScreen).y);
-        WORD const bottom = to<WORD>(top + SCREEN_HEIGHT - _captionBoxHeight);
+        WORD const bottom = to<WORD>(top + SCREEN_HEIGHT - _caption_box_height);
 
         // Below the pointer by preference, above it when that would run off the
         // bottom, so the caption stays with the pointer instead of being pinned
@@ -489,24 +489,24 @@ namespace NEONengine
         if (y > bottom) y = to<WORD>(anchorY) - CAPTION_AIR - to<WORD>(text.height);
         y = MAX(top, MIN(y, bottom));
 
-        bobSetFrame(&_captionBob, _captionInk->Planes[0], text.mask->Planes[0]);
-        _captionBob.sPos.uwX = to<UWORD>(x);
-        _captionBob.sPos.uwY = to<UWORD>(y);
-        _captionVisible      = true;
+        bobSetFrame(&_caption_bob, _caption_ink->Planes[0], text.mask->Planes[0]);
+        _caption_bob.sPos.uwX = to<UWORD>(x);
+        _caption_bob.sPos.uwY = to<UWORD>(y);
+        _caption_visible      = true;
     }
 
     void scene_bobs::hide_caption()
     {
-        _captionVisible = false;
+        _caption_visible = false;
     }
 
     void scene_bobs::reload_captions()
     {
-        if (!_captionReady) return;
+        if (!_caption_ready) return;
 
         // The bob points into the old masks, so stop drawing it until the new
         // ones are in place and a hover re-supplies the pointer.
-        _captionVisible = false;
+        _caption_visible = false;
 
         auto const scene_id = g_pEngine->current_scene();
         auto const scenes   = _data.scenes();
