@@ -191,6 +191,7 @@ namespace NEONengine
             UI_PALETTE_LOAD_FAILED,
             FAILED_TO_CREATE_TEXT_RENDERER,
             STRING_TABLE_LOAD_FAILED,
+            BOOT_SCENE_INVALID,
         };
 
         using result = mtl::expected<engine_ptr, error_code>;
@@ -315,27 +316,23 @@ namespace NEONengine
         /**
          * @brief What the current scene is made of.
          *
-         * The scene state opens this as it starts and closes it as it ends,
-         * because the parts it holds want the screen and the pak, and neither
-         * exists when the engine is built. It hangs here because a bridge call
-         * carries an engine and nothing else.
-         *
-         * Live whenever anything can ask for it: every caller runs inside the
-         * scene state, and a box of text or a conversation is pushed over that
-         * state rather than swapped for it. Returned by reference for the same
-         * reason data() and vm() are.
+         * Live from the first scene load until the scene state ends: every
+         * caller runs inside that state, and a box of text or a conversation is
+         * pushed over it rather than swapped for it. Returned by reference for
+         * the same reason data() and vm() are.
          */
         scene_runtime& scene() noexcept { return *_scene; }
 
-        /** @brief Builds the scene runtime, dropping any already open. */
-        void open_scene() noexcept;
+        /** @brief Builds the runtime for @p scene, dropping any already held. */
+        void build_scene(data::scene const& scene) noexcept;
 
         /**
          * @brief Drops the scene runtime and everything it holds.
          *
          * Hands memory back to the OS, so call this under a system-use guard.
+         * Does nothing when none is held.
          */
-        void close_scene() noexcept;
+        void drop_scene() noexcept;
 
         /**
          * @brief Runs one frame, in the order a frame has to happen in.

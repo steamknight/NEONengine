@@ -91,15 +91,6 @@ namespace NEONengine
         {
             auto& gd = g_pEngine->data();
 
-            // The palette about to be loaded lands on top of whatever the
-            // timeline's palette cycles have turned, and their record of how far
-            // they have turned would then describe colors that are no longer
-            // there. Handing the bands back first keeps the two in agreement.
-            // This runs for a language repaint as well as a scene load, and it
-            // has to: that repaint reloads the very same palette, mid-scene,
-            // with cycles still running.
-            g_pEngine->scene().timeline().restore_palette();
-
             if (sc.background_bitmap_id != data::NO_ID)
             {
                 auto const& ref = gd.bitmaps()[sc.background_bitmap_id];
@@ -182,6 +173,13 @@ namespace NEONengine
             show_wait_pointer();
 
             mtl::system_use_guard guard;  // OS on for pak/disk access
+
+            // The palette about to be loaded lands on top of whatever the
+            // timeline's cycles have turned, and their record of how far they
+            // have turned would then describe colors that are no longer there.
+            // The timeline stays live across a repaint, so this hands the bands
+            // back without taking the scene down.
+            g_pEngine->scene().timeline().restore_palette();
             draw_backdrop(scenes[id]);
 
             // Every bob standing over the old backdrop saved its background from
@@ -301,8 +299,9 @@ namespace NEONengine
             {
                 mtl::system_use_guard guard;  // OS on for pak/disk access
 
+                g_pEngine->drop_scene();
                 draw_backdrop(sc);
-                g_pEngine->scene().load(sc);
+                g_pEngine->build_scene(sc);
 
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
@@ -422,7 +421,6 @@ namespace NEONengine
         // 'unused'. Drop to that baseline once (as splash does); load_scene
         // re-enters 'used' briefly via a system_use_guard for each pak access.
         systemUnuse();
-        g_pEngine->open_scene();
         // The boot load blocks for over a second with the pointer on screen, and
         // draw_backdrop only settles the band once it has the scene in hand.
         screenSetCursorBandExempt(g_mainScreen, true);
@@ -540,7 +538,7 @@ namespace NEONengine
         // that was still up owes nothing to anyone.
         g_pEngine->vm().reset_execution();
 
-        g_pEngine->close_scene();
+        g_pEngine->drop_scene();
         musicFree();
         logBlockEnd("State: Scene");
     }

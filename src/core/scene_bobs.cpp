@@ -63,15 +63,16 @@ namespace NEONengine
         return ink;
     }
 
-    scene_bobs::scene_bobs(game_data& data, asset_cache& cache) : _data(data), _cache(cache)
-    {
-        // ACE forbids bobInit() once bobReallocateBuffers() has run for a set,
-        // so the previous scene's set is forgotten before this one registers.
-        bobManagerReset();
-    }
+    scene_bobs::scene_bobs(game_data& data, asset_cache& cache) : _data(data), _cache(cache) {}
 
     scene_bobs::~scene_bobs()
     {
+        // Before the storage it points into goes: the manager belongs to the
+        // screen and outlives this, so leaving it holding this scene's set would
+        // leave it holding freed bitmaps. It is also what lets the next scene
+        // call bobInit(), which ACE forbids once bobReallocateBuffers() has run.
+        bobManagerReset();
+
         _assets.clear();
         _instance_bob.clear();
         _hotspot_assets.clear();
@@ -278,16 +279,6 @@ namespace NEONengine
 
     void scene_bobs::load(data::scene const& scene)
     {
-        // Forget the previous scene's bobs so a fresh set can be registered; ACE
-        // forbids bobInit() once bobReallocateBuffers() has run for a set. Both
-        // kinds are registered below, between this reset and that single call.
-        bobManagerReset();
-        _assets.clear();
-        _instance_bob.clear();
-        _hotspot_assets.clear();
-        _hotspot_bob.clear();
-        _captions.clear();
-
         auto instances = scene.graphic_instance_range.of(_data.graphic_instances());
         auto graphics  = _data.graphics();
 

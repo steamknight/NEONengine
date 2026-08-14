@@ -33,9 +33,7 @@ The goals the work is measured against:
 
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
-4a, 4b and 1 are done. Item 2 is half done: four modules have moved, the asset
-cache and the mouse pointer are now the engine's, and per-scene construction is
-left.
+4a, 4b and 1 are done. Item 2 is done.
 
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
 context, went first: mechanical, self-contained, and what unlocks every later
@@ -146,17 +144,16 @@ order is what actually retires them.
 
 ## 2. The `scene_*` modules become objects
 
-**Half done.** Four modules have moved and a fifth was folded away; the rest of
-this section records what landed, and what is left.
+**Done.**
 
-**Now.** `scene_bobs`, `scene_timeline`, `scene_hotspots`, `scene_audio`,
+**Was.** `scene_bobs`, `scene_timeline`, `scene_hotspots`, `scene_audio`,
 `scene_text`, `mouse_pointer`, `dialogue_portraits`, `asset_cache` and
-`palette_cycle` are free functions over file-static state — around fifty `s_*`
-variables, eleven in `scene_bobs.cpp` alone. Each carries a `_load`/`_clear` pair
-that `sceneCreate` and `sceneDestroy` must call, in order, by hand.
+`palette_cycle` were free functions over file-static state — around fifty `s_*`
+variables, eleven in `scene_bobs.cpp` alone. Each carried a `_load`/`_clear` pair
+that `sceneCreate` and `sceneDestroy` had to call, in order, by hand.
 
 **Change.** One class per module, the `s_*` state as members, the destructor
-doing what `_clear()` does. A `scene_runtime` holds them by value in teardown
+doing what `_clear()` did. A `scene_runtime` holds them by value in teardown
 order. No virtuals: same memory, same generated code.
 
 **A correction to the list.** Nine modules were named here. Only four belong in
@@ -233,17 +230,38 @@ straight after `stateManagerDestroy`, because the pointer's destructor reads the
 view and the OS, and both used to be gone by the time global destructors ran.
 Anything the engine gains that touches ACE state depends on that ordering.
 
-**Left for the second half.** The move from a long-lived runtime with `load()`
-to one constructed per scene, which is what would delete the last
-`_load`/`_clear` pair.
+**Left for the second half.** Nothing. The runtime is built per scene: its
+constructor takes the scene and does what `load()` did, its destructor does what
+`_clear` did, and `load_scene` reads
 
-That last step has an ordering constraint worth writing down before anyone tries
-it. `draw_backdrop()` calls the timeline's `restore_palette()` on the *outgoing*
-scene while loading the incoming one, so the old runtime cannot be dropped before
-the backdrop is painted: the order has to be restore, destroy, paint, construct.
-Moving the restore into the timeline's destructor does **not** work, because the
-same path runs mid-scene for a language repaint, with the timeline still live.
-Keep it an explicit method that both paths call.
+```
+drop_scene()  ->  draw_backdrop(sc)  ->  build_scene(sc)
+```
+
+The palette appears nowhere in that: `~scene_timeline` hands its bands back,
+which is the one place that knows they were turned. The engine only holds the
+runtime, so its pair is named for what it does to it.
+
+Two things had to move first, because they were sitting in `scene_bobs` with the
+wrong lifetime and per-scene construction would have churned both every scene
+change. The ACE bob manager went to `screenCreate`/`screenDestroy`, since it
+draws into the screen's buffers and undraws from them. The hover caption ink went
+to the engine: one Chip bitmap sized from the UI font, which is loaded once and
+never swapped.
+
+A scene is now always loaded once the scene state runs, so `engine::initialize()`
+refuses a project whose boot scene does not exist rather than leaving the state
+to dereference a runtime that was never built.
+
+That last step had an ordering constraint. `draw_backdrop()` used to call the
+timeline's `restore_palette()` itself, on the *outgoing* scene while loading the
+incoming one, so the old runtime could not be dropped before the backdrop was
+painted: the order has to be restore, destroy, paint, construct. That reads as an
+argument against putting the restore in `~scene_timeline`, and it was, for as
+long as `draw_backdrop()` served both the scene load and the language repaint.
+Hoisting the call out to those two callers ended it. The destructor restores for
+a scene change; the repaint calls `restore_palette()` directly, because it
+reloads the same palette with the timeline still running.
 
 **Payoff.** This is the largest block of C left, and the one that costs
 correctness rather than only readability — a paired-call lifetime is invisible to

@@ -53,6 +53,16 @@ namespace NEONengine
         }
         auto& gd = gameData.value();
 
+        // Nothing runs without a scene: the scene state builds its runtime from
+        // the boot scene and every caller reads that runtime unchecked.
+        if (gd->config().boot_scene_id >= gd->scenes().size())
+        {
+            NE_LOG("boot scene %hu does not exist (%lu scenes)",
+                gd->config().boot_scene_id,
+                to<ULONG>(gd->scenes().size()));
+            return mtl::unexpected(error_code::BOOT_SCENE_INVALID);
+        }
+
         auto assets = asset_cache_ptr(new (mtl::MemF::Fast) asset_cache(gd->pak()));
 
         mtl::system_use_guard guard;  // systemUse()/systemUnuse() around all disk access below.
@@ -231,13 +241,13 @@ namespace NEONengine
         delete runtime;
     }
 
-    void engine::open_scene() noexcept
+    void engine::build_scene(data::scene const& scene) noexcept
     {
         _scene = scene_runtime_ptr(
-            new (mtl::MemF::Fast) scene_runtime(data(), assets(), pointer()));
+            new (mtl::MemF::Fast) scene_runtime(data(), assets(), pointer(), scene));
     }
 
-    void engine::close_scene() noexcept
+    void engine::drop_scene() noexcept
     {
         _scene = nullptr;
     }

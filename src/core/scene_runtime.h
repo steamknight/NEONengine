@@ -4,8 +4,8 @@
  *
  * The scene's parts used to be file-static state behind free functions, with a
  * _load/_clear pair the scene state had to call in the right order by hand.
- * Here they are members: load() builds the set for a scene, and the destructor
- * is what _clear used to be.
+ * Here they are members: the constructor builds the set for one scene and the
+ * destructor takes it down, so a scene change is one object replacing another.
  *
  * Member order is teardown order reversed. A part that another part talks to on
  * its way out must be declared before it.
@@ -27,23 +27,18 @@ namespace NEONengine
     class scene_runtime
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
-        scene_runtime(game_data& data, asset_cache& cache, mouse_pointer& pointer)
-            : _bobs(data, cache),
-              _sound_effects(data, cache),
-              _hotspots(data, _bobs, _sound_effects, pointer),
-              _timeline(data, _bobs, _sound_effects)
-        {
-        }
+        /**
+         * @brief Builds every part of @p scene.
+         *
+         * Reads the pak, so construct this under a system-use guard. The
+         * backdrop is laid down before it, because a bob undraws against it.
+         */
+        scene_runtime(game_data& data,
+            asset_cache&        cache,
+            mouse_pointer&      pointer,
+            data::scene const&  scene);
         scene_runtime(scene_runtime const&)            = delete;
         scene_runtime& operator=(scene_runtime const&) = delete;
-
-        /**
-         * @brief Builds every part of @p scene, replacing the previous one.
-         *
-         * Reads the pak, so call under a system-use guard. The backdrop is laid
-         * down by the scene state before this, because a bob undraws against it.
-         */
-        void load(data::scene const& scene);
 
         /** @brief The bobs this scene draws. */
         scene_bobs& bobs() noexcept { return _bobs; }
@@ -58,11 +53,6 @@ namespace NEONengine
         scene_timeline& timeline() noexcept { return _timeline; }
 
         private:  /////////////////////////////////////////////////////////////////////////////////
-        // Declaration order is teardown order reversed, and it is load-bearing.
-        // Members go down in reverse: timeline, hotspots, sound_effects, bobs.
-        // ~scene_hotspots takes its hover caption down through the bobs, so the
-        // bobs have to outlive it. It is also the order sceneDestroy called the
-        // _clear functions in by hand.
         scene_bobs          _bobs;
         scene_sound_effects _sound_effects;
         scene_hotspots      _hotspots;

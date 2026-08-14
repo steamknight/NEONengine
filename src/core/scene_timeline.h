@@ -59,7 +59,7 @@ namespace NEONengine
         scene_timeline& operator=(scene_timeline const&) = delete;
 
         /**
-         * @brief Forgets the current scene's tracks.
+         * @brief Hands the palette bands back, then forgets the scene's tracks.
          */
         ~scene_timeline();
 
@@ -86,6 +86,10 @@ namespace NEONengine
          * that record against colors it no longer describes: the band would be
          * corrected only by the difference from then on, and never brought back
          * into agreement.
+         *
+         * The destructor does this too. Call it directly when the palette is
+         * being reloaded under a timeline that has to keep running, as a
+         * language repaint does.
          */
         void restore_palette();
 

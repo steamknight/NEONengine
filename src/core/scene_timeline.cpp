@@ -127,6 +127,9 @@ namespace NEONengine
 
     scene_timeline::~scene_timeline()
     {
+        // The bands are shared with whatever comes next, and unload() only
+        // forgets how far they were turned.
+        restore_cycles();
         unload();
     }
 

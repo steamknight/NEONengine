@@ -5,6 +5,7 @@
 #include "neonengine.h"
 
 #include <ace/generic/main.h>
+#include <ace/managers/game.h>
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/ptplayer.h>
@@ -39,6 +40,9 @@ void genericCreate(void)
     if (!engineResult)
     {
         NE_LOG("Could not create NEONengine. Error %d", to<int>(engineResult.error()));
+        // ACE runs its loop whatever this function does, and every frame of it
+        // would reach through a null engine.
+        gameExit();
         return;
     }
     g_pEngine = mtl::move(engineResult.value());
