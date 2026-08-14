@@ -53,9 +53,11 @@ namespace NEONengine
         }
         auto& gd = gameData.value();
 
+        auto assets = asset_cache_ptr(new (mtl::MemF::Fast) asset_cache(gd->pak()));
+
         mtl::system_use_guard guard;  // systemUse()/systemUnuse() around all disk access below.
 
-        auto uiFontFd = gd->open_asset(gd->ui_state().font_hash);
+        auto uiFontFd = assets->open(gd->ui_state().font_hash);
         if (!uiFontFd)
         {
             NE_LOG("Could not open UI font asset %08lx", to<ULONG>(gd->ui_state().font_hash));
@@ -68,7 +70,7 @@ namespace NEONengine
             return mtl::unexpected(error_code::UI_FONT_LOAD_FAILED);
         }
 
-        auto uiPaletteFd = gd->open_asset(gd->ui_state().ui_palette_hash);
+        auto uiPaletteFd = assets->open(gd->ui_state().ui_palette_hash);
         if (!uiPaletteFd)
         {
             NE_LOG("Could not open UI palette asset %08lx", to<ULONG>(gd->ui_state().ui_palette_hash));
@@ -101,7 +103,7 @@ namespace NEONengine
             && ui.nine_patch_bitmap_id < gd->bitmaps().size())
         {
             auto const& ref = gd->bitmaps()[ui.nine_patch_bitmap_id];
-            auto frameArt   = ace::bitmapCreateFromFd(gd->open_asset(ref.bitmap_hash), 0);
+            auto frameArt   = ace::bitmapCreateFromFd(assets->open(ref.bitmap_hash), 0);
             if (frameArt)
             {
                 uiFrame = mtl::unique_ptr<nine_patch>(new (mtl::MemF::Fast) nine_patch(frameArt,
@@ -138,6 +140,7 @@ namespace NEONengine
 
         auto result            = engine_ptr(new (mtl::MemF::Fast) engine());
         result->_pGameData     = mtl::move(gameData.value());
+        result->_assets        = mtl::move(assets);
         result->_pUiFont       = mtl::move(uiFont);
         result->_pTextRenderer = mtl::move(textRenderer.value());
         result->_pNinePatch    = mtl::move(uiFrame);
@@ -226,7 +229,7 @@ namespace NEONengine
 
     void engine::open_scene() noexcept
     {
-        _scene = scene_runtime_ptr(new (mtl::MemF::Fast) scene_runtime(data()));
+        _scene = scene_runtime_ptr(new (mtl::MemF::Fast) scene_runtime(data(), assets()));
     }
 
     void engine::close_scene() noexcept

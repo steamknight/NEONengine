@@ -10,6 +10,7 @@
 #include <mtl/memory.h>
 #include <mtl/vector.h>
 
+#include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "core/game_session.h"
 #include "core/nine_patch.h"
@@ -208,6 +209,9 @@ namespace NEONengine
         nine_patch* default_nine_patch() noexcept { return _pNinePatch.get(); }
 
         game_data& data() noexcept { return *_pGameData; }
+
+        /** @brief The Fast RAM cache asset reads go through. */
+        asset_cache& assets() noexcept { return *_assets; }
         noir_vm& vm() noexcept { return *_vm; }
 
         /**
@@ -352,6 +356,9 @@ namespace NEONengine
         private:  //////////////////////////////////////////////////////////////////////////////////
 
         game_data_ptr                    _pGameData{ nullptr };
+        // Declared after the game data: it borrows that object's pak, so it has
+        // to go down first.
+        asset_cache_ptr                  _assets{ nullptr };
         ace::font_ptr                    _pUiFont{ nullptr };
         text_renderer_ptr                _pTextRenderer{ nullptr };
         mtl::unique_ptr<nine_patch>      _pNinePatch{ nullptr };

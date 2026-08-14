@@ -29,6 +29,7 @@
 
 #include <mtl/vector.h>
 
+#include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "game_data_format.h"
 
@@ -37,7 +38,7 @@ namespace NEONengine
     class scene_sound_effects
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
-        explicit scene_sound_effects(game_data& data) : _data(data) {}
+        scene_sound_effects(game_data& data, asset_cache& cache) : _data(data), _cache(cache) {}
         scene_sound_effects(scene_sound_effects const&)            = delete;
         scene_sound_effects& operator=(scene_sound_effects const&) = delete;
 
@@ -110,6 +111,7 @@ namespace NEONengine
         void unload();
 
         game_data&         _data;
+        asset_cache&       _cache;
         mtl::vector<entry> _effects;
     };
 }  // namespace NEONengine

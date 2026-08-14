@@ -69,7 +69,8 @@ namespace NEONengine
         }
 
         systemUse();
-        auto pSheet = ace::bitmapCreateFromFd(gd.open_asset(bitmaps[ui.cursor_bitmap_id].bitmap_hash), 0);
+        auto pSheet = ace::bitmapCreateFromFd(
+            g_pEngine->assets().open(bitmaps[ui.cursor_bitmap_id].bitmap_hash), 0);
         if (!pSheet)
         {
             NE_LOG("could not load the cursor sheet");

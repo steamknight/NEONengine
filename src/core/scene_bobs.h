@@ -28,6 +28,7 @@
 #include <mtl/span.h>
 #include <mtl/vector.h>
 
+#include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "game_data_format.h"
 
@@ -54,7 +55,7 @@ namespace NEONengine
          * Built once the screen exists, which is why the scene state builds it
          * rather than the engine.
          */
-        explicit scene_bobs(game_data& data);
+        explicit scene_bobs(game_data& data, asset_cache& cache);
         scene_bobs(scene_bobs const&)            = delete;
         scene_bobs& operator=(scene_bobs const&) = delete;
 
@@ -251,6 +252,7 @@ namespace NEONengine
         void load_captions(data::scene const& scene);
 
         game_data& _data;
+        asset_cache& _cache;
 
         mtl::vector<graphic_asset> _assets;  ///< The live bobs and their backing data.
 

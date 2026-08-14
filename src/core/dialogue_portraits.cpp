@@ -102,7 +102,7 @@ namespace NEONengine
 
             // Chip RAM: the blitter reads these exactly as the exporter wrote
             // them, with the band's base already in the pixels.
-            ace::bitmap_ptr image = ace::bitmapCreateFromFd(gd.open_asset(ref.bitmap_hash), 0);
+            ace::bitmap_ptr image = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.bitmap_hash), 0);
             if (!image)
             {
                 NE_LOG("portrait bitmap %hu could not be read", bitmap_id);
@@ -133,7 +133,7 @@ namespace NEONengine
             ace::bitmap_ptr mask{ nullptr };
             if (ref.mask_hash != data::NO_ASSET)
             {
-                mask = ace::bitmapCreateFromFd(gd.open_asset(ref.mask_hash), 0);
+                mask = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.mask_hash), 0);
                 if (!mask)
                 {
                     NE_LOG("portrait bitmap %hu has a mask that could not be read", bitmap_id);
@@ -167,7 +167,7 @@ namespace NEONengine
                 }
             }
 
-            ace::paletteLoadFromFd(gd.open_asset(ref.palette_hash),
+            ace::paletteLoadFromFd(g_pEngine->assets().open(ref.palette_hash),
                 force_to<UWORD*>(out.colors),
                 PORTRAIT_PALETTE_COLORS);
 

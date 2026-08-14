@@ -60,11 +60,11 @@ namespace NEONengine
         // Reporting the cache walks the game data once per entry to work out
         // what each one is, so it stays on a key rather than running every
         // load. A hitch when it is pressed is the point of the trade.
-        if (keyUse(KEY_F3)) asset_cache_log();
+        if (keyUse(KEY_F3)) g_pEngine->assets().log(g_pEngine->data());
 
         if (keyUse(KEY_F4))
         {
-            asset_cache_clear();
+            g_pEngine->assets().clear();
             NE_LOG("asset cache cleared on request");
         }
 

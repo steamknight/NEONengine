@@ -23,8 +23,13 @@
 #include <ace++/file.h>
 #include <ace++/pak_file.h>
 
+#include <mtl/memory.h>
+#include <mtl/vector.h>
+
 namespace NEONengine
 {
+    class game_data;
+
     /**
      * @brief How much Fast RAM the cache may hold, in bytes.
      *
@@ -40,51 +45,103 @@ namespace NEONengine
      */
     constexpr u32 ASSET_CACHE_MAX_ENTRY = ASSET_CACHE_BUDGET / 4u;
 
-    /**
-     * @brief Empties the cache and releases every byte it holds.
-     */
-    void asset_cache_clear();
+    class asset_cache;
+    using asset_cache_ptr = mtl::unique_ptr<asset_cache>;
 
-    /**
-     * @brief Starts a new load, so entries touched from here are the newest.
-     *
-     * Eviction picks the oldest load, not the oldest entry. A scene asks for
-     * each asset exactly once while loading, so one counter per load records
-     * use completely.
-     *
-     * Entries stamped with the current load are never evicted, so a scene whose
-     * assets do not all fit cannot discard what it has already been given.
-     *
-     * Boot assets keep generation zero and go first. They are built into
-     * objects that live for the whole run and are never read again.
-     */
-    void asset_cache_begin_load();
+    class asset_cache
+    {
+        public:  //////////////////////////////////////////////////////////////////////////////////
+        /**
+         * @brief Caches assets read from @p pak, which must outlive the cache.
+         */
+        explicit asset_cache(ace::pakfile_ptr& pak) noexcept : _pak(pak) {}
 
-    /**
-     * @brief Opens the asset @p hash names, from the cache when it is held.
-     *
-     * On a miss the asset is read from @p pak and stored when it fits. An asset
-     * too large, or one that cannot be stored, passes straight through, so a
-     * scene bigger than the whole cache still loads.
-     *
-     * A cached file borrows the entry's bytes and must be closed before the
-     * next asset_cache_begin_load(), which may evict the entry underneath it.
-     *
-     * @param pak  The open game pak to read on a miss.
-     * @param hash The asset's adler32 pak-path hash.
-     * @return An owning file handle, or an invalid handle when there is no such
-     *         asset.
-     */
-    ace::file_ptr asset_cache_open(ace::pakfile_ptr& pak, u32 hash);
+        /** @brief Releases every byte held. Hands memory back to the OS. */
+        ~asset_cache() { clear(); }
 
-    /**
-     * @brief Writes what the cache is holding to the log.
-     *
-     * Entries are grouped by kind, read from the .neon on demand rather than
-     * recorded per entry, so the grouping cannot drift. It scans once per
-     * entry, which is why it runs on request.
-     */
-    void asset_cache_log();
+        asset_cache(asset_cache const&)            = delete;
+        asset_cache& operator=(asset_cache const&) = delete;
+
+        /**
+         * @brief Empties the cache and releases every byte it holds.
+         */
+        void clear();
+
+        /**
+         * @brief Starts a new load, so entries touched from here are the newest.
+         *
+         * Eviction picks the oldest load, not the oldest entry. A scene asks for
+         * each asset exactly once while loading, so one counter per load records
+         * use completely.
+         *
+         * Entries stamped with the current load are never evicted, so a scene whose
+         * assets do not all fit cannot discard what it has already been given.
+         *
+         * Boot assets keep generation zero and go first. They are built into
+         * objects that live for the whole run and are never read again.
+         */
+        void begin_load() noexcept { ++_generation; }
+
+        /**
+         * @brief Opens the asset @p hash names, from the cache when it is held.
+         *
+         * On a miss the asset is read from the pak and stored when it fits. An
+         * asset too large, or one that cannot be stored, passes straight through,
+         * so a scene bigger than the whole cache still loads.
+         *
+         * A cached file borrows the entry's bytes and must be closed before the
+         * next begin_load(), which may evict the entry underneath it.
+         *
+         * @param hash The asset's adler32 pak-path hash.
+         * @return An owning file handle, or an invalid handle when there is no such
+         *         asset.
+         */
+        ace::file_ptr open(u32 hash);
+
+        /**
+         * @brief Writes what the cache is holding to the log.
+         *
+         * Entries are grouped by kind, read from @p data on demand rather than
+         * recorded per entry, so the grouping cannot drift. It scans the game data
+         * once per entry, which is why it runs on request.
+         */
+        void log(game_data const& data) const;
+
+        private:  /////////////////////////////////////////////////////////////////////////////////
+        /// One held asset: its bytes, and which load last wanted them.
+        struct entry
+        {
+            u32 hash       = 0;
+            u32 generation = 0;
+            u8* bytes      = nullptr;  ///< Fast RAM, owned by this entry.
+            u32 size       = 0;
+        };
+
+        /// @brief The held entry @p hash names, or nullptr.
+        entry* find(u32 hash);
+
+        /// @brief Releases the entry at @p index and its bytes.
+        void drop(size_t index);
+
+        /**
+         * @brief Frees entries until @p size bytes fit, oldest load first.
+         *
+         * Entries wanted by the load in progress are never candidates. They have
+         * already been handed out, and dropping one would have this load evict
+         * its own work and read it again. When only those are left, this gives
+         * up rather than touching them.
+         *
+         * @return True when @p size now fits.
+         */
+        bool make_room(u32 size);
+
+        ace::pakfile_ptr&  _pak;              ///< The pak read on a miss. Not owned.
+        mtl::vector<entry> _entries;
+        u32                _used{ 0 };        ///< Bytes held, always the sum of the entry sizes.
+        u32                _generation{ 0 };  ///< Which load is in progress.
+        u32                _hits{ 0 };
+        u32                _misses{ 0 };
+    };
 }  // namespace NEONengine
 
 #endif  // __ASSET_CACHE_H__INCLUDED__

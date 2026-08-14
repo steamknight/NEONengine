@@ -33,8 +33,9 @@ The goals the work is measured against:
 
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
-4a, 4b and 1 are done. Item 2 is half done: four modules have moved, and
-`mouse_pointer`, `asset_cache` and per-scene construction are left.
+4a, 4b and 1 are done. Item 2 is half done: four modules have moved, the asset
+cache is now the engine's, and `mouse_pointer` and per-scene construction are
+left.
 
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
 context, went first: mechanical, self-contained, and what unlocks every later
@@ -168,10 +169,17 @@ order. No virtuals: same memory, same generated code.
   `dialogue.cpp` touches it. It belongs to item 3's `state_host<dialogue_state>`.
   Moving it here would only mean moving it again.
 - **`asset_cache` lives for the whole run**, opened and cleared in `main.cpp`.
-  It belongs on the engine, or on `game_data`, whose `open_asset()` is the
-  gateway everything already reads assets through.
-- **`mouse_pointer` is scene-*state*-scoped**, not scene-scoped: `mousePointerCreate()`
-  reads the pak once and every scene after the first reuses it.
+  **It belongs on the engine**, not on `game_data`, whose one job is to open the
+  pak, read the .neon and hand back its tables. What is worth keeping after a
+  read is not part of that. `game_data::open_asset()` is gone;
+  `engine::assets().open()` serves cached reads and `open_asset_uncached()`
+  stays behind for music, because a raw pak read *is* `game_data`'s job.
+- **`mouse_pointer` belongs on the engine.** An earlier draft called it
+  scene-*state*-scoped, because `mousePointerCreate()` reads the pak once and
+  every later scene reuses it. True, but not the whole picture: `scene.cpp`,
+  `message.cpp`, `dialogue.cpp` and `debug_view.cpp` all call
+  `mousePointerUpdate()`, and `noir_bridge.cpp` and `scene_hotspots.cpp` switch
+  the role. It outlives and serves every state.
 - **`palette_cycle` was folded into `scene_timeline`** rather than made a peer.
   It owns no resources and has no paired lifetime — two dirty-band variables over
   the screen palette, with one caller. Its own header already said which band
@@ -202,9 +210,16 @@ and a box of text or a conversation is pushed *over* that state rather than
 swapped for it. The nullable accessor it replaced was guarding a case that cannot
 happen.
 
-**Left for the second half.** `mouse_pointer` and `asset_cache`, and the move
-from a long-lived runtime with `load()` to one constructed per scene, which is
-what would delete the last `_load`/`_clear` pair.
+**`asset_cache` landed on the engine.** `engine::initialize()` builds it before
+the first UI asset is read, and the engine's destructor releases it, replacing
+the call in `genericDestroy`. It takes the pak, not the `game_data` around it,
+so a test can build one over a bare pak. Its reporting no longer reaches
+`g_pEngine`: `log()` takes the game data as an argument. `scene_bobs` and
+`scene_sound_effects` take an `asset_cache&` beside their `game_data&`.
+
+**Left for the second half.** `mouse_pointer`, and the move from a long-lived
+runtime with `load()` to one constructed per scene, which is what would delete
+the last `_load`/`_clear` pair.
 
 That last step has an ordering constraint worth writing down before anyone tries
 it. `draw_backdrop()` calls the timeline's `restore_palette()` on the *outgoing*
@@ -450,8 +465,8 @@ instead of choosing. Landing in Fast RAM depends on each author remembering to
 ask for it.
 
 **Change.** A `fast_allocated` mixin supplying a class-level `operator new`, so
-`engine`, `nine_patch`, `noir_vm` and the scene modules go to Fast whatever the
-call site says. Add `mtl::make_unique_in<MemF>` for the cases that need Chip.
+`engine`, `nine_patch`, `noir_vm`, the asset cache and the scene modules go to
+Fast whatever the call site says. Add `mtl::make_unique_in<MemF>` for the cases that need Chip.
 Chip stays explicit — bitmaps, audio, bob buffers — which is the right way round,
 because Chip is the scarce one.
 

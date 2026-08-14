@@ -59,7 +59,7 @@ namespace NEONengine
         }
     }  // namespace
 
-    scene_bobs::scene_bobs(game_data& data) : _data(data)
+    scene_bobs::scene_bobs(game_data& data, asset_cache& cache) : _data(data), _cache(cache)
     {
         auto* pFront = screenGetFrontBuffer(g_mainScreen);
         auto* pBack  = screenGetBackBuffer(g_mainScreen);
@@ -107,20 +107,20 @@ namespace NEONengine
         if (gfx.source_bitmap_id >= bitmaps.size()) return false;
         data::bitmap_ref const& ref = bitmaps[gfx.source_bitmap_id];
 
-        ace::bitmap_ptr frames = ace::bitmapCreateFromFd(_data.open_asset(ref.bitmap_hash), 0);
+        ace::bitmap_ptr frames = ace::bitmapCreateFromFd(_cache.open(ref.bitmap_hash), 0);
         if (!frames) return false;
 
         ace::bitmap_ptr mask{ nullptr };
         if (ref.mask_hash != data::NO_ASSET)
         {
-            mask = ace::bitmapCreateFromFd(_data.open_asset(ref.mask_hash), 0);
+            mask = ace::bitmapCreateFromFd(_cache.open(ref.mask_hash), 0);
             if (!mask) return false;
         }
 
         // Overlay this graphic's colors into its palette-slot band. The
         // read is capped so a malformed palette can't spill past index 255.
         u8 const base = to<u8>(BOB_PALETTE_SLOT0_BASE - gfx.palette_slot * 8);
-        ace::paletteLoadFromFd(_data.open_asset(ref.palette_hash),
+        ace::paletteLoadFromFd(_cache.open(ref.palette_hash),
             force_to<UWORD*>(pPalette + base),
             to<UWORD>(PALETTE_SIZE - base));
 

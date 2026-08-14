@@ -14,6 +14,7 @@
 #ifndef __SCENE_RUNTIME_H__INCLUDED__
 #define __SCENE_RUNTIME_H__INCLUDED__
 
+#include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "core/game_data_format.h"
 #include "core/scene_bobs.h"
@@ -26,9 +27,9 @@ namespace NEONengine
     class scene_runtime
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
-        explicit scene_runtime(game_data& data)
-            : _bobs(data),
-              _sound_effects(data),
+        scene_runtime(game_data& data, asset_cache& cache)
+            : _bobs(data, cache),
+              _sound_effects(data, cache),
               _hotspots(data, _bobs, _sound_effects),
               _timeline(data, _bobs, _sound_effects)
         {

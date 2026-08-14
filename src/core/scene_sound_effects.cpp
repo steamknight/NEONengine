@@ -42,7 +42,7 @@ namespace NEONengine
     {
         if (find(hash)) return;
 
-        auto file = _data.open_asset(hash);
+        auto file = _cache.open(hash);
         if (!file)
         {
             NE_LOG("no sfx asset for hash %08lx", to<ULONG>(hash));

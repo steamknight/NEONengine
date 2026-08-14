@@ -25,8 +25,6 @@
 
 #include "game_data_format.h"
 
-#include "core/asset_cache.h"
-
 namespace NEONengine
 {
     /**
@@ -217,22 +215,8 @@ namespace NEONengine
         /** @brief The 'SCEN' scenes. */
         mtl::span<data::scene> scenes() const noexcept { return chunk_span<data::scene>(data::known_chunk::scenes); }
 
-        /**
-         * @brief Opens a pak asset by its content hash for reading.
-         *
-         * Assets are content-addressed by the adler32 hash of their pak path,
-         * which is what the .neon records reference. The returned file is
-         * decompressed transparently on read. Test it for validity before use.
-         *
-         * Served from the asset cache when it is held there, so a second scene
-         * wanting the same asset pays neither the open nor the unpacking. The
-         * cache is an optimization only: anything that has to stay resident to
-         * behave correctly must hold its own copy.
-         *
-         * @param hash The asset's adler32 pak-path hash.
-         * @return An owning file handle, or an invalid handle if not found.
-         */
-        ace::file_ptr open_asset(u32 hash) { return asset_cache_open(_pak, hash); }
+        /** @brief The open game pak, for reading assets out of. */
+        ace::pakfile_ptr& pak() noexcept { return _pak; }
 
         /**
          * @brief Opens a pak asset without going through the asset cache.

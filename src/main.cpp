@@ -50,7 +50,7 @@ void genericCreate(void)
     // The boot scene loads the moment its state is pushed, and F4 cannot be
     // pressed before that, so this is the only chance to see what engine
     // startup alone left in the cache. Everything after it belongs to a scene.
-    asset_cache_log();
+    g_pEngine->assets().log(g_pEngine->data());
 
 #ifdef ACE_TEST_RUNNER
     statePush(g_gameStateManager, &tests::g_stateTestRunner);
@@ -69,7 +69,6 @@ void genericProcess(void)
 void genericDestroy(void)
 {
     stateManagerDestroy(g_gameStateManager);
-    asset_cache_clear();
     screenDestroy(NEONengine::g_mainScreen);
     musicFree();
     ptplayerDestroy();

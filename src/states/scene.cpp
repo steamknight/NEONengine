@@ -103,11 +103,11 @@ namespace NEONengine
             if (sc.background_bitmap_id != data::NO_ID)
             {
                 auto const& ref = gd.bitmaps()[sc.background_bitmap_id];
-                ace::paletteLoadFromFd(gd.open_asset(ref.palette_hash),
+                ace::paletteLoadFromFd(g_pEngine->assets().open(ref.palette_hash),
                     screenGetPalette(g_mainScreen),
                     SCENE_PALETTE_COLORS);
 
-                auto bg = ace::bitmapCreateFromFd(gd.open_asset(ref.bitmap_hash), 0);
+                auto bg = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.bitmap_hash), 0);
 
                 if (bg)
                 {
@@ -140,7 +140,7 @@ namespace NEONengine
             bool const showsUi = (sc.flags & data::SCENE_FLAG_SHOW_UI) != 0;
             if (showsUi)
             {
-                ace::paletteLoadFromFd(gd.open_asset(gd.ui_state().ui_palette_hash),
+                ace::paletteLoadFromFd(g_pEngine->assets().open(gd.ui_state().ui_palette_hash),
                     screenGetPalette(g_mainScreen), UI_PALETTE_COLORS);
             }
 
@@ -288,7 +288,7 @@ namespace NEONengine
             // Everything this load asks the cache for is stamped as wanted now,
             // which is what stops the load evicting its own assets and what
             // makes the previous scene's leftovers the first to go.
-            asset_cache_begin_load();
+            g_pEngine->assets().begin_load();
 
             LONG const chipBefore = to<LONG>(memGetFreeChipSize());
             LONG const fastBefore = free_fast_size();
