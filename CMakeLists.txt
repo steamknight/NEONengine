@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14.0)
+cmake_minimum_required(VERSION 3.25)
 
 # Must precede project(): the toolchain file is processed during project() and
 # bakes -m${M68K_CPU} into CMAKE_<LANG>_FLAGS_INIT. Setting this afterwards
@@ -134,25 +134,22 @@ endif()
 
 # ACE
 set(ACE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/ace" CACHE PATH "Path to the ACE source tree (defaults to the modules/ace submodule)")
-add_subdirectory(${ACE_SOURCE_DIR} ace)
-
-# ACE's headers arrive through target_link_libraries below, as -isystem rather
-# than -I, so warnings raised inside them are not ours to answer. A plain
-# include_directories() here would defeat that: GCC ignores -isystem for a
-# directory already named by -I, and the header would report against us again.
+# SYSTEM: ACE's headers reach us as -isystem rather than -I, so warnings raised
+# inside them are not ours to answer. It covers every target the subdirectory
+# creates, bartman_gcc_support included.
 #
-# INTERFACE_SYSTEM_INCLUDE_DIRECTORIES rather than the SYSTEM target property,
-# which wants CMake 3.25 and this project asks for 3.14.
+# Note there is no include_directories() for ACE here, and there must not be:
+# GCC ignores -isystem for a directory already named by -I, so one such line
+# would put ACE's headers back on our account.
+add_subdirectory(${ACE_SOURCE_DIR} ace SYSTEM)
+
+# Silence the warnings from building it, which SYSTEM does not cover: that is
+# about how consumers see the headers, not how the library compiles. ACE sets
+# its own -Wall -Wextra; -w lands after those and wins. These are vendored
+# submodules we do not patch, so their warnings are noise we would learn to
+# scroll past - which is the habit that hides ours.
 foreach(dependency ace bartman_gcc_support)
     if(TARGET ${dependency})
-        set_property(TARGET ${dependency} APPEND PROPERTY
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
-            $<TARGET_PROPERTY:${dependency},INTERFACE_INCLUDE_DIRECTORIES>)
-
-        # And silence the warnings from building it. ACE sets its own -Wall
-        # -Wextra; -w lands after that and wins. These are vendored submodules
-        # we do not patch, so their warnings are noise we would learn to scroll
-        # past - which is the habit that hides ours.
         target_compile_options(${dependency} PRIVATE -w)
     endif()
 endforeach()
@@ -207,9 +204,11 @@ set(NE_WARNINGS_AS_ERRORS ON CACHE BOOL "Fail the build on a warning in NEONengi
 
 target_compile_options(${GAME_LINKED} PRIVATE -Wall -Wextra -Wno-write-strings)
 
-if(NE_WARNINGS_AS_ERRORS)
-    target_compile_options(${GAME_LINKED} PRIVATE -Werror)
-endif()
+# The property rather than a bare -Werror: it survives a compiler change, and
+# configuring with `cmake --compile-no-warning-as-error` lifts it without
+# editing the cache variable below.
+set_target_properties(${GAME_LINKED} PROPERTIES
+    COMPILE_WARNING_AS_ERROR ${NE_WARNINGS_AS_ERRORS})
 add_custom_command(
     TARGET ${GAME_LINKED}
     PRE_BUILD

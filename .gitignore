@@ -52,6 +52,9 @@ dkms.conf
 
 # Misc
 build/
+# Names this machine's toolchain paths, so it belongs to you and not the repo.
+# CMakeUserPresets.json.example is the template.
+CMakeUserPresets.json
 amiga-system/
 .vscode/c_cpp_properties.json
 modules/ACE

@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "description": "What both modes share. One build directory on purpose: the modes differ by a single cache variable, and the VS Code launch configs reconfigure it in place."
+    },
+    {
+      "name": "game-base",
+      "hidden": true,
+      "inherits": "base",
+      "description": "The game. Every preset here is hidden because a build needs a toolchain, and the toolchain lives outside the repo. Inherit this from your own CMakeUserPresets.json; see README.",
+      "cacheVariables": {
+        "ACE_TEST_RUNNER": "0"
+      }
+    },
+    {
+      "name": "tests-base",
+      "hidden": true,
+      "inherits": "base",
+      "description": "The on-device test runner, which compiles files the game build does not. Inherit this from your own CMakeUserPresets.json; see README.",
+      "cacheVariables": {
+        "ACE_TEST_RUNNER": "1"
+      }
+    }
+  ]
+}

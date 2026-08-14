@@ -1,0 +1,43 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "toolchain",
+      "hidden": true,
+      "description": "Where this machine keeps the cross toolchain. Absolute paths on purpose: this file is yours and is not committed. TOOLCHAIN_PATH names the Bartman amiga-debug extension, so it carries the extension's version number and has to be updated when the extension does.",
+      "toolchainFile": "C:/path/to/AmigaCMakeCrossToolchains/m68k-bartman.cmake",
+      "cacheVariables": {
+        "TOOLCHAIN_PATH": "C:/Users/you/.vscode/extensions/bartmanabyss.amiga-debug-1.8.2/bin/win32/opt",
+        "TOOLCHAIN_PREFIX": "m68k-amiga-elf",
+        "NE_ELF2HUNK": "C:/path/to/elf2hunk/build/Release.x64/elf2hunk.exe"
+      }
+    },
+    {
+      "name": "game",
+      "inherits": ["game-base", "toolchain"],
+      "displayName": "Game"
+    },
+    {
+      "name": "tests",
+      "inherits": ["tests-base", "toolchain"],
+      "displayName": "Tests"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "game",
+      "configurePreset": "game",
+      "displayName": "Game"
+    },
+    {
+      "name": "tests",
+      "configurePreset": "tests",
+      "displayName": "Tests"
+    }
+  ]
+}

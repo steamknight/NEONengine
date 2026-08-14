@@ -12,7 +12,31 @@ Very much in the early stages.
 
 # Building
 
-Built with CMake + Ninja and the Bartman `m68k-amiga-elf` toolchain (VS Code task **CMake: build**).
+Built with CMake + Ninja and the Bartman `m68k-amiga-elf` toolchain. Needs CMake 3.25 or newer.
+
+The toolchain lives outside the repo, so its paths are yours rather than the
+project's. Copy the template and edit the three paths in it:
+
+```
+cp CMakeUserPresets.json.example CMakeUserPresets.json
+```
+
+Then, for the game or for the on-device test runner:
+
+```
+cmake --preset game    && cmake --build --preset game
+cmake --preset tests   && cmake --build --preset tests
+```
+
+Both write to `build/`, and each reconfigures it in place — they differ by one
+cache variable, so there is no second build directory and none should be made.
+**Build both after changing a shared header**: the test runner compiles files the
+game build does not.
+
+Warnings are errors in our own sources. ACE is built with warnings off and its
+headers arrive as `-isystem`, so anything the compiler reports is ours to answer.
+Configure with `--compile-no-warning-as-error` to get through a build without
+fixing one first.
 
 ACE's asset converters (`palette_conv`, `bitmap_conv`, `font_conv`) are host tools under `modules/ACE/tools`, output to `modules/ACE/tools/bin/`, and are **not** rebuilt automatically. **After updating the ACE submodule, rebuild them** or asset conversion will silently use stale binaries (e.g. old-format `.plt` palettes the engine won't load):
 
