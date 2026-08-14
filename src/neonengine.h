@@ -209,6 +209,9 @@ namespace NEONengine
          */
         nine_patch* default_nine_patch() noexcept { return _nine_patch.get(); }
 
+        /** @brief The bitmap hover captions are blitted through. Null when there is none. */
+        tBitMap* caption_ink() noexcept { return _caption_ink.get(); }
+
         game_data& data() noexcept { return *_game_data; }
 
         /** @brief The Fast RAM cache asset reads go through. */
@@ -367,6 +370,7 @@ namespace NEONengine
         ace::font_ptr                    _ui_font{ nullptr };
         text_renderer_ptr                _text_renderer{ nullptr };
         mtl::unique_ptr<nine_patch>      _nine_patch{ nullptr };
+        ace::bitmap_ptr                  _caption_ink{ nullptr };
         string_table_ptr                 _strings{ nullptr };
         noir_vm_ptr                      _vm{ nullptr };
 

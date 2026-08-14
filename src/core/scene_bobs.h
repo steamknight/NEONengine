@@ -28,6 +28,8 @@
 #include <mtl/span.h>
 #include <mtl/vector.h>
 
+#include <ace/utils/font.h>
+
 #include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "game_data_format.h"
@@ -46,16 +48,26 @@ namespace NEONengine
         DISABLED = 3,
     };
 
+    /**
+     * @brief Builds the bitmap every hover caption is blitted through.
+     *
+     * Every pixel is the caption color; a caption's own mask decides which of
+     * them land. Sized from @p font, which fixes the height the caption bob and
+     * every mask are built at.
+     *
+     * @return The bitmap, or null when there is no font or no Chip RAM.
+     */
+    ace::bitmap_ptr create_caption_ink(tFont const* font);
+
     class scene_bobs
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
         /**
-         * @brief Creates the ACE bob manager over the screen's double buffer.
+         * @brief Forgets the previous scene's bob set, ready for a new one.
          *
-         * Built once the screen exists, which is why the scene state builds it
-         * rather than the engine.
+         * The bob manager belongs to the screen and outlives every scene.
          */
-        explicit scene_bobs(game_data& data, asset_cache& cache);
+        scene_bobs(game_data& data, asset_cache& cache);
         scene_bobs(scene_bobs const&)            = delete;
         scene_bobs& operator=(scene_bobs const&) = delete;
 
@@ -268,15 +280,10 @@ namespace NEONengine
         /// Most hotspots carry no graphic, so the mapping is kept out of line.
         mtl::vector<u16> _hotspot_bob;
 
-        bool _manager_ready = false;
-
         // Hover captions. A bob blits its frame through its mask, so a single
         // bitmap flooded with the caption color serves as the frame for every
         // caption and only the mask differs: showing one swaps the mask pointer
         // and the height, with nothing to render, allocate or blit at hover time.
-
-        /// Every pixel is CAPTION_COLOR; the mask decides which ones land.
-        ace::bitmap_ptr _caption_ink{ nullptr };
 
         /// Scene-local hotspot index -> its caption; empty entries render nothing.
         mtl::vector<caption> _captions;
@@ -284,9 +291,6 @@ namespace NEONengine
         tBob _caption_bob{};
         bool _caption_ready   = false;  ///< A caption bob was registered this scene.
         bool _caption_visible = false;  ///< It should be drawn this frame.
-
-        /// The fixed height the caption bob and every mask are built at.
-        u16 _caption_box_height = 0;
     };
 }  // namespace NEONengine
 

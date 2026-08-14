@@ -147,6 +147,7 @@ namespace NEONengine
         result->_ui_font       = mtl::move(uiFont);
         result->_text_renderer = mtl::move(textRenderer.value());
         result->_nine_patch    = mtl::move(uiFrame);
+        result->_caption_ink   = create_caption_ink(result->_ui_font.get());
         result->_strings      = mtl::move(strings.value());
 
         // The playthrough's memory of what the player has read and taken, sized

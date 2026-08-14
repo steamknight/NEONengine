@@ -43,28 +43,31 @@ namespace NEONengine
         constexpr u16 CAPTION_AIR       = 4;  ///< Gap when the caption sits above the pointer.
         constexpr u16 CAPTION_GAP       = 12 + CAPTION_AIR;  ///< Below: clears the 16px cursor.
         constexpr UBYTE CAPTION_MASK_COLOR   = 0xFF;  ///< Sets every plane, making a bob mask.
-
-        /**
-         * @brief The tallest caption the font can produce.
-         *
-         * create_text rounds its bitmap up to a multiple of 16 rows, so the bob
-         * must be registered at that size for ACE to size its undraw buffer for
-         * the worst case.
-         */
-        u16 caption_max_height()
-        {
-            auto const* pFont = g_pEngine->default_font();
-            if (!pFont) return 0;
-            return mtl::round_up<16>(to<u16>(pFont->uwHeight * CAPTION_MAX_LINES));
-        }
     }  // namespace
+
+    ace::bitmap_ptr create_caption_ink(tFont const* font)
+    {
+        if (!font) return nullptr;
+
+        // create_text rounds its bitmap up to a multiple of 16 rows, so the bob
+        // must be registered at that size for ACE to size its undraw buffer for
+        // the worst case.
+        u16 const height = mtl::round_up<16>(to<u16>(font->uwHeight * CAPTION_MAX_LINES));
+
+        auto ink = ace::bitmapCreate(CAPTION_MAX_WIDTH,
+            height,
+            screenGetBackBuffer(g_mainScreen)->Depth,
+            BMF_INTERLEAVED);
+        if (ink) blitRect(ink.get(), 0, 0, CAPTION_MAX_WIDTH, height, CAPTION_COLOR);
+
+        return ink;
+    }
 
     scene_bobs::scene_bobs(game_data& data, asset_cache& cache) : _data(data), _cache(cache)
     {
-        auto* pFront = screenGetFrontBuffer(g_mainScreen);
-        auto* pBack  = screenGetBackBuffer(g_mainScreen);
-        bobManagerCreate(pFront, pBack, pBack->Rows);
-        _manager_ready = true;
+        // ACE forbids bobInit() once bobReallocateBuffers() has run for a set,
+        // so the previous scene's set is forgotten before this one registers.
+        bobManagerReset();
     }
 
     scene_bobs::~scene_bobs()
@@ -74,14 +77,8 @@ namespace NEONengine
         _hotspot_assets.clear();
         _hotspot_bob.clear();
         _captions.clear();
-        _caption_ink     = nullptr;
         _caption_ready   = false;
         _caption_visible = false;
-        if (_manager_ready)
-        {
-            bobManagerDestroy();
-            _manager_ready = false;
-        }
     }
 
     scene_bobs::frame_ptrs scene_bobs::frame_at(graphic_asset& asset, u8 index)
@@ -259,19 +256,11 @@ namespace NEONengine
         _caption_ready   = false;
         _caption_visible = false;
 
-        u16 const maxHeight = caption_max_height();
-        if (maxHeight == 0) return;
-        if (!render_captions(scene, maxHeight)) return;
+        tBitMap* ink = g_pEngine->caption_ink();
+        if (!ink) return;
 
-        if (!_caption_ink)
-        {
-            _caption_ink = ace::bitmapCreate(CAPTION_MAX_WIDTH,
-                maxHeight,
-                screenGetBackBuffer(g_mainScreen)->Depth,
-                BMF_INTERLEAVED);
-            if (!_caption_ink) return;
-            blitRect(_caption_ink.get(), 0, 0, CAPTION_MAX_WIDTH, maxHeight, CAPTION_COLOR);
-        }
+        u16 const maxHeight = to<u16>(ink->Rows);
+        if (!render_captions(scene, maxHeight)) return;
 
         // One fixed size for the bob's whole life, so the undraw background
         // saved on one frame is always the same byte count restored on the
@@ -280,12 +269,11 @@ namespace NEONengine
             CAPTION_MAX_WIDTH,
             maxHeight,
             1,
-            _caption_ink->Planes[0],
+            ink->Planes[0],
             nullptr,
             0,
             0);
-        _caption_box_height = maxHeight;
-        _caption_ready     = true;
+        _caption_ready = true;
     }
 
     void scene_bobs::load(data::scene const& scene)
@@ -469,6 +457,8 @@ namespace NEONengine
         caption const& text = _captions[index];
         if (!text.mask || text.height == 0) return;
 
+        tBitMap* ink = g_pEngine->caption_ink();
+
         // Centre the box on the pointer, then push it back inside the screen.
         WORD x = to<WORD>(anchorX) - CAPTION_MAX_WIDTH / 2;
         x      = MAX(to<WORD>(0), MIN(x, to<WORD>(SCREEN_WIDTH - CAPTION_MAX_WIDTH)));
@@ -477,7 +467,7 @@ namespace NEONengine
         // The box is always the full height even when the text is shorter, so it
         // is the box that has to stay on screen.
         WORD const top    = to<WORD>(screenGetOffset(g_mainScreen).y);
-        WORD const bottom = to<WORD>(top + SCREEN_HEIGHT - _caption_box_height);
+        WORD const bottom = to<WORD>(top + SCREEN_HEIGHT - to<WORD>(ink->Rows));
 
         // Below the pointer by preference, above it when that would run off the
         // bottom, so the caption stays with the pointer instead of being pinned
@@ -489,7 +479,7 @@ namespace NEONengine
         if (y > bottom) y = to<WORD>(anchorY) - CAPTION_AIR - to<WORD>(text.height);
         y = MAX(top, MIN(y, bottom));
 
-        bobSetFrame(&_caption_bob, _caption_ink->Planes[0], text.mask->Planes[0]);
+        bobSetFrame(&_caption_bob, ink->Planes[0], text.mask->Planes[0]);
         _caption_bob.sPos.uwX = to<UWORD>(x);
         _caption_bob.sPos.uwY = to<UWORD>(y);
         _caption_visible      = true;
@@ -512,6 +502,6 @@ namespace NEONengine
         auto const scenes   = _data.scenes();
         if (scene_id >= scenes.size()) return;
 
-        render_captions(scenes[scene_id], caption_max_height());
+        render_captions(scenes[scene_id], to<u16>(g_pEngine->caption_ink()->Rows));
     }
 }  // namespace NEONengine

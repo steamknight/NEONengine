@@ -5,6 +5,7 @@
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
+#include <ace/managers/bob.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/viewport/simplebuffer.h>
 #include <ace/utils/font.h>
@@ -65,6 +66,12 @@ namespace NEONengine
                 MAX_COLORS,
                 CURSOR_PALETTE_FIRST,
                 CURSOR_PALETTE_COUNT);
+
+            // The bob manager draws into these two buffers and undraws from
+            // them, so it lives and dies with them. A scene resets it rather
+            // than building its own.
+            bobManagerCreate(
+                screen->pBuffer->pFront, screen->pBuffer->pBack, screen->pBuffer->pBack->Rows);
         }
 
         return screen;
@@ -75,6 +82,7 @@ namespace NEONengine
         // you don't need to destroy the viewport, it's destroyed by the view.
         if (screen)
         {
+            bobManagerDestroy();
             simpleBufferDestroy(screen->pBuffer);
             viewDestroy(screen->pView);
             fadeDestroy(screen->pFade);
