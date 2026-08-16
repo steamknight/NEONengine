@@ -58,6 +58,23 @@ namespace NEONengine
         scene_hotspots      _hotspots;
         scene_timeline      _timeline;
     };
+
+    /**
+     * @brief The runtime of the scene now on screen.
+     *
+     * The scene state owns it, and the four bridge calls a script makes against
+     * the scene it is running in reach it through here rather than knowing
+     * where the scene lives.
+     *
+     * Good while the scene state is on the stack with a scene loaded. That is
+     * wider than "while the scene is running": a dialogue script runs through
+     * vm().execute_now() from the dialogue state's own loop, with the scene
+     * suspended underneath, and a HOTSPOT_ON in one lands here. The runtime is
+     * alive throughout, because a suspended state has not been destroyed.
+     *
+     * Asserts both rather than answering with a null nobody could act on.
+     */
+    scene_runtime& current_scene_runtime();
 }  // namespace NEONengine
 
 #endif  // __SCENE_RUNTIME_H__INCLUDED__

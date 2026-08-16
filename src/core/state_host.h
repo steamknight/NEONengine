@@ -43,6 +43,12 @@ namespace NEONengine
     template<hosted_state T>
     class state_host
     {
+        // So a state can reach itself - the scene hands its runtime to the noir
+        // bridge that way. Friendship is all or nothing, so T also sees the
+        // storage and the thunks; no state sees another's, because each T has
+        // its own host.
+        friend T;
+
         public:  //////////////////////////////////////////////////////////////////////////////////
         /**
          * @brief The table for @p T, built at compile time.

@@ -5,6 +5,7 @@
 #include <ace/managers/blit.h>
 #include <ace/managers/bob.h>
 #include <ace/managers/copper.h>
+#include <ace/managers/game.h>
 #include <ace/managers/log.h>
 #include <ace/managers/system.h>
 
@@ -22,7 +23,9 @@
 #include "core/scene_runtime.h"
 #include "core/scene_text.h"
 #include "core/screen.h"
+#include "core/state_host.h"
 #include "core/string_table.h"
+#include "utils/assert.h"
 
 NE_LOG_DOMAIN(Scene);
 
@@ -42,8 +45,65 @@ namespace NEONengine
         // ever needs to keep its own colors in 0..31 alongside the UI.
         constexpr UWORD SCENE_PALETTE_COLORS = 256;
 
-        /// A language change left the backdrop's text regions in the old language.
-        bool s_backdropStale = false;
+        /**
+         * @brief The scene on screen: what it is made of, and what it is doing.
+         *
+         * Holds the runtime in a buffer of its own rather than allocating one,
+         * the way state_host holds a state. The runtime is 260 bytes and the
+         * scene it presents changes many times over a game, so the linker
+         * reserves those bytes once instead of every load asking for them - and
+         * a load can no longer fail for want of somewhere to put it.
+         */
+        class scene_state
+        {
+            public:  //////////////////////////////////////////////////////////////////////////////
+            bool create();
+            bool loop();
+            void resume();
+            ~scene_state();
+
+            /**
+             * @brief The runtime of the scene now on screen.
+             *
+             * Asserts what a caller has to have earned: the scene state is on
+             * the stack, and it has a scene loaded. current_scene_runtime() is
+             * how anything outside this file asks.
+             */
+            static scene_runtime& current_runtime();
+
+            private:  /////////////////////////////////////////////////////////////////////////////
+            /** @brief What this scene is made of. Live only once a scene has loaded. */
+            scene_runtime& runtime();
+
+            /**
+             * @brief Builds the runtime for @p sc.
+             *
+             * Constructs only. A scene already loaded has to be dropped first,
+             * and the caller does that, because what happens between the two -
+             * the old scene's Chip RAM going back before the new one asks for
+             * any - is the reason the order matters.
+             */
+            void construct_runtime(data::scene const& sc);
+
+            /**
+             * @brief Drops the runtime and everything it holds.
+             *
+             * Hands memory back to the OS, so call this under a system-use
+             * guard. Does nothing when no scene is loaded.
+             */
+            void drop_runtime();
+
+            bool load_scene(u16 scene_id);
+            void redraw_backdrop();
+            void rebuild_for_language();
+            void apply_system_request(system_request const& request);
+
+            alignas(scene_runtime) unsigned char _storage[sizeof(scene_runtime)];
+            bool _runtime_live{ false };
+
+            /// A language change left the backdrop's text regions in the old language.
+            bool _backdrop_stale{ false };
+        };
 
         /**
          * @brief Lets the scripts a fade parked run again.
@@ -160,7 +220,7 @@ namespace NEONengine
          * background takes, so it declines the work when the scene has no text
          * regions to restate.
          */
-        void redraw_backdrop()
+        void scene_state::redraw_backdrop()
         {
             auto const scenes = g_pEngine->data().scenes();
             u16 const id = g_pEngine->current_scene();
@@ -179,7 +239,7 @@ namespace NEONengine
             // have turned would then describe colors that are no longer there.
             // The timeline stays live across a repaint, so this hands the bands
             // back without taking the scene down.
-            g_pEngine->scene().timeline().restore_palette();
+            runtime().timeline().restore_palette();
             draw_backdrop(scenes[id]);
 
             // Every bob standing over the old backdrop saved its background from
@@ -195,7 +255,7 @@ namespace NEONengine
          * any state ran this frame. What is left is the scene's own share of the
          * change: the text it drew out of the old table.
          */
-        void rebuild_for_language()
+        void scene_state::rebuild_for_language()
         {
             // Captions and text regions were both built from the table that just
             // went away. A pending scene is about to rebuild them anyway, so this
@@ -203,11 +263,11 @@ namespace NEONengine
             if (g_pEngine->pending_system_kind() == system_kind::load_scene) return;
 
             mtl::system_use_guard guard;  // OS on for pak/disk access
-            g_pEngine->scene().bobs().reload_captions();
+            runtime().bobs().reload_captions();
 
             // Repainting the backdrop is far more expensive than a caption,
-            // so it is only marked here; sceneProcess picks the moment.
-            s_backdropStale = true;
+            // so it is only marked here; loop() picks the moment.
+            _backdrop_stale = true;
         }
 
         /**
@@ -258,11 +318,11 @@ namespace NEONengine
          * @return Whether an entry script is now running. When it is, nothing
          *         has brought the palette up yet: the script's own FADE_IN does
          *         that on its first slice. A bad scene id also returns false,
-         *         with nothing loaded and the VM left as it was - sceneProcess
-         *         tears it down, because a script that asked to leave is over
+         *         with nothing loaded and the VM left as it was - loop() tears
+         *         it down, because a script that asked to leave is over
          *         either way.
          */
-        bool load_scene(u16 scene_id)
+        bool scene_state::load_scene(u16 scene_id)
         {
             auto& gd          = g_pEngine->data();
             auto const scenes = gd.scenes();
@@ -292,16 +352,16 @@ namespace NEONengine
             LONG const fastBefore = free_fast_size();
             // The load lays the whole backdrop down in the current language, so
             // any repaint a language change was still owed is settled by it.
-            s_backdropStale = false;
+            _backdrop_stale = false;
 
             bool const silence = sc.music_hash == MUSIC_SILENCE;
             bool music_started = false;
             {
                 mtl::system_use_guard guard;  // OS on for pak/disk access
 
-                g_pEngine->drop_scene();
+                drop_runtime();
                 draw_backdrop(sc);
-                g_pEngine->build_scene(sc);
+                construct_runtime(sc);
 
                 if (!silence && sc.music_hash != MUSIC_KEEP)
                 {
@@ -385,10 +445,10 @@ namespace NEONengine
          *
          * A kind the engine cannot do yet is logged and dropped, and has to
          * undo the stop its bridge call put on the VM: a modal one by resuming
-         * it here, a terminal one through the teardown sceneProcess owes it
+         * it here, a terminal one through the teardown loop() owes it
          * either way.
          */
-        void apply_system_request(system_request const& request)
+        void scene_state::apply_system_request(system_request const& request)
         {
             switch (request.kind)
             {
@@ -414,7 +474,40 @@ namespace NEONengine
         }
     }  // namespace
 
-    void sceneCreate(void)
+    scene_runtime& scene_state::runtime()
+    {
+        assert(_runtime_live, "reached a scene runtime before a scene loaded");
+        return *reinterpret_cast<scene_runtime*>(_storage);
+    }
+
+    void scene_state::construct_runtime(data::scene const& sc)
+    {
+        assert(!_runtime_live, "built a scene runtime over one still standing");
+
+        new (_storage) scene_runtime(
+            g_pEngine->data(), g_pEngine->assets(), g_pEngine->pointer(), sc);
+        _runtime_live = true;
+    }
+
+    void scene_state::drop_runtime()
+    {
+        if (!_runtime_live) return;
+
+        runtime().~scene_runtime();
+        _runtime_live = false;
+    }
+
+    scene_runtime& scene_state::current_runtime()
+    {
+        return state_host<scene_state>::instance().runtime();
+    }
+
+    scene_runtime& current_scene_runtime()
+    {
+        return scene_state::current_runtime();
+    }
+
+    bool scene_state::create()
     {
         logBlockBegin("State: Scene");
         // ACE leaves the system 'used' after engine setup; the game loop runs
@@ -432,9 +525,24 @@ namespace NEONengine
         {
             g_pEngine->vm().update();
         }
+
+        // A boot scene that could not be loaded leaves nothing for loop() to
+        // run against, and every frame below reads the runtime. engine::
+        // initialize() already refuses an out-of-range boot id, so this is the
+        // belt to that brace rather than a hole anyone can reach today. Ending
+        // the game is what main.cpp does when startup fails, and it beats
+        // popping the only state and looping on a black screen.
+        if (!_runtime_live)
+        {
+            NE_LOG("the boot scene did not load; there is nothing to run");
+            gameExit();
+            return false;
+        }
+
+        return true;
     }
 
-    void sceneProcess(void)
+    bool scene_state::loop()
     {
         // ── Requests recorded last frame ─────────────────────────────────────
 
@@ -480,9 +588,9 @@ namespace NEONengine
         // more after the SET_LANG - and that load repaints the backdrop anyway,
         // so waiting for the fade to settle keeps the decode from being done
         // twice and thrown away once.
-        if (s_backdropStale && !screenIsFadingOut(g_mainScreen))
+        if (_backdrop_stale && !screenIsFadingOut(g_mainScreen))
         {
-            s_backdropStale = false;
+            _backdrop_stale = false;
             redraw_backdrop();
         }
 
@@ -505,13 +613,13 @@ namespace NEONengine
         // painted back where it no longer is.
         bool const holding = g_pEngine->vm().blocked();
 
-        auto& runtime = g_pEngine->scene();
+        auto& scene = runtime();
 
         // ── Timeline ─────────────────────────────────────────────────────────
-        if (!holding) runtime.timeline().update();
+        if (!holding) scene.timeline().update();
 
         // ── UI ───────────────────────────────────────────────────────────────
-        if (!holding) runtime.hotspots().update();
+        if (!holding) scene.hotspots().update();
 
         // ── Scripts ──────────────────────────────────────────────────────────
         // Last, so a session started this frame by a keyframe or a click runs
@@ -524,13 +632,16 @@ namespace NEONengine
         }
 
         g_pEngine->pointer().update();
-        runtime.bobs().update();
-        runtime.bobs().draw();
+        scene.bobs().update();
+        scene.bobs().draw();
+
+        // The scene stays up until something else takes it down: nothing here
+        // ends it, and a scene change is a load, not a pop.
+        return true;
     }
 
-    void sceneDestroy(void)
+    scene_state::~scene_state()
     {
-        s_backdropStale = false;
         g_pEngine->take_pending_modal();
         g_pEngine->take_pending_system();
 
@@ -538,26 +649,23 @@ namespace NEONengine
         // that was still up owes nothing to anyone.
         g_pEngine->vm().reset_execution();
 
-        g_pEngine->drop_scene();
+        {
+            // The runtime hands its memory back to the OS on the way out.
+            mtl::system_use_guard guard;
+            drop_runtime();
+        }
+
         musicFree();
         logBlockEnd("State: Scene");
     }
 
-    void sceneResume(void)
+    void scene_state::resume()
     {
         // The button went unwatched while something was up over the scene, so a
         // change made in that time would read as a fresh click on whatever lies
         // under the pointer.
-        g_pEngine->scene().hotspots().resync_button();
+        runtime().hotspots().resync_button();
     }
 
-    tState g_stateScene = {
-        .cbCreate  = sceneCreate,
-        .cbLoop    = sceneProcess,
-        .cbDestroy = sceneDestroy,
-        .cbSuspend = nullptr,
-        .cbResume  = sceneResume,
-        // Set by statePush.
-        .pPrev     = nullptr,
-    };
+    tState g_stateScene = state_host<scene_state>::table();
 }  // namespace NEONengine

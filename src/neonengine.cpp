@@ -4,7 +4,7 @@
 
 #include "core/logger.h"
 #include "core/noir_bridge.h"
-#include "core/scene_runtime.h"
+#include "core/scene_bobs.h"
 
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
@@ -236,24 +236,9 @@ namespace NEONengine
         ptplayerProcess();
     }
 
-    void destroy_scene_runtime(scene_runtime* runtime)
-    {
-        delete runtime;
-    }
-
-    void engine::build_scene(data::scene const& scene) noexcept
-    {
-        _scene = scene_runtime_ptr(
-            new (mtl::MemF::Fast) scene_runtime(data(), assets(), pointer(), scene));
-    }
-
-    void engine::drop_scene() noexcept
-    {
-        _scene = nullptr;
-    }
-
     void engine::frame() noexcept
-    {        update_input();
+    {
+        update_input();
         update_audio();
         apply_pending_language();
         _overlays.present(g_gameStateManager);
