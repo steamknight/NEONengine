@@ -9,12 +9,14 @@
     {
       "name": "toolchain",
       "hidden": true,
-      "description": "Where this machine keeps the cross toolchain. Absolute paths on purpose: this file is yours and is not committed. TOOLCHAIN_PATH names the Bartman amiga-debug extension, so it carries the extension's version number and has to be updated when the extension does.",
+      "description": "Where this machine keeps the cross toolchain. Absolute paths on purpose: this file is yours and is not committed. TOOLCHAIN_PATH names the Bartman amiga-debug extension, so it carries the extension's version number and has to be updated when the extension does. ACE_DEBUG turns on ACE's own logging, bobCheckGood, the bob buffer auto-correction scene_bobs relies on, and every assert() in src/ - which compiles to nothing without it. ACE_DEBUG_UAE sends that log to the emulator. Both belong in a debug build; they live here rather than in the committed presets because the presets carry no build types yet.",
       "toolchainFile": "C:/path/to/AmigaCMakeCrossToolchains/m68k-bartman.cmake",
       "cacheVariables": {
         "TOOLCHAIN_PATH": "C:/Users/you/.vscode/extensions/bartmanabyss.amiga-debug-1.8.2/bin/win32/opt",
         "TOOLCHAIN_PREFIX": "m68k-amiga-elf",
-        "NE_ELF2HUNK": "C:/path/to/elf2hunk/build/Release.x64/elf2hunk.exe"
+        "NE_ELF2HUNK": "C:/path/to/elf2hunk/build/Release.x64/elf2hunk.exe",
+        "ACE_DEBUG": "ON",
+        "ACE_DEBUG_UAE": "ON"
       }
     },
     {
