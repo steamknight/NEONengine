@@ -2,7 +2,7 @@
 
 #include <printf.h>
 
-#include <proto/exec.h> // Bartman's compiler needs this
+#include <proto/exec.h>  // Bartman's compiler needs this
 
 #include <ace/managers/blit.h>
 #include <ace/managers/system.h>
@@ -10,92 +10,125 @@
 #include <ace/utils/font.h>
 #include <ace/utils/palette.h>
 
+#include <ace++/font.h>
+
+#include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/screen.h"
+#include "core/state_host.h"
+
+NE_LOG_DOMAIN(Core);
 
 namespace NEONengine
 {
-    static tFont* s_pFont;
-    static tTextBitMap* s_pTextBmp;
-    static tTextBitMap* s_pElapsedTimeBmp;
-    static char s_memSize[64];
-    static char s_elapsedTime[32];
-    static ULONG s_ulDelta = 0;
-    static ULONG s_ulFps;
-
-    #define DELAY 50
-
-    void debugViewCreate(void)
+    namespace
     {
-        logBlockBegin("debugViewCreate");
+        /// Timer ticks between readings.
+        constexpr ULONG READING_INTERVAL = 50;
 
-        s_pFont = g_pEngine->default_font();
+        /// Palette index the figures are drawn in.
+        constexpr UBYTE STATS_COLOR = 24;
 
-        s_pTextBmp = fontCreateTextBitMap(160, s_pFont->uwHeight * 3);
-        s_pElapsedTimeBmp = fontCreateTextBitMap(160, s_pFont->uwHeight);
-        s_ulDelta = timerGet();
+        /** @brief What is left of each kind of memory, and how long we have run. */
+        class debug_view_state : private freezes_display
+        {
+            public:  //////////////////////////////////////////////////////////////////////////////
+            bool create();
+            bool loop();
+            ~debug_view_state();
 
-        s_ulFps = systemIsPal() ? 50 : 60;
+            private:  /////////////////////////////////////////////////////////////////////////////
+            void take_reading(ULONG now);
 
-        // The stats are redrawn in place every few frames while nothing else
-        // runs. Without this they would land in alternating buffers and the
-        // display would flick between two different readings.
-        screenFreezeDisplay(g_mainScreen);
+            /// Where the elapsed time sits, which its own height decides.
+            WORD elapsed_y() const { return to<WORD>(SCREEN_HEIGHT - _elapsed->uwActualHeight); }
 
-        logBlockEnd("debugViewCreate");
-    }
+            tFont*               _font{ nullptr };  ///< The engine's, borrowed.
+            ace::text_bitmap_ptr _memory{ nullptr };
+            ace::text_bitmap_ptr _elapsed{ nullptr };
 
-    void debugViewProcess(void)
-    {
-        // Nothing else runs while the stats are up, so the sprite would sit
-        // where it was until they came down.
-        g_pEngine->pointer().update();
+            ULONG _last_reading{ 0 };
+            ULONG _fps{ 0 };
 
-        ULONG ulNow = timerGet();
-        ULONG ulDelta = timerGetDelta(s_ulDelta, ulNow);
+            char _memory_text[64]{};
+            char _elapsed_text[32]{};
+        };
 
-        if (ulDelta < DELAY) return;
+        bool debug_view_state::create()
+        {
+            _font = g_pEngine->default_font();
 
-        s_ulDelta = ulNow;
+            logBlockBegin("debug view");
+            _memory  = ace::fontCreateTextBitMap(160, to<UWORD>(_font->uwHeight * 3));
+            _elapsed = ace::fontCreateTextBitMap(160, _font->uwHeight);
+            logBlockEnd("debug view");
 
-        sprintf(s_memSize, "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ", memGetFreeChipSize() >> 10, AvailMem(MEMF_FAST) >> 10, AvailMem(MEMF_ANY) >> 10);
-        fontFillTextBitMap(s_pFont, s_pTextBmp, s_memSize);
+            if (!_memory || !_elapsed)
+            {
+                NE_LOG("no room for the debug view's text");
+                return false;
+            }
 
-        sprintf(s_elapsedTime, "Elapsed Time: %lds.", ulNow / s_ulFps);
-        fontFillTextBitMap(s_pFont, s_pElapsedTimeBmp, s_elapsedTime);
+            _last_reading = timerGet();
+            _fps          = systemIsPal() ? 50 : 60;
 
-        screenRestoreRect(g_mainScreen, 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight);
-        screenTextCopy(g_mainScreen, s_pTextBmp, 0, 0, 24, FONT_COOKIE);
+            return true;
+        }
 
-        WORD const elapsedY = to<WORD>(SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight);
-        screenRestoreRect(g_mainScreen,
-            0,
-            elapsedY,
-            s_pElapsedTimeBmp->uwActualWidth,
-            s_pElapsedTimeBmp->uwActualHeight);
-        screenTextCopy(g_mainScreen, s_pElapsedTimeBmp, 0, to<UWORD>(elapsedY), 24, FONT_COOKIE);
-    }
+        bool debug_view_state::loop()
+        {
+            // Nothing else runs while the figures are up, so the sprite would sit
+            // where it was until they came down.
+            g_pEngine->pointer().update();
 
-    void debugViewDestroy(void)
-    {
-        screenRestoreRect(g_mainScreen, 0, 0, s_pTextBmp->uwActualWidth, s_pTextBmp->uwActualHeight);
-        screenRestoreRect(g_mainScreen,
-            0,
-            to<WORD>(SCREEN_HEIGHT - s_pElapsedTimeBmp->uwActualHeight),
-            s_pElapsedTimeBmp->uwActualWidth,
-            s_pElapsedTimeBmp->uwActualHeight);
-        screenResumeDisplay(g_mainScreen);
+            ULONG const now = timerGet();
+            if (timerGetDelta(_last_reading, now) >= READING_INTERVAL) take_reading(now);
 
-        fontDestroyTextBitMap(s_pTextBmp);
-        fontDestroyTextBitMap(s_pElapsedTimeBmp);
-    }
+            return true;
+        }
 
-    tState g_stateDebugView = {
-        .cbCreate = debugViewCreate,
-        .cbLoop = debugViewProcess,
-        .cbDestroy = debugViewDestroy,
-        .cbSuspend = nullptr,
-        .cbResume = nullptr,
-        .pPrev = nullptr,  // Set by statePush.
-    };
-}
+        void debug_view_state::take_reading(ULONG now)
+        {
+            _last_reading = now;
+
+            sprintf(_memory_text,
+                "Chip: %ld KB \nFast: %ld KB \nAny:  %ld KB ",
+                memGetFreeChipSize() >> 10,
+                AvailMem(MEMF_FAST) >> 10,
+                AvailMem(MEMF_ANY) >> 10);
+            fontFillTextBitMap(_font, _memory.get(), _memory_text);
+
+            sprintf(_elapsed_text, "Elapsed Time: %lds.", now / _fps);
+            fontFillTextBitMap(_font, _elapsed.get(), _elapsed_text);
+
+            screenRestoreRect(
+                g_mainScreen, 0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
+            screenTextCopy(g_mainScreen, _memory.get(), 0, 0, STATS_COLOR, FONT_COOKIE);
+
+            screenRestoreRect(g_mainScreen,
+                0,
+                elapsed_y(),
+                _elapsed->uwActualWidth,
+                _elapsed->uwActualHeight);
+            screenTextCopy(
+                g_mainScreen, _elapsed.get(), 0, to<UWORD>(elapsed_y()), STATS_COLOR, FONT_COOKIE);
+        }
+
+        debug_view_state::~debug_view_state()
+        {
+            // Nothing was drawn when the text could not be made.
+            if (!_memory || !_elapsed) return;
+
+            // Zero-sized until the first reading, which screenRestoreRect refuses.
+            screenRestoreRect(
+                g_mainScreen, 0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
+            screenRestoreRect(g_mainScreen,
+                0,
+                elapsed_y(),
+                _elapsed->uwActualWidth,
+                _elapsed->uwActualHeight);
+        }
+    }  // namespace
+
+    tState g_stateDebugView = state_host<debug_view_state>::table();
+}  // namespace NEONengine
