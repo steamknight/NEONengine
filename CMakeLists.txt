@@ -120,6 +120,13 @@ if(ACE_TEST_RUNNER)
     add_compile_definitions(ACE_TEST_RUNNER)
 endif()
 
+# Names each test before it runs. A crash that takes the machine down then
+# names its own culprit: the last "run <suite>.<test>" line is the test that
+# never returned. Off by default because it is very noisy.
+set(NE_TRACE_TESTS OFF CACHE BOOL "Log every test name before it runs")
+if(NE_TRACE_TESTS)
+    add_compile_definitions(NE_TRACE_TESTS)
+endif()
 
 # Engine logging, independent of ACE_DEBUG on purpose. ACE gates its own
 # logWrite on ACE_DEBUG, which also turns on bobCheckGood and the bob buffer
