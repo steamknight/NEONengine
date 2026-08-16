@@ -208,8 +208,7 @@ namespace NEONengine
          * @brief The blit addresses for frame @p index of @p asset.
          *
          * Frames are stacked vertically and the mask (when present) shares that
-         * layout, so both step by index * frame_height rows. bitmap_ptr::get()
-         * is non-const, hence the mutable reference.
+         * layout, so both step by index * frame_height rows.
          */
         frame_ptrs frame_at(graphic_asset& asset, u8 index);
 

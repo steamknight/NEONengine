@@ -162,7 +162,7 @@ namespace mtl
          *
          * @return T* The owned pointer
          */
-        T* get() { return _pointer; }
+        T* get() const noexcept { return _pointer; }
 
         /**
          * @brief Convenience operator to easily verify if the pointer is valid.
