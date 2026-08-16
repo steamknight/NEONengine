@@ -17,7 +17,6 @@
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/nine_patch.h"
-#include "core/scene_runtime.h"
 #include "core/screen.h"
 #include "core/text_render.h"
 
@@ -889,11 +888,6 @@ namespace NEONengine
         // only thing that starts it again. A choice script that made a terminal
         // call is untouched: that one is owed a teardown, not a resume.
         g_pEngine->vm().resume_execution();
-
-        // The scene has not seen the button since before the box went up, so
-        // the press that closed it would read as a fresh click on whatever the
-        // pointer happens to be over.
-        g_pEngine->scene().hotspots().resync_button();
     }
 
     tState g_stateDialogue = {

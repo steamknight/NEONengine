@@ -543,17 +543,20 @@ namespace NEONengine
         logBlockEnd("State: Scene");
     }
 
+    void sceneResume(void)
+    {
+        // The button went unwatched while something was up over the scene, so a
+        // change made in that time would read as a fresh click on whatever lies
+        // under the pointer.
+        g_pEngine->scene().hotspots().resync_button();
+    }
+
     tState g_stateScene = {
         .cbCreate  = sceneCreate,
         .cbLoop    = sceneProcess,
         .cbDestroy = sceneDestroy,
-        // No suspend or resume. A message box or a conversation is pushed over
-        // this state, and what the scene owes that is settled the other way
-        // round: those states call resync_button() as they come down, because
-        // only they know the button was theirs. A pair of hooks here would be a
-        // second place to look for the same rule.
         .cbSuspend = nullptr,
-        .cbResume  = nullptr,
+        .cbResume  = sceneResume,
         // Set by statePush.
         .pPrev     = nullptr,
     };

@@ -14,7 +14,6 @@
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "core/nine_patch.h"
-#include "core/scene_runtime.h"
 #include "core/screen.h"
 #include "core/text_render.h"
 
@@ -174,11 +173,6 @@ namespace NEONengine
         // again. A box the engine put up for its own reasons parked nothing and
         // this is a no-op.
         g_pEngine->vm().resume_execution();
-
-        // The scene has not seen the button since before the box went up, so
-        // the press that dismissed it would read as a fresh click on whatever
-        // the pointer happens to be over.
-        g_pEngine->scene().hotspots().resync_button();
 
         s_boxWidth  = 0;
         s_boxHeight = 0;
