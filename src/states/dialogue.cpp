@@ -18,6 +18,7 @@
 #include "core/mouse_pointer.h"
 #include "core/nine_patch.h"
 #include "core/screen.h"
+#include "core/state_host.h"
 #include "core/text_render.h"
 
 NE_LOG_DOMAIN(Dialogue);
@@ -26,30 +27,6 @@ namespace NEONengine
 {
     namespace
     {
-        /// The conversation the box is showing.
-        dialogue_session s_session;
-
-        /// The frame on screen now, in scene space. Zero-sized when none is up.
-        u16 s_frameX      = 0;
-        u16 s_frameY      = 0;
-        u16 s_frameWidth  = 0;
-        u16 s_frameHeight = 0;
-
-        /**
-         * @brief The portrait on screen now, in scene space.
-         *
-         * Kept apart from the frame's rectangle because the two come and go at
-         * different times: the frame is redrawn on every page, the portrait
-         * only when the speaker changes. Zero-sized when none is up.
-         */
-        u16 s_portraitX      = 0;
-        u16 s_portraitY      = 0;
-        u16 s_portraitWidth  = 0;
-        u16 s_portraitHeight = 0;
-
-        /// Who the portrait on screen belongs to, or NO_ID when nobody speaks.
-        u16 s_speaker = data::NO_ID;
-
         /// No slot: none is highlighted, or the pointer is over none.
         constexpr u8 NO_SLOT = 0xFF;
 
@@ -92,27 +69,6 @@ namespace NEONengine
         static_assert(DIALOGUE_MAX_CHOICES_SHOWN == dialogue_session::MAX_CHOICES_SHOWN,
             "the numbering the box draws and the cap the session fits to are the same limit");
 
-        drawn_slot s_slots[DIALOGUE_MAX_CHOICES_SHOWN];
-
-        /// How many slots are on screen. Zero on a page that advances instead.
-        u8 s_slot_count = 0;
-
-        /// The slot about to be acted on, or NO_SLOT when none is.
-        u8 s_highlight = NO_SLOT;
-
-        /// Frames left of the pause that shows off a slot picked by its number.
-        u8 s_hold_frames = 0;
-
-        /// The slot that pause is showing off, taken when it runs out.
-        u8 s_pending = NO_SLOT;
-
-        /** @brief Who the page on show is spoken by, or NO_ID. */
-        u16 current_speaker()
-        {
-            auto const* page = s_session.current_page();
-            return page ? page->speaker_id : data::NO_ID;
-        }
-
         /** @brief What @p speaker_id is called, or an empty view when nothing. */
         bstr_view speaker_name(u16 speaker_id)
         {
@@ -154,6 +110,96 @@ namespace NEONengine
             screenPublishPalette(g_mainScreen, DIALOGUE_TEXT_COLOR, 1);
         }
 
+        /** @brief What "More..." says, in the player's language. */
+        bstr_view more_text()
+        {
+            return g_pEngine->strings().more_choices();
+        }
+
+        /** @brief One conversation, from the page it opens on to the box coming down. */
+        class dialogue_state : private freezes_display
+        {
+            public:  //////////////////////////////////////////////////////////////////////////////
+            bool create();
+            bool loop();
+            ~dialogue_state();
+
+            private:  /////////////////////////////////////////////////////////////////////////////
+            u16 current_speaker() const;
+            void erase_frame();
+            void erase_portrait();
+            void forget_slots();
+            void draw_slot(u8 slot, u8 color);
+            void set_highlight(u8 slot);
+            u8 slot_under_pointer() const;
+            u16 choice_column(text_renderer* renderer, u16 allowance) const;
+            u16 measure_choices(text_renderer* renderer, u16 choiceAllowance, u16* heights) const;
+            void push_slot(text_renderer* renderer,
+                bool rotates,
+                u8 choice,
+                ace::text_bitmap_ptr&& text,
+                u16 column,
+                u16 allowance,
+                u16& widest,
+                u16& height);
+            u16 build_choices(text_renderer* renderer,
+                u16 column,
+                u16 allowance,
+                u16 choiceAllowance,
+                u16& contentWidth);
+            bool draw_current_page(bool draw_portrait);
+
+            /// The three below report whether the box is still up.
+            bool show_current_page();
+            bool show_current_set();
+            bool take_slot(u8 slot);
+
+            /// The conversation the box is showing.
+            dialogue_session _session;
+
+            /// The frame on screen, in scene space. Zero-sized when none is up.
+            u16 _frame_x{ 0 };
+            u16 _frame_y{ 0 };
+            u16 _frame_width{ 0 };
+            u16 _frame_height{ 0 };
+
+            /**
+             * @brief The portrait on screen, in scene space.
+             *
+             * Kept apart from the frame's rectangle because the two come and go
+             * at different times: the frame is redrawn on every page, the
+             * portrait only when the speaker changes. Zero-sized when none is up.
+             */
+            u16 _portrait_x{ 0 };
+            u16 _portrait_y{ 0 };
+            u16 _portrait_width{ 0 };
+            u16 _portrait_height{ 0 };
+
+            /// Who the portrait on screen belongs to, or NO_ID when nobody speaks.
+            u16 _speaker{ data::NO_ID };
+
+            drawn_slot _slots[DIALOGUE_MAX_CHOICES_SHOWN]{};
+
+            /// How many slots are on screen. Zero on a page that advances instead.
+            u8 _slot_count{ 0 };
+
+            /// The slot about to be acted on, or NO_SLOT when none is.
+            u8 _highlight{ NO_SLOT };
+
+            /// Frames left of the pause that shows off a slot picked by its number.
+            u8 _hold_frames{ 0 };
+
+            /// The slot that pause is showing off, taken when it runs out.
+            u8 _pending{ NO_SLOT };
+        };
+
+        /** @brief Who the page on show is spoken by, or NO_ID. */
+        u16 dialogue_state::current_speaker() const
+        {
+            auto const* page = _session.current_page();
+            return page ? page->speaker_id : data::NO_ID;
+        }
+
         /**
          * @brief Paints the frame's rectangle back to the scene behind it.
          *
@@ -161,16 +207,16 @@ namespace NEONengine
          * leaves nothing where it stood. Safe to call before the first page and
          * after the last, when no frame is up.
          */
-        void erase_frame()
+        void dialogue_state::erase_frame()
         {
             screenRestoreRect(g_mainScreen,
-                to<WORD>(s_frameX),
-                to<WORD>(s_frameY),
-                to<WORD>(s_frameWidth),
-                to<WORD>(s_frameHeight));
+                to<WORD>(_frame_x),
+                to<WORD>(_frame_y),
+                to<WORD>(_frame_width),
+                to<WORD>(_frame_height));
 
-            s_frameWidth  = 0;
-            s_frameHeight = 0;
+            _frame_width  = 0;
+            _frame_height = 0;
         }
 
         /**
@@ -181,16 +227,16 @@ namespace NEONengine
          * stood in, and the part of the column the frame does not reach would
          * otherwise still show the previous speaker.
          */
-        void erase_portrait()
+        void dialogue_state::erase_portrait()
         {
             screenRestoreRect(g_mainScreen,
-                to<WORD>(s_portraitX),
-                to<WORD>(s_portraitY),
-                to<WORD>(s_portraitWidth),
-                to<WORD>(s_portraitHeight));
+                to<WORD>(_portrait_x),
+                to<WORD>(_portrait_y),
+                to<WORD>(_portrait_width),
+                to<WORD>(_portrait_height));
 
-            s_portraitWidth  = 0;
-            s_portraitHeight = 0;
+            _portrait_width  = 0;
+            _portrait_height = 0;
         }
 
         /**
@@ -199,24 +245,24 @@ namespace NEONengine
          * The frame they stand in is painted back separately, so this only lets
          * go of what was rendered for them.
          */
-        void forget_slots()
+        void dialogue_state::forget_slots()
         {
-            for (u8 slot = 0; slot < s_slot_count; ++slot)
+            for (u8 slot = 0; slot < _slot_count; ++slot)
             {
-                s_slots[slot].number.reset(nullptr);
-                s_slots[slot].text.reset(nullptr);
+                _slots[slot].number.reset(nullptr);
+                _slots[slot].text.reset(nullptr);
             }
 
-            s_slot_count  = 0;
-            s_highlight   = NO_SLOT;
-            s_hold_frames = 0;
-            s_pending     = NO_SLOT;
+            _slot_count  = 0;
+            _highlight   = NO_SLOT;
+            _hold_frames = 0;
+            _pending     = NO_SLOT;
         }
 
         /** @brief Puts @p slot on screen in @p color. */
-        void draw_slot(u8 slot, u8 color)
+        void dialogue_state::draw_slot(u8 slot, u8 color)
         {
-            auto& drawn = s_slots[slot];
+            auto& drawn = _slots[slot];
 
             if (drawn.number)
             {
@@ -235,20 +281,20 @@ namespace NEONengine
          * the glyphs land on the same pixels either way, so the colour is all
          * that changes.
          */
-        void set_highlight(u8 slot)
+        void dialogue_state::set_highlight(u8 slot)
         {
-            if (slot == s_highlight) return;
+            if (slot == _highlight) return;
 
-            if (s_highlight != NO_SLOT) draw_slot(s_highlight, DIALOGUE_CHOICE_COLOR);
-            s_highlight = slot;
-            if (s_highlight != NO_SLOT)
+            if (_highlight != NO_SLOT) draw_slot(_highlight, DIALOGUE_CHOICE_COLOR);
+            _highlight = slot;
+            if (_highlight != NO_SLOT)
             {
-                draw_slot(s_highlight, DIALOGUE_CHOICE_HIGHLIGHT_COLOR);
+                draw_slot(_highlight, DIALOGUE_CHOICE_HIGHLIGHT_COLOR);
             }
         }
 
         /** @brief Which slot the pointer stands on, or NO_SLOT. */
-        u8 slot_under_pointer()
+        u8 dialogue_state::slot_under_pointer() const
         {
             // Slots are laid out in scene space while the pointer reports
             // display space, so the pointer is shifted rather than every slot.
@@ -259,9 +305,9 @@ namespace NEONengine
             u16 const x = to<u16>(mouseGetX(MOUSE_PORT_1));
             u16 const y = to<u16>(pointerY - offset_y);
 
-            for (u8 slot = 0; slot < s_slot_count; ++slot)
+            for (u8 slot = 0; slot < _slot_count; ++slot)
             {
-                auto const& drawn = s_slots[slot];
+                auto const& drawn = _slots[slot];
                 if (x < drawn.x || x >= drawn.x + drawn.width) continue;
                 if (y < drawn.y || y >= drawn.y + drawn.height) continue;
                 return slot;
@@ -280,9 +326,9 @@ namespace NEONengine
          * the current set happens to draw, so rotating between sets of
          * different lengths does not shift the text sideways.
          */
-        u16 choice_column(text_renderer* renderer, u16 allowance)
+        u16 dialogue_state::choice_column(text_renderer* renderer, u16 allowance) const
         {
-            u8 numbered = s_session.choice_count();
+            u8 numbered = _session.choice_count();
             if (numbered > DIALOGUE_MAX_CHOICES_SHOWN) numbered = DIALOGUE_MAX_CHOICES_SHOWN;
 
             u16 numberWidth = 0;
@@ -294,12 +340,6 @@ namespace NEONengine
             }
 
             return to<u16>(DIALOGUE_CHOICE_INDENT + numberWidth + DIALOGUE_CHOICE_NUMBER_GAP);
-        }
-
-        /** @brief What "More..." says, in the player's language. */
-        bstr_view more_text()
-        {
-            return g_pEngine->strings().more_choices();
         }
 
         /**
@@ -318,15 +358,16 @@ namespace NEONengine
          *         page's rather than the current set's, so that rotating
          *         between sets does not move the text above them.
          */
-        u16 measure_choices(text_renderer* renderer, u16 choiceAllowance, u16* heights)
+        u16 dialogue_state::measure_choices(
+            text_renderer* renderer, u16 choiceAllowance, u16* heights) const
         {
-            u8 const count = s_session.choice_count();
+            u8 const count = _session.choice_count();
             u16 tallest    = 0;
 
             for (u8 choice = 0; choice < count; ++choice)
             {
                 auto string
-                    = g_pEngine->strings().get_string(s_session.choice_at(choice)->text_string_id);
+                    = g_pEngine->strings().get_string(_session.choice_at(choice)->text_string_id);
 
                 heights[choice] = string.is_empty()
                     ? u16(0)
@@ -334,7 +375,7 @@ namespace NEONengine
 
                 if (heights[choice] == 0)
                 {
-                    NE_LOG("choice %hu has no text to show", s_session.choice_index(choice));
+                    NE_LOG("choice %hu has no text to show", _session.choice_index(choice));
                     continue;
                 }
 
@@ -345,7 +386,7 @@ namespace NEONengine
         }
 
         /** @brief Adds @p text as the next slot on screen, numbered where it lands. */
-        void push_slot(text_renderer* renderer,
+        void dialogue_state::push_slot(text_renderer* renderer,
             bool rotates,
             u8 choice,
             ace::text_bitmap_ptr&& text,
@@ -354,7 +395,7 @@ namespace NEONengine
             u16& widest,
             u16& height)
         {
-            auto& drawn   = s_slots[s_slot_count];
+            auto& drawn   = _slots[_slot_count];
             drawn.rotates = rotates;
             drawn.choice  = choice;
             drawn.height  = text->uwActualHeight;
@@ -363,13 +404,13 @@ namespace NEONengine
 
             // Numbered by the slot it lands in, not by the choice it holds, so
             // every number the player can see belongs to a slot that is there.
-            char label[3] = { to<char>('1' + s_slot_count), '.', '\0' };
+            char label[3] = { to<char>('1' + _slot_count), '.', '\0' };
             drawn.number  = renderer->create_text(label, allowance, text_justify::LEFT);
             drawn.text    = mtl::move(text);
 
-            if (s_slot_count) height = to<u16>(height + DIALOGUE_CHOICE_SPACING);
+            if (_slot_count) height = to<u16>(height + DIALOGUE_CHOICE_SPACING);
             height = to<u16>(height + drawn.height);
-            ++s_slot_count;
+            ++_slot_count;
         }
 
         /**
@@ -384,8 +425,10 @@ namespace NEONengine
          *         page that shows none - which is the page that advances on a
          *         click instead.
          */
-        u16 build_choices(
-            text_renderer* renderer, u16 column, u16 allowance, u16 choiceAllowance,
+        u16 dialogue_state::build_choices(text_renderer* renderer,
+            u16 column,
+            u16 allowance,
+            u16 choiceAllowance,
             u16& contentWidth)
         {
             forget_slots();
@@ -393,12 +436,12 @@ namespace NEONengine
             u16 widest = 0;
             u16 height = 0;
 
-            u8 const slots = s_session.slot_count();
+            u8 const slots = _session.slot_count();
             for (u8 slot = 0; slot < slots; ++slot)
             {
-                u8 const choice = s_session.slot_choice(slot);
+                u8 const choice = _session.slot_choice(slot);
                 auto string
-                    = g_pEngine->strings().get_string(s_session.choice_at(choice)->text_string_id);
+                    = g_pEngine->strings().get_string(_session.choice_at(choice)->text_string_id);
 
                 auto text = renderer->create_text(string, choiceAllowance, text_justify::LEFT);
                 if (!text)
@@ -407,7 +450,7 @@ namespace NEONengine
                     // keeps room the set no longer uses - better than a slot
                     // the player can see a number for but not read.
                     NE_LOG("choice %hu would not render; its slot is dropped",
-                        s_session.choice_index(choice));
+                        _session.choice_index(choice));
                     continue;
                 }
 
@@ -415,10 +458,10 @@ namespace NEONengine
                     renderer, false, choice, mtl::move(text), column, allowance, widest, height);
             }
 
-            if (s_session.has_more())
+            if (_session.has_more())
             {
-                auto text = renderer->create_text(more_text(), choiceAllowance,
-                    text_justify::LEFT);
+                auto text
+                    = renderer->create_text(more_text(), choiceAllowance, text_justify::LEFT);
 
                 // Without it the sets after the first are out of reach, so this
                 // is worth saying even though the string is the editor's to
@@ -426,18 +469,12 @@ namespace NEONengine
                 if (!text) { NE_LOG("no \"More...\" to show; the rest of the choices are lost"); }
                 else
                 {
-                    push_slot(renderer,
-                        true,
-                        0,
-                        mtl::move(text),
-                        column,
-                        allowance,
-                        widest,
-                        height);
+                    push_slot(
+                        renderer, true, 0, mtl::move(text), column, allowance, widest, height);
                 }
             }
 
-            if (s_slot_count == 0) return 0;
+            if (_slot_count == 0) return 0;
 
             if (column + widest > contentWidth) contentWidth = to<u16>(column + widest);
 
@@ -460,9 +497,9 @@ namespace NEONengine
          * @return False when there was nothing to draw, which leaves the screen
          *         as it was and is the caller's cue to close the box.
          */
-        bool draw_current_page(bool draw_portrait)
+        bool dialogue_state::draw_current_page(bool draw_portrait)
         {
-            auto const* page = s_session.current_page();
+            auto const* page = _session.current_page();
             if (!page) return false;
 
             // The page is burnt on arrival, before anything is laid out, so a
@@ -472,7 +509,7 @@ namespace NEONengine
             auto text_string = g_pEngine->strings().get_string(page->text_string_id);
             if (text_string.is_empty())
             {
-                NE_LOG("page %hu has no text to show", s_session.current_page_index());
+                NE_LOG("page %hu has no text to show", _session.current_page_index());
                 return false;
             }
 
@@ -480,17 +517,17 @@ namespace NEONengine
 
             bool const has_portrait = dialogue_portraits_has(page->speaker_id);
 
-            s_frameX = has_portrait
+            _frame_x = has_portrait
                 ? to<u16>(DIALOGUE_MARGIN * 2 + PORTRAIT_WIDTH)
                 : DIALOGUE_MARGIN;
-            s_frameY = DIALOGUE_MARGIN;
+            _frame_y = DIALOGUE_MARGIN;
 
             // The frame is drawn around the text, so what the text may use is
             // what is left of the screen beside the portrait, less the margin
             // the frame is inset by on the far side and the margin between the
             // frame and its contents on both.
             u16 const allowance
-                = to<u16>(SCREEN_WIDTH - s_frameX - DIALOGUE_MARGIN - MESSAGE_MARGIN * 2);
+                = to<u16>(SCREEN_WIDTH - _frame_x - DIALOGUE_MARGIN - MESSAGE_MARGIN * 2);
 
             auto text = renderer->create_text(text_string, allowance, text_justify::LEFT);
             if (!text)
@@ -518,15 +555,15 @@ namespace NEONengine
             // The frame is pinned under the top margin and may not pass the
             // bottom one, so this is everything it can ever hold: the heading,
             // the page text, and the choices under them.
-            u16 const contentSpace = to<u16>(
-                SCREEN_HEIGHT - s_frameY - DIALOGUE_MARGIN - MESSAGE_MARGIN * 2);
+            u16 const contentSpace
+                = to<u16>(SCREEN_HEIGHT - _frame_y - DIALOGUE_MARGIN - MESSAGE_MARGIN * 2);
             u16 const textSpace
                 = contentSpace > headingHeight ? to<u16>(contentSpace - headingHeight) : u16(0);
 
             u16 const column          = choice_column(renderer, allowance);
             u16 const choiceAllowance = column < allowance ? to<u16>(allowance - column) : u16(0);
 
-            if (s_session.choice_count() && !choiceAllowance)
+            if (_session.choice_count() && !choiceAllowance)
             {
                 NE_LOG("no room beside the choice numbers; showing none");
             }
@@ -555,7 +592,7 @@ namespace NEONengine
             if (text->uwActualHeight > textRoom)
             {
                 NE_LOG("page %hu is taller than the box may be; its text is clipped to %hu",
-                    s_session.current_page_index(),
+                    _session.current_page_index(),
                     textRoom);
 
                 // The bitmap is drawn to the height it declares, so shortening
@@ -570,7 +607,7 @@ namespace NEONengine
                 ? to<u16>(choiceSpace - DIALOGUE_CHOICE_GAP)
                 : u16(0);
 
-            s_session.fit_choices(mtl::span<u16>(heights, s_session.choice_count()),
+            _session.fit_choices(mtl::span<u16>(heights, _session.choice_count()),
                 choiceSpace,
                 DIALOGUE_CHOICE_SPACING,
                 moreHeight);
@@ -580,24 +617,24 @@ namespace NEONengine
             u16 const choicesHeight
                 = build_choices(renderer, column, allowance, choiceAllowance, contentWidth);
 
-            s_frameWidth = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
-            s_frameHeight = to<u16>(
+            _frame_width  = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
+            _frame_height = to<u16>(
                 headingHeight + text->uwActualHeight + choicesHeight + MESSAGE_MARGIN * 2);
 
             // The frame can only be drawn well at certain widths, so it takes one
             // of those and the text sits in the middle of whatever that leaves.
             auto* frame = g_pEngine->default_nine_patch();
-            if (frame) s_frameWidth = frame->width_for(s_frameWidth);
+            if (frame) _frame_width = frame->width_for(_frame_width);
 
             if (draw_portrait)
             {
                 if (has_portrait)
                 {
-                    s_portraitX      = DIALOGUE_MARGIN;
-                    s_portraitY      = DIALOGUE_MARGIN;
-                    s_portraitWidth  = PORTRAIT_WIDTH;
-                    s_portraitHeight = PORTRAIT_HEIGHT;
-                    dialogue_portraits_draw(page->speaker_id, s_portraitX, s_portraitY);
+                    _portrait_x      = DIALOGUE_MARGIN;
+                    _portrait_y      = DIALOGUE_MARGIN;
+                    _portrait_width  = PORTRAIT_WIDTH;
+                    _portrait_height = PORTRAIT_HEIGHT;
+                    dialogue_portraits_draw(page->speaker_id, _portrait_x, _portrait_y);
                 }
                 else
                 {
@@ -610,24 +647,24 @@ namespace NEONengine
 
             if (frame)
             {
-                if (auto art = frame->render(s_frameWidth, s_frameHeight, 0))
+                if (auto art = frame->render(_frame_width, _frame_height, 0))
                 {
                     screenBlitCopy(g_mainScreen,
                         art.get(),
                         0,
                         0,
-                        to<WORD>(s_frameX),
-                        to<WORD>(s_frameY),
-                        to<WORD>(s_frameWidth),
-                        to<WORD>(s_frameHeight),
+                        to<WORD>(_frame_x),
+                        to<WORD>(_frame_y),
+                        to<WORD>(_frame_width),
+                        to<WORD>(_frame_height),
                         MINTERM_COOKIE);
                 }
             }
 
             // Centred in the frame rather than at a fixed margin: the frame's
             // width is whatever it could be drawn at, a little more than asked.
-            u16 const contentX = to<u16>(s_frameX + (s_frameWidth - contentWidth) / 2);
-            u16 const contentY = to<u16>(s_frameY + MESSAGE_MARGIN);
+            u16 const contentX = to<u16>(_frame_x + (_frame_width - contentWidth) / 2);
+            u16 const contentY = to<u16>(_frame_y + MESSAGE_MARGIN);
 
             if (heading)
             {
@@ -658,11 +695,11 @@ namespace NEONengine
             // Under the page text, indented and numbered from 1. The rectangles
             // are settled here rather than while measuring, because where the
             // frame ended up is what puts them on the screen.
-            u16 choiceY = to<u16>(contentY + headingHeight + text->uwActualHeight
-                + DIALOGUE_CHOICE_GAP);
-            for (u8 slot = 0; slot < s_slot_count; ++slot)
+            u16 choiceY
+                = to<u16>(contentY + headingHeight + text->uwActualHeight + DIALOGUE_CHOICE_GAP);
+            for (u8 slot = 0; slot < _slot_count; ++slot)
             {
-                auto& drawn  = s_slots[slot];
+                auto& drawn  = _slots[slot];
                 drawn.x      = to<u16>(contentX + DIALOGUE_CHOICE_INDENT);
                 drawn.text_x = to<u16>(contentX + drawn.text_x);
                 drawn.y      = choiceY;
@@ -679,17 +716,17 @@ namespace NEONengine
         }
 
         /**
-         * @brief Puts the page the conversation now stands on up, or closes the box.
+         * @brief Puts the page the conversation now stands on up.
          *
          * The way out of every navigation: whatever moved the conversation -
          * advancing, or a choice being taken - the screen catches up the same
-         * way, and the box comes down when there is nothing left to show.
+         * way.
          */
-        void show_current_page()
+        bool dialogue_state::show_current_page()
         {
             u16 const speaker      = current_speaker();
-            bool const new_speaker = speaker != s_speaker;
-            s_speaker              = speaker;
+            bool const new_speaker = speaker != _speaker;
+            _speaker               = speaker;
 
             if (new_speaker) apply_speaker_color(speaker);
 
@@ -701,10 +738,7 @@ namespace NEONengine
             erase_frame();
             if (new_speaker) erase_portrait();
 
-            if (s_session.has_ended() || !draw_current_page(new_speaker))
-            {
-                statePop(g_gameStateManager);
-            }
+            return !_session.has_ended() && draw_current_page(new_speaker);
         }
 
         /**
@@ -714,184 +748,156 @@ namespace NEONengine
          * where it is; the frame is sized to what it holds and every set is a
          * different height, so its rectangle is painted back and drawn again.
          */
-        void show_current_set()
+        bool dialogue_state::show_current_set()
         {
             forget_slots();
             erase_frame();
 
-            if (!draw_current_page(false)) statePop(g_gameStateManager);
+            return draw_current_page(false);
         }
 
         /** @brief Acts on the choice set's @p slot and shows where it leads. */
-        void take_slot(u8 slot)
+        bool dialogue_state::take_slot(u8 slot)
         {
-            auto const& drawn = s_slots[slot];
+            auto const& drawn = _slots[slot];
 
             if (drawn.rotates)
             {
-                s_session.rotate_choices();
-                show_current_set();
-                return;
+                _session.rotate_choices();
+                return show_current_set();
             }
 
-            s_session.take_choice(drawn.choice);
-            show_current_page();
+            _session.take_choice(drawn.choice);
+            return show_current_page();
+        }
+
+        bool dialogue_state::create()
+        {
+            u16 const dialogue_id = g_pEngine->overlays().take_dialogue();
+
+            _session.create(g_pEngine->data().dialogues(),
+                g_pEngine->data().pages(),
+                g_pEngine->data().choices(),
+                &engine_dialogue_bridge());
+
+            if (!_session.begin(dialogue_id))
+            {
+                NE_LOG("SHOW_DIALOG %hu names no dialogue that can be shown", dialogue_id);
+                return false;
+            }
+
+            // Every portrait the conversation could reach, in one go: each one
+            // reads the pak and blocks, and a pause as the box appears reads as
+            // normal where one between two pages would read as a stall.
+            dialogue_portraits_load(_session.page_range());
+
+            _speaker = current_speaker();
+            apply_speaker_color(_speaker);
+
+            if (!draw_current_page(true)) return false;
+
+            // The pointer takes a role of its own while the box is up - the
+            // clickable one over a choice - so the scene's is put back on the way
+            // out.
+            g_pEngine->pointer().update();
+
+            // The press that started the script that spoke is still unspent - the
+            // hotspots only ever look at it - and would advance the conversation on
+            // the frame it opened. Spend it here so a fresh one is needed.
+            (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
+            (void)keyUse(KEY_SPACE);
+
+            return true;
+        }
+
+        bool dialogue_state::loop()
+        {
+            // The role the pointer shows is settled before the sprite moves: the
+            // move applies the role's own click offset, so a role changed after it
+            // would be a frame late.
+            if (_hold_frames == 0)
+            {
+                u8 const hovered = _slot_count ? slot_under_pointer() : NO_SLOT;
+                set_highlight(hovered);
+                g_pEngine->pointer().switch_to(
+                    hovered == NO_SLOT ? pointer_role::DEFAULT : CHOICE_CURSOR);
+            }
+
+            // Nothing else runs while the box is up, so the sprite would sit where
+            // it was until the box came down.
+            g_pEngine->pointer().update();
+
+            if (_hold_frames > 0)
+            {
+                // The choice the player picked with the keyboard is being shown to
+                // them. Every press that arrives during it is spent rather than
+                // left for the next page to act on.
+                (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
+                (void)keyUse(KEY_SPACE);
+                for (u8 key = KEY_1; key < KEY_1 + DIALOGUE_MAX_CHOICES_SHOWN; ++key)
+                {
+                    (void)keyUse(key);
+                }
+
+                if (--_hold_frames > 0) return true;
+
+                u8 const slot = _pending;
+                _pending      = NO_SLOT;
+                return slot < _slot_count ? take_slot(slot) : true;
+            }
+
+            // A page with nothing to pick - written with no choices, or with every
+            // one gated off or already taken - is what lets a character show the
+            // player out, so it advances on a click anywhere or on space.
+            if (_slot_count == 0)
+            {
+                if (!mouseUse(MOUSE_PORT_1, MOUSE_LMB) && !keyUse(KEY_SPACE)) return true;
+
+                _session.advance();
+                return show_current_page();
+            }
+
+            for (u8 slot = 0; slot < _slot_count; ++slot)
+            {
+                if (!keyUse(to<u8>(KEY_1 + slot))) continue;
+
+                // The highlight moves to what the number named before anything is
+                // done about it, so it always marks the slot about to be acted on.
+                set_highlight(slot);
+                _pending     = slot;
+                _hold_frames = DIALOGUE_CHOICE_HOLD_FRAMES;
+                return true;
+            }
+
+            if (mouseUse(MOUSE_PORT_1, MOUSE_LMB) && _highlight != NO_SLOT)
+            {
+                return take_slot(_highlight);
+            }
+
+            return true;
+        }
+
+        dialogue_state::~dialogue_state()
+        {
+            erase_frame();
+            erase_portrait();
+
+            // The box put the clickable role up over a choice; the scene decides
+            // what the pointer shows from its own hotspots, and starts from here.
+            g_pEngine->pointer().switch_to(pointer_role::DEFAULT);
+
+            // After the erase: it hands the palette band back to the scene's bobs,
+            // and the pixels underneath have to be the scene's again by then.
+            dialogue_portraits_unload();
+            apply_speaker_color(data::NO_ID);
+
+            // SHOW_DIALOG is a modal bridge call, so the script that opened the
+            // conversation is parked on the instruction after it, and this is the
+            // only thing that starts it again. A choice script that made a terminal
+            // call is untouched: that one is owed a teardown, not a resume.
+            g_pEngine->vm().resume_execution();
         }
     }  // namespace
 
-    void dialogueCreate(void)
-    {
-        u16 const dialogue_id = g_pEngine->overlays().take_dialogue();
-
-        s_frameWidth     = 0;
-        s_frameHeight    = 0;
-        s_portraitWidth  = 0;
-        s_portraitHeight = 0;
-        forget_slots();
-
-        s_session.create(g_pEngine->data().dialogues(),
-            g_pEngine->data().pages(),
-            g_pEngine->data().choices(),
-            &engine_dialogue_bridge());
-
-        if (!s_session.begin(dialogue_id))
-        {
-            // Nothing loadable under that id. statePush has already made this
-            // state current, so this unwinds it and the scene never sees a box.
-            NE_LOG("SHOW_DIALOG %hu names no dialogue that can be shown", dialogue_id);
-            statePop(g_gameStateManager);
-            return;
-        }
-
-        // Every portrait the conversation could reach, in one go: each one
-        // reads the pak and blocks, and a pause as the box appears reads as
-        // normal where one between two pages would read as a stall.
-        dialogue_portraits_load(s_session.page_range());
-
-        // Held from here until the box comes down. Every draw below lands on the
-        // buffer being displayed, and the one held back keeps the scene as it
-        // was for erase_frame to paint back.
-        screenFreezeDisplay(g_mainScreen);
-
-        s_speaker = current_speaker();
-        apply_speaker_color(s_speaker);
-
-        if (!draw_current_page(true))
-        {
-            statePop(g_gameStateManager);
-            return;
-        }
-
-        // The pointer takes a role of its own while the box is up - the
-        // clickable one over a choice - so the scene's is put back on the way
-        // out.
-        g_pEngine->pointer().update();
-
-        // The press that started the script that spoke is still unspent - the
-        // hotspots only ever look at it - and would advance the conversation on
-        // the frame it opened. Spend it here so a fresh one is needed.
-        (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
-        (void)keyUse(KEY_SPACE);
-    }
-
-    void dialogueProcess(void)
-    {
-        // The role the pointer shows is settled before the sprite moves: the
-        // move applies the role's own click offset, so a role changed after it
-        // would be a frame late.
-        if (s_hold_frames == 0)
-        {
-            u8 const hovered = s_slot_count ? slot_under_pointer() : NO_SLOT;
-            set_highlight(hovered);
-            g_pEngine->pointer().switch_to(
-                hovered == NO_SLOT ? pointer_role::DEFAULT : CHOICE_CURSOR);
-        }
-
-        // Nothing else runs while the box is up, so the sprite would sit where
-        // it was until the box came down.
-        g_pEngine->pointer().update();
-
-        if (s_hold_frames > 0)
-        {
-            // The choice the player picked with the keyboard is being shown to
-            // them. Every press that arrives during it is spent rather than
-            // left for the next page to act on.
-            (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
-            (void)keyUse(KEY_SPACE);
-            for (u8 key = KEY_1; key < KEY_1 + DIALOGUE_MAX_CHOICES_SHOWN; ++key)
-            {
-                (void)keyUse(key);
-            }
-
-            if (--s_hold_frames > 0) return;
-
-            u8 const slot = s_pending;
-            s_pending     = NO_SLOT;
-            if (slot < s_slot_count) take_slot(slot);
-            return;
-        }
-
-        // A page with nothing to pick - written with no choices, or with every
-        // one gated off or already taken - is what lets a character show the
-        // player out, so it advances on a click anywhere or on space.
-        if (s_slot_count == 0)
-        {
-            if (!mouseUse(MOUSE_PORT_1, MOUSE_LMB) && !keyUse(KEY_SPACE)) return;
-
-            s_session.advance();
-            show_current_page();
-            return;
-        }
-
-        for (u8 slot = 0; slot < s_slot_count; ++slot)
-        {
-            if (!keyUse(to<u8>(KEY_1 + slot))) continue;
-
-            // The highlight moves to what the number named before anything is
-            // done about it, so it always marks the slot about to be acted on.
-            set_highlight(slot);
-            s_pending     = slot;
-            s_hold_frames = DIALOGUE_CHOICE_HOLD_FRAMES;
-            return;
-        }
-
-        if (mouseUse(MOUSE_PORT_1, MOUSE_LMB) && s_highlight != NO_SLOT)
-        {
-            take_slot(s_highlight);
-        }
-    }
-
-    void dialogueDestroy(void)
-    {
-        forget_slots();
-        erase_frame();
-        erase_portrait();
-
-        // The box put the clickable role up over a choice; the scene decides
-        // what the pointer shows from its own hotspots, and starts from here.
-        g_pEngine->pointer().switch_to(pointer_role::DEFAULT);
-
-        // After the erase: it hands the palette band back to the scene's bobs,
-        // and the pixels underneath have to be the scene's again by then.
-        dialogue_portraits_unload();
-        s_speaker = data::NO_ID;
-        apply_speaker_color(data::NO_ID);
-
-        screenResumeDisplay(g_mainScreen);
-
-        // SHOW_DIALOG is a modal bridge call, so the script that opened the
-        // conversation is parked on the instruction after it, and this is the
-        // only thing that starts it again. A choice script that made a terminal
-        // call is untouched: that one is owed a teardown, not a resume.
-        g_pEngine->vm().resume_execution();
-    }
-
-    tState g_stateDialogue = {
-        .cbCreate  = dialogueCreate,
-        .cbLoop    = dialogueProcess,
-        .cbDestroy = dialogueDestroy,
-        .cbSuspend = nullptr,
-        .cbResume  = nullptr,
-        .pPrev     = nullptr,  // Set by statePush.
-    };
+    tState g_stateDialogue = state_host<dialogue_state>::table();
 }  // namespace NEONengine
