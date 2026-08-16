@@ -1,35 +1,50 @@
 # Should the VM's host carry a context rather than the engine?
 
 Type: grilling
-Status: open
+Status: closed - no
 
-## The question
+## The answer
 
-Item 4a gave `noir_vm` a `void* _host`, passed as the first argument of every
-bridge call, and every implementation in `src/core/noir_bridge.cpp` recovers
-`engine&` from it through `on_engine<Fn>`.
+No. The context has nowhere to stand.
 
-Four of the thirty do not want the engine. `nb_hotspot_on`, `nb_hotspot_off`,
-`nb_anim_play` and `nb_anim_stop` (`noir_bridge.cpp:45,46,108,109`) want the
-scene runtime, and reach it through the engine only because that is what
-arrives.
+ACE's `tState` is four argument-less callbacks with no user pointer, so whatever
+writes the scene pointer into a context can only reach that context through a
+global or through static storage. Put the context on the engine and the VM may
+as well ask the engine, which is where we already were. Put it anywhere else and
+it is a second `g_pEngine` with a better name.
 
-Option C: the host stops being the engine and becomes a context carrying both
-the engine and the scene, set when the scene state starts. The bridge then
-reaches nothing global, and a test can hand the VM its own.
+Two of the three reasons this issue gave were already false when it was written:
 
-## Why it is parked
+- **The bridge reaches no global.** All 31 implementations take `engine&`, handed
+  to them by `host_call` from `_host`. The one `g_pEngine` left in
+  `noir_bridge.cpp` is a debug-only path that carries its own note.
+- **A test can already hand the VM its own host.** The host type is a template
+  parameter of the bridge table, and the tests pass `mock_bridge_log` with a
+  table of their own (`noir_vm_test_utils.h`).
 
-Option B goes first: the scene state holds the runtime and the four callbacks
-reach it through the state host. That leaves one narrow global where there had
-been a wide one, and it can assert what it used to only claim.
+What remained was the prize option B already had: getting a nullable out of a
+header every translation unit includes.
 
-C's prize is not these four calls. It is unwinding the engine global for all
-thirty, and for the two hundred references the refactor plan counts elsewhere.
-That is larger than item 3 should swallow.
+A third option was raised and rejected too - making the four calls queued
+requests, the way `GOTO_SCENE` is. `pending_request` holds one request and is
+sound only because every poster blocks the VM as it posts. `HOTSPOT_ON` is
+immediate, so three in a row would overwrite each other. That route costs a real
+queue and delays when a hotspot toggles.
 
-## What would settle it
+## What landed instead
 
-The architecture review planned after items 3 and 5. Grill before deciding.
-The context needs somewhere to live, so C is downstream of `state_host<T>`
-whichever way it goes.
+The scene state holds the runtime, and the four bridge callbacks reach it
+through one free function, `current_scene_runtime()`, declared in
+`core/scene_runtime.h`. `state_host<T>::instance()` stayed private; a state
+reaches its own instance through `friend T`.
+
+Said plainly, because it was tempting not to: that function is the same
+process-global authority under a better name. It is narrower by exposure - one
+header the bridge already includes, rather than `neonengine.h` - and by what it
+answers for. It is not narrower in kind.
+
+## Still true, and worth knowing
+
+`assert` compiles to nothing without `ACE_DEBUG`, which had gone missing from
+the cache. So "the invariant can be asserted" means checked in a debug build and
+documented in every other.

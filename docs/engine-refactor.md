@@ -33,7 +33,7 @@ The goals the work is measured against:
 
 **4a → 4b → 1 → 2 → 3**, with 5 and 6 folded in as they are passed.
 
-4a, 4b and 1 are done. Item 2 is done.
+4a, 4b and 1 are done. Items 2 and 3 are done. Items 5 and 6 are what remain.
 
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
 context, went first: mechanical, self-contained, and what unlocks every later
@@ -273,6 +273,8 @@ way. And it thins the scene state down to an adapter.
 
 ## 3. States get a context
 
+**Done.** The rest of this section records what the change was and why.
+
 **Now.** ACE's `tState` is four `void(*)()` slots with no user pointer. That is
 why `message.cpp` keeps `s_boxX`, `s_boxY`, `s_boxWidth` and `s_boxHeight` at
 file scope, and why `dialogue.cpp` does far more of the same across 36 KB.
@@ -299,10 +301,11 @@ OS on and off around every call (`memory.c:225`), and a push happens mid-frame
 with the display frozen. Static storage costs the same bytes the file statics it
 replaces already cost — `message_state` measures 8, exactly its four `u16`.
 
-**`state_host<T>::instance()` is private for now.** Nothing outside the thunks
-needs it until the scene state holds the runtime, which is when the noir bridge
-needs a door. It ends public or it does not exist, depending on how
-`.scratch/state-host/issues/01` is settled.
+**`state_host<T>::instance()` stayed private.** The scene state reaches its own
+instance through `friend T`, which is how the noir bridge gets the runtime
+without anything outside naming the state. Friendship is all or nothing, so a
+state also sees its host's storage and thunks; that is still narrower than a
+public accessor, and no state sees another's, because each `T` has its own host.
 
 **`freezes_display` is a base, not a member.** A base is destroyed after every
 member and after the derived destructor's body, which is the order
@@ -311,8 +314,8 @@ while it stays first.
 
 ### What has landed
 
-Three of the four states are hosted: message (`9a6a011`), the debug view
-(`57e8daa`) and dialogue (`e496a6e`). The scene is the one left.
+**Done.** All four states are hosted: message (`9a6a011`), the debug view
+(`57e8daa`), dialogue (`e496a6e`) and the scene (`a5440b6`).
 
 **The portraits went with the dialogue state.** `dialogue_portraits` was the last
 of item 2's modules still written as free functions over file statics, and item 2
@@ -333,26 +336,43 @@ gone.
 draws nothing and hands the band back; the state used to have to know to ask for
 that itself.
 
-### What is left
+**The scene state took the runtime.** `scene_runtime` hung off the engine, reached
+through `engine::scene()`, which dereferenced a nullable in a header every
+translation unit includes for the sake of eight call sites. It is now a member of
+the hosted state, held in a buffer and placement-new'd per scene, which retired
+`engine::scene()`, `build_scene()`, `drop_scene()`, `scene_runtime_ptr`, the
+hand-written deleter, and one of item 6's Fast RAM allocations — 260 bytes the
+linker reserves once instead of every load asking for them.
 
-The scene state. It is the only one whose conversion answers an ownership
-question rather than a lifetime: `scene_runtime` moves off the engine and onto
-the hosted state, which retires `engine::scene()`, `build_scene()`,
-`drop_scene()` and the hand-written deleter, and one of item 6's
-`new (mtl::MemF::Fast)` sites with them.
+**The move buys locality, not lifetime, and the plan should not have implied
+otherwise.** The runtime lives one scene; the state lives the whole game. Nothing
+is married by the move. What it buys is that the nullable is named in one file
+rather than fifty, and that the rule it depends on is written where it can be
+checked.
 
-The move buys locality, not lifetime. `load_scene` must free the old scene's Chip
-RAM before the new one asks for any, so the window where no runtime exists
-survives the move; whoever holds the runtime holds that window. What makes the
-move worth making is that the runtime's only outside readers are four bridge
-callbacks, so "the runtime is touched only while the scene state is current" is a
-claim that can be asserted.
+That rule is narrower than it first reads. The four bridge callbacks reach the
+runtime through `current_scene_runtime()`, and the invariant is *the scene state
+is on the stack with a scene loaded* — not *the scene state is running*. A
+dialogue script runs through `vm().execute_now()` from the dialogue state's own
+loop with the scene suspended underneath, and a `HOTSPOT_ON` in one lands there.
+The runtime is alive throughout, because a suspended state has not been
+destroyed.
 
-That leaves one question open: what door the bridge reaches the runtime through.
-`state_host<scene_state>::instance()` made public is a global with a better name;
-the alternative is a context on the VM's `void* _host` carrying both, parked at
-`.scratch/state-host/issues/01-should-the-vm-host-carry-a-context.md`. Settle
-that before writing the scene commit, because it decides what the commit exposes.
+**A context on the VM's host was rejected**, and the reason is structural rather
+than a preference: ACE hands a state nothing, so a context could only be reached
+through a global or static storage, and one on the engine is the engine.
+`.scratch/state-host/issues/01` records the argument in full, including the two
+claims for it that turned out to be false already.
+
+`s_backdropStale` became a member and its reset in the teardown went with it —
+the flag now dies with the state that owns it, which is the whole point of the
+item. `load_scene`, `redraw_backdrop`, `rebuild_for_language` and
+`apply_system_request` became members. Everything touching no scene state stayed
+a free function taking what it needs.
+
+**One caveat on every assert this item added.** `assert` compiles to nothing
+without `ACE_DEBUG`, which had gone missing from the build cache. An invariant
+"that can be asserted" is checked in a debug build and documented in every other.
 
 ## 4a. A context on the bridge
 
