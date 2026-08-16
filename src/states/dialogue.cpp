@@ -158,13 +158,11 @@ namespace NEONengine
          * @brief Paints the frame's rectangle back to the scene behind it.
          *
          * The freeze held a buffer back with the scene as it was, so the frame
-         * leaves nothing where it stood. Doing nothing when no frame is up keeps
-         * this safe to call before the first page and after the last.
+         * leaves nothing where it stood. Safe to call before the first page and
+         * after the last, when no frame is up.
          */
         void erase_frame()
         {
-            if (!s_frameWidth || !s_frameHeight) return;
-
             screenRestoreRect(g_mainScreen,
                 to<WORD>(s_frameX),
                 to<WORD>(s_frameY),
@@ -185,8 +183,6 @@ namespace NEONengine
          */
         void erase_portrait()
         {
-            if (!s_portraitWidth || !s_portraitHeight) return;
-
             screenRestoreRect(g_mainScreen,
                 to<WORD>(s_portraitX),
                 to<WORD>(s_portraitY),

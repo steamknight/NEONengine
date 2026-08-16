@@ -109,11 +109,6 @@ namespace NEONengine
     void screenResumeDisplay(Screen* screen);
 
     /**
-     * @brief Whether the display is being held on one buffer.
-     */
-    bool screenIsFrozen(Screen* screen);
-
-    /**
      * @brief Paints a region of the held-back buffer over the displayed one.
      *
      * Undoes an overlay without a copy of the screen behind it: the buffer the
@@ -123,7 +118,8 @@ namespace NEONengine
      *
      * Takes scene-space coordinates, as screenBlitCopy does.
      *
-     * @param screen A frozen screen. Does nothing when it is not frozen.
+     * @param screen A frozen screen. Does nothing when it is not frozen, and
+     *               nothing for an empty rectangle.
      */
     void screenRestoreRect(Screen* screen, WORD wX, WORD wY, WORD wWidth, WORD wHeight);
 

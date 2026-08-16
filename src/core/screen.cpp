@@ -148,14 +148,14 @@ namespace NEONengine
         screen->pHeldBack      = nullptr;
     }
 
-    bool screenIsFrozen(Screen* screen)
-    {
-        return screen->pHeldBack != nullptr;
-    }
-
     void screenRestoreRect(Screen* screen, WORD wX, WORD wY, WORD wWidth, WORD wHeight)
     {
         if (!screen->pHeldBack) return;
+
+        // The blitter reads a size of zero as 1024 rows of 64 words, so an
+        // empty rectangle paints 128 KB over the display and past the end of
+        // it. Callers compute these from what they drew, and drew nothing.
+        if (wWidth <= 0 || wHeight <= 0) return;
 
         // Not MINTERM_COPY: it would zero the pixels outside the rectangle in its
         // two edge groups of 16, blacking out up to 15 columns either side.
