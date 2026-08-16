@@ -279,12 +279,34 @@ Overlay state is process-global and outlives the state it belongs to.
 
 **Change.** A `state_host<T>` template owning a `T` and generating the four C
 thunks from it: `tState g_stateMessage = state_host<message_state>::table();`.
-The thunks inline to a direct call on a static member, so this costs nothing.
 
 **Payoff.** Create and destroy become a constructor and a destructor, so the
 freeze/restore-rect pairing in `message.cpp` turns into RAII instead of two
 functions that have to agree. `dialogue.cpp`, the second-largest file in the
 tree, is the main beneficiary.
+
+### What the shape is, and why
+
+**A hosted state never pops itself.** ACE's `statePop` runs `cbDestroy`
+synchronously (`state.c:114`), so `T` would be destroyed with its own member
+functions on the stack — `dialogue.cpp` pops from two frames down. `create()`
+and `loop()` return whether the state stays up and the host does the popping.
+That also takes the state manager out of `T` entirely.
+
+**The object lives in static storage, not the heap.** ACE's allocator turns the
+OS on and off around every call (`memory.c:225`), and a push happens mid-frame
+with the display frozen. Static storage costs the same bytes the file statics it
+replaces already cost — `message_state` measures 8, exactly its four `u16`.
+
+**`state_host<T>::instance()` is private for now.** Nothing outside the thunks
+needs it until the scene state holds the runtime, which is when the noir bridge
+needs a door. It ends public or it does not exist, depending on how
+`.scratch/state-host/issues/01` is settled.
+
+**`freezes_display` is a base, not a member.** A base is destroyed after every
+member and after the derived destructor's body, which is the order
+`screenRestoreRect` needs. A first-declared member gives the same order only
+while it stays first.
 
 ## 4a. A context on the bridge
 
@@ -484,12 +506,19 @@ the reference and display palette layers must agree, the cursor band is exempt
 from the fade or it is not.
 
 **Change.** Methods. `screenFreezeDisplay(g_mainScreen)` becomes
-`screen.freeze_display()`. Add a `frozen_display` guard so an overlay cannot leak
-a freeze.
+`screen.freeze_display()`.
 
-**Payoff.** Mostly mechanical and low risk, and the guard closes a real hole: a
-state that pops early leaves the display locked on one buffer. Ranked below 1–3
-because it buys clarity more than correctness.
+**Payoff.** Mostly mechanical and low risk. Ranked below 1–3 because it buys
+clarity more than correctness.
+
+**The `frozen_display` guard this section used to propose is gone.** It was
+justified as closing "a real hole: a state that pops early leaves the display
+locked on one buffer". Re-derived, there was no hole: ACE runs `cbDestroy` on
+every pop including `statePopAll` (`state.c:114,134`), every `cbDestroy`
+resumed, and both screen calls are idempotent. Item 3 then made the state object
+itself the guard, and `freezes_display` in `screen.h` is what came of it. Check
+whether the caption ink should follow the bob manager onto `Screen` rather than
+staying on the engine.
 
 ## 6. Fast RAM by type, not by call site
 

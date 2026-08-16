@@ -32,6 +32,8 @@ namespace NEONengine
 
     struct Screen;
 
+    extern Screen* g_mainScreen;
+
     /**
      * @brief Chooses whether the pointer's palette band takes part in fades.
      *
@@ -107,6 +109,16 @@ namespace NEONengine
      * @see screenFreezeDisplay()
      */
     void screenResumeDisplay(Screen* screen);
+
+    /**
+     * @brief Holds the display still for as long as the object lives.
+     */
+    class freezes_display
+    {
+        protected: ////////////////////////////////////////////////////////////////////////////////
+        freezes_display() noexcept { screenFreezeDisplay(g_mainScreen); }
+        ~freezes_display() noexcept { screenResumeDisplay(g_mainScreen); }
+    };
 
     /**
      * @brief Paints a region of the held-back buffer over the displayed one.

@@ -18,6 +18,7 @@
 #include "core/noir_vm.h"
 #include "core/overlay_system.h"
 #include "core/screen.h"
+#include "core/state_host.h"
 #include "core/string_table.h"
 #include "core/text_render.h"
 #include "types.h"
@@ -387,7 +388,6 @@ namespace NEONengine
 
     extern engine_ptr g_pEngine;
 
-    extern tStateManager* g_gameStateManager;
     extern tState g_stateDebugView,  //
         g_stateScene,                //
         g_stateDialogue,             //
@@ -399,8 +399,6 @@ namespace NEONengine
         extern tState g_stateTestRunner;
     }
 #endif
-
-    extern Screen* g_mainScreen;
 
 }  // namespace NEONengine
 
