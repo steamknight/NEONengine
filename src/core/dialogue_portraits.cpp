@@ -2,19 +2,16 @@
 
 #include "types.h"
 
-#include "neonengine.h"
-
 #include <ace/managers/blit.h>
 #include <ace/utils/bitmap.h>
 
-#include <ace++/bitmap.h>
 #include <ace++/palette.h>
 
 #include <mtl/utility.h>
-#include <mtl/vector.h>
 
 #include "core/logger.h"
 #include "core/screen.h"
+#include "utils/assert.h"
 
 NE_LOG_DOMAIN(Dialogue);
 
@@ -24,48 +21,6 @@ namespace NEONengine
     {
         /// A portrait's rows are this many bytes wide, per bitplane.
         constexpr u16 PORTRAIT_BYTE_WIDTH = PORTRAIT_WIDTH / 8;
-
-        /// One loaded portrait: its artwork, its mask, and the colors it needs.
-        struct portrait
-        {
-            u16 bitmap_id{ data::NO_ID };
-            ace::bitmap_ptr image{ nullptr };
-            ace::bitmap_ptr mask{ nullptr };
-            ULONG colors[PORTRAIT_PALETTE_COLORS]{};
-        };
-
-        /// Every portrait the running conversation can show, in no order.
-        mtl::vector<portrait> s_portraits;
-
-        /// The BMPS id whose colors are in the band now, or NO_ID.
-        u16 s_band_holder = data::NO_ID;
-
-        /// What the band held before the conversation took it.
-        ULONG s_band_held[PORTRAIT_PALETTE_COLORS]{};
-        bool s_band_taken = false;
-
-        /** @brief The loaded portrait for BMPS @p bitmap_id, or null. */
-        portrait* find(u16 bitmap_id)
-        {
-            if (bitmap_id == data::NO_ID) return nullptr;
-
-            for (size_t i = 0; i < s_portraits.size(); ++i)
-            {
-                if (s_portraits[i].bitmap_id == bitmap_id) return &s_portraits[i];
-            }
-            return nullptr;
-        }
-
-        /** @brief The BMPS id @p speaker_id's portrait comes from, or NO_ID. */
-        u16 portrait_of(u16 speaker_id)
-        {
-            if (speaker_id == data::NO_ID) return data::NO_ID;
-
-            auto const speakers = g_pEngine->data().speakers();
-            if (speaker_id >= speakers.size()) return data::NO_ID;
-
-            return speakers[speaker_id].portrait_bitmap_id;
-        }
 
         /**
          * @brief Whether @p bitmap is at least a portrait's size.
@@ -78,123 +33,140 @@ namespace NEONengine
             return bitmap->Rows >= PORTRAIT_HEIGHT
                 && bitmapGetByteWidth(bitmap) >= PORTRAIT_BYTE_WIDTH;
         }
+    }  // namespace
 
-        /**
-         * @brief Reads BMPS @p bitmap_id's artwork, mask and colors into @p out.
-         *
-         * Reads the pak: the caller holds the system-use guard. Returns false
-         * with @p out unusable when anything is missing or the wrong shape, so
-         * the speaker ends up with no portrait rather than a bad blit.
-         */
-        bool load_portrait(u16 bitmap_id, portrait& out)
+    dialogue_portraits::~dialogue_portraits()
+    {
+        if (_band_taken) publish_band(_band_held);
+    }
+
+    dialogue_portraits::portrait const* dialogue_portraits::find(u16 bitmap_id) const
+    {
+        if (bitmap_id == data::NO_ID) return nullptr;
+
+        for (size_t i = 0; i < _portraits.size(); ++i)
         {
-            game_data& gd      = g_pEngine->data();
-            auto const bitmaps = gd.bitmaps();
-            if (bitmap_id >= bitmaps.size())
+            if (_portraits[i].bitmap_id == bitmap_id) return &_portraits[i];
+        }
+        return nullptr;
+    }
+
+    u16 dialogue_portraits::portrait_of(u16 speaker_id) const
+    {
+        if (speaker_id == data::NO_ID) return data::NO_ID;
+
+        auto const speakers = _data.speakers();
+        if (speaker_id >= speakers.size()) return data::NO_ID;
+
+        return speakers[speaker_id].portrait_bitmap_id;
+    }
+
+    bool dialogue_portraits::load_portrait(u16 bitmap_id, portrait& out)
+    {
+        auto const bitmaps = _data.bitmaps();
+        if (bitmap_id >= bitmaps.size())
+        {
+            NE_LOG("portrait names bitmap %hu, which is not in the pak", bitmap_id);
+            return false;
+        }
+
+        data::bitmap_ref const& ref = bitmaps[bitmap_id];
+
+        UBYTE const depth = screenGetBackBuffer(g_mainScreen)->Depth;
+
+        // Chip RAM: the blitter reads these exactly as the exporter wrote
+        // them, with the band's base already in the pixels.
+        ace::bitmap_ptr image = ace::bitmapCreateFromFd(_cache.open(ref.bitmap_hash), 0);
+        if (!image)
+        {
+            NE_LOG("portrait bitmap %hu could not be read", bitmap_id);
+            return false;
+        }
+
+        if (!is_portrait_sized(image.get()))
+        {
+            NE_LOG("portrait bitmap %hu is smaller than %hux%hu",
+                bitmap_id,
+                PORTRAIT_WIDTH,
+                PORTRAIT_HEIGHT);
+            return false;
+        }
+
+        // A shallower portrait would leave the planes above it holding the
+        // previous scene's pixels, and a deeper one would be blitted into
+        // planes the screen does not have.
+        if (image->Depth != depth)
+        {
+            NE_LOG("portrait bitmap %hu has %hhu planes, screen has %hhu",
+                bitmap_id,
+                image->Depth,
+                depth);
+            return false;
+        }
+
+        ace::bitmap_ptr mask{ nullptr };
+        if (ref.mask_hash != data::NO_ASSET)
+        {
+            mask = ace::bitmapCreateFromFd(_cache.open(ref.mask_hash), 0);
+            if (!mask)
             {
-                NE_LOG("portrait names bitmap %hu, which is not in the pak", bitmap_id);
+                NE_LOG("portrait bitmap %hu has a mask that could not be read", bitmap_id);
                 return false;
             }
 
-            data::bitmap_ref const& ref = bitmaps[bitmap_id];
-
-            UBYTE const depth = screenGetBackBuffer(g_mainScreen)->Depth;
-
-            // Chip RAM: the blitter reads these exactly as the exporter wrote
-            // them, with the band's base already in the pixels.
-            ace::bitmap_ptr image = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.bitmap_hash), 0);
-            if (!image)
+            // The mask is read at the artwork's size, so a smaller one would
+            // be read past its end the same way a smaller portrait would.
+            if (!is_portrait_sized(mask.get()))
             {
-                NE_LOG("portrait bitmap %hu could not be read", bitmap_id);
-                return false;
-            }
-
-            if (!is_portrait_sized(image.get()))
-            {
-                NE_LOG("portrait bitmap %hu is smaller than %hux%hu",
+                NE_LOG("portrait bitmap %hu has a mask smaller than %hux%hu",
                     bitmap_id,
                     PORTRAIT_WIDTH,
                     PORTRAIT_HEIGHT);
                 return false;
             }
 
-            // A shallower portrait would leave the planes above it holding the
-            // previous scene's pixels, and a deeper one would be blitted into
-            // planes the screen does not have.
-            if (image->Depth != depth)
+            // The blitter walks the mask with the artwork's own stride, so a
+            // mask that is not laid out identically - same width, depth and
+            // interleaving, which BytesPerRow together with Depth covers -
+            // would be read out of step with it and past its end.
+            if (mask->BytesPerRow != image->BytesPerRow || mask->Depth != image->Depth)
             {
-                NE_LOG("portrait bitmap %hu has %hhu planes, screen has %hhu",
+                NE_LOG("portrait bitmap %hu's mask is laid out %hu:%hhu, artwork %hu:%hhu",
                     bitmap_id,
-                    image->Depth,
-                    depth);
+                    mask->BytesPerRow,
+                    mask->Depth,
+                    image->BytesPerRow,
+                    image->Depth);
                 return false;
             }
-
-            ace::bitmap_ptr mask{ nullptr };
-            if (ref.mask_hash != data::NO_ASSET)
-            {
-                mask = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.mask_hash), 0);
-                if (!mask)
-                {
-                    NE_LOG("portrait bitmap %hu has a mask that could not be read", bitmap_id);
-                    return false;
-                }
-
-                // The mask is read at the artwork's size, so a smaller one would
-                // be read past its end the same way a smaller portrait would.
-                if (!is_portrait_sized(mask.get()))
-                {
-                    NE_LOG("portrait bitmap %hu has a mask smaller than %hux%hu",
-                        bitmap_id,
-                        PORTRAIT_WIDTH,
-                        PORTRAIT_HEIGHT);
-                    return false;
-                }
-
-                // The blitter walks the mask with the artwork's own stride, so a
-                // mask that is not laid out identically - same width, depth and
-                // interleaving, which BytesPerRow together with Depth covers -
-                // would be read out of step with it and past its end.
-                if (mask->BytesPerRow != image->BytesPerRow || mask->Depth != image->Depth)
-                {
-                    NE_LOG("portrait bitmap %hu's mask is laid out %hu:%hhu, artwork %hu:%hhu",
-                        bitmap_id,
-                        mask->BytesPerRow,
-                        mask->Depth,
-                        image->BytesPerRow,
-                        image->Depth);
-                    return false;
-                }
-            }
-
-            ace::paletteLoadFromFd(g_pEngine->assets().open(ref.palette_hash),
-                force_to<UWORD*>(out.colors),
-                PORTRAIT_PALETTE_COLORS);
-
-            out.bitmap_id = bitmap_id;
-            out.image     = mtl::move(image);
-            out.mask      = mtl::move(mask);
-            return true;
         }
 
-        /** @brief Copies @p colors into the band and puts them on screen. */
-        void publish_band(ULONG const* colors)
-        {
-            auto* reference = force_to<ULONG*>(screenGetPalette(g_mainScreen));
-            for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
-            {
-                reference[PORTRAIT_PALETTE_FIRST + i] = colors[i];
-            }
+        ace::paletteLoadFromFd(_cache.open(ref.palette_hash),
+            force_to<UWORD*>(out.colors),
+            PORTRAIT_PALETTE_COLORS);
 
-            screenPublishPalette(g_mainScreen, PORTRAIT_PALETTE_FIRST, PORTRAIT_PALETTE_COLORS);
-        }
-    }  // namespace
+        out.bitmap_id = bitmap_id;
+        out.image     = mtl::move(image);
+        out.mask      = mtl::move(mask);
+        return true;
+    }
 
-    void dialogue_portraits_load(data::range page_range)
+    void dialogue_portraits::publish_band(ULONG const* colors)
     {
-        dialogue_portraits_unload();
+        auto* reference = force_to<ULONG*>(screenGetPalette(g_mainScreen));
+        for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
+        {
+            reference[PORTRAIT_PALETTE_FIRST + i] = colors[i];
+        }
 
-        auto const pages = page_range.of(g_pEngine->data().pages());
+        screenPublishPalette(g_mainScreen, PORTRAIT_PALETTE_FIRST, PORTRAIT_PALETTE_COLORS);
+    }
+
+    void dialogue_portraits::load(data::range page_range)
+    {
+        assert(_portraits.empty() && !_band_taken, "loaded a conversation's portraits twice");
+
+        auto const pages = page_range.of(_data.pages());
 
         // One guard around every read, not one per portrait: the pause belongs
         // to the box appearing, and taking the system back and forth between
@@ -212,59 +184,51 @@ namespace NEONengine
             portrait loaded{};
             if (!load_portrait(bitmap_id, loaded)) continue;
 
-            s_portraits.push_back(mtl::move(loaded));
+            _portraits.push_back(mtl::move(loaded));
         }
 
-        if (s_portraits.empty()) return;
+        if (_portraits.empty()) return;
 
         // Taken now rather than at the first draw: the band has to go back the
         // way it was even if no page turns out to have a portrait to draw.
         auto const* reference = force_to<ULONG const*>(screenGetPalette(g_mainScreen));
         for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
         {
-            s_band_held[i] = reference[PORTRAIT_PALETTE_FIRST + i];
+            _band_held[i] = reference[PORTRAIT_PALETTE_FIRST + i];
         }
-        s_band_taken = true;
+        _band_taken = true;
 
-        NE_LOG("loaded %hu portrait(s) for the conversation", to<u16>(s_portraits.size()));
+        NE_LOG("loaded %hu portrait(s) for the conversation", to<u16>(_portraits.size()));
     }
 
-    void dialogue_portraits_unload()
-    {
-        if (s_band_taken)
-        {
-            publish_band(s_band_held);
-            s_band_taken = false;
-        }
-
-        s_band_holder = data::NO_ID;
-        s_portraits.clear();
-    }
-
-    void dialogue_portraits_release_band()
+    void dialogue_portraits::release_band()
     {
         // Nothing to hand back when no portrait ever took the band, and nothing
         // to do when the scene's own colors are already the live ones.
-        if (!s_band_taken || s_band_holder == data::NO_ID) return;
+        if (!_band_taken || _band_holder == data::NO_ID) return;
 
-        publish_band(s_band_held);
-        s_band_holder = data::NO_ID;
+        publish_band(_band_held);
+        _band_holder = data::NO_ID;
     }
 
-    bool dialogue_portraits_has(u16 speaker_id)
+    bool dialogue_portraits::has(u16 speaker_id) const
     {
         return find(portrait_of(speaker_id)) != nullptr;
     }
 
-    void dialogue_portraits_draw(u16 speaker_id, u16 x, u16 y)
+    void dialogue_portraits::show(u16 speaker_id, u16 x, u16 y)
     {
-        portrait* shown = find(portrait_of(speaker_id));
-        if (!shown) return;
+        portrait const* shown = find(portrait_of(speaker_id));
+        if (!shown)
+        {
+            release_band();
+            return;
+        }
 
-        if (s_band_holder != shown->bitmap_id)
+        if (_band_holder != shown->bitmap_id)
         {
             publish_band(shown->colors);
-            s_band_holder = shown->bitmap_id;
+            _band_holder = shown->bitmap_id;
         }
 
         if (shown->mask)

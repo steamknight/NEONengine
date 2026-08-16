@@ -157,6 +157,9 @@ namespace NEONengine
             /// The conversation the box is showing.
             dialogue_session _session;
 
+            /// The speaker artwork this conversation can show.
+            dialogue_portraits _portraits{ g_pEngine->data(), g_pEngine->assets() };
+
             /// The frame on screen, in scene space. Zero-sized when none is up.
             u16 _frame_x{ 0 };
             u16 _frame_y{ 0 };
@@ -515,7 +518,7 @@ namespace NEONengine
 
             auto* renderer = g_pEngine->default_text_renderer();
 
-            bool const has_portrait = dialogue_portraits_has(page->speaker_id);
+            bool const has_portrait = _portraits.has(page->speaker_id);
 
             _frame_x = has_portrait
                 ? to<u16>(DIALOGUE_MARGIN * 2 + PORTRAIT_WIDTH)
@@ -634,15 +637,11 @@ namespace NEONengine
                     _portrait_y      = DIALOGUE_MARGIN;
                     _portrait_width  = PORTRAIT_WIDTH;
                     _portrait_height = PORTRAIT_HEIGHT;
-                    dialogue_portraits_draw(page->speaker_id, _portrait_x, _portrait_y);
                 }
-                else
-                {
-                    // The speaker changed to one with no portrait to draw. Their
-                    // predecessor's colors are still in the band, over a column
-                    // the scene has just had back, so the band goes back too.
-                    dialogue_portraits_release_band();
-                }
+
+                // Called for a speaker with no portrait too: that hands the
+                // palette band back, and the coordinates go unread.
+                _portraits.show(page->speaker_id, _portrait_x, _portrait_y);
             }
 
             if (frame)
@@ -789,7 +788,7 @@ namespace NEONengine
             // Every portrait the conversation could reach, in one go: each one
             // reads the pak and blocks, and a pause as the box appears reads as
             // normal where one between two pages would read as a stall.
-            dialogue_portraits_load(_session.page_range());
+            _portraits.load(_session.page_range());
 
             _speaker = current_speaker();
             apply_speaker_color(_speaker);
@@ -886,9 +885,6 @@ namespace NEONengine
             // what the pointer shows from its own hotspots, and starts from here.
             g_pEngine->pointer().switch_to(pointer_role::DEFAULT);
 
-            // After the erase: it hands the palette band back to the scene's bobs,
-            // and the pixels underneath have to be the scene's again by then.
-            dialogue_portraits_unload();
             apply_speaker_color(data::NO_ID);
 
             // SHOW_DIALOG is a modal bridge call, so the script that opened the
