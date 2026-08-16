@@ -164,7 +164,8 @@ order. No virtuals: same memory, same generated code.
   as it is.
 - **`dialogue_portraits` lives for one conversation**, not one scene, and only
   `dialogue.cpp` touches it. It belongs to item 3's `state_host<dialogue_state>`.
-  Moving it here would only mean moving it again.
+  Moving it here would only mean moving it again. It landed there, as a member of
+  `dialogue_state`.
 - **`asset_cache` lives for the whole run**, opened and cleared in `main.cpp`.
   **It belongs on the engine**, not on `game_data`, whose one job is to open the
   pak, read the .neon and hand back its tables. What is worth keeping after a
@@ -307,6 +308,51 @@ needs a door. It ends public or it does not exist, depending on how
 member and after the derived destructor's body, which is the order
 `screenRestoreRect` needs. A first-declared member gives the same order only
 while it stays first.
+
+### What has landed
+
+Three of the four states are hosted: message (`9a6a011`), the debug view
+(`57e8daa`) and dialogue (`e496a6e`). The scene is the one left.
+
+**The portraits went with the dialogue state.** `dialogue_portraits` was the last
+of item 2's modules still written as free functions over file statics, and item 2
+sent it here because it lives for one conversation rather than one scene. It is
+now a class held by value in `dialogue_state`, taking `game_data&` and
+`asset_cache&` the way the scene modules do.
+
+Where that member sits is worth writing down, because a palette band rides on it.
+The band belongs to the scene's bobs, and the portraits may only hand it back
+once the frame and the portrait show the scene's own pixels again. C++ destroys a
+member after the enclosing destructor's body — where `erase_frame()` and
+`erase_portrait()` run — and before the `freezes_display` base lets the display
+go again. So the order the band needs is the order the language already gives,
+and the hand-written `dialogue_portraits_unload()` call that used to hold it is
+gone.
+
+`draw()` and `release_band()` became one `show()`. A speaker with no portrait now
+draws nothing and hands the band back; the state used to have to know to ask for
+that itself.
+
+### What is left
+
+The scene state. It is the only one whose conversion answers an ownership
+question rather than a lifetime: `scene_runtime` moves off the engine and onto
+the hosted state, which retires `engine::scene()`, `build_scene()`,
+`drop_scene()` and the hand-written deleter, and one of item 6's
+`new (mtl::MemF::Fast)` sites with them.
+
+The move buys locality, not lifetime. `load_scene` must free the old scene's Chip
+RAM before the new one asks for any, so the window where no runtime exists
+survives the move; whoever holds the runtime holds that window. What makes the
+move worth making is that the runtime's only outside readers are four bridge
+callbacks, so "the runtime is touched only while the scene state is current" is a
+claim that can be asserted.
+
+That leaves one question open: what door the bridge reaches the runtime through.
+`state_host<scene_state>::instance()` made public is a global with a better name;
+the alternative is a context on the VM's `void* _host` carrying both, parked at
+`.scratch/state-host/issues/01-should-the-vm-host-carry-a-context.md`. Settle
+that before writing the scene commit, because it decides what the commit exposes.
 
 ## 4a. A context on the bridge
 
