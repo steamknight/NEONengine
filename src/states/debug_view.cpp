@@ -101,17 +101,16 @@ namespace NEONengine
             sprintf(_elapsed_text, "Elapsed Time: %lds.", now / _fps);
             fontFillTextBitMap(_font, _elapsed.get(), _elapsed_text);
 
-            screenRestoreRect(
-                g_mainScreen, 0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
-            screenTextCopy(g_mainScreen, _memory.get(), 0, 0, STATS_COLOR, FONT_COOKIE);
+            g_mainScreen->restore_rect(0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
+            g_mainScreen->text_copy(_memory.get(), 0, 0, STATS_COLOR, FONT_COOKIE);
 
-            screenRestoreRect(g_mainScreen,
+            g_mainScreen->restore_rect(
                 0,
                 elapsed_y(),
                 _elapsed->uwActualWidth,
                 _elapsed->uwActualHeight);
-            screenTextCopy(
-                g_mainScreen, _elapsed.get(), 0, to<UWORD>(elapsed_y()), STATS_COLOR, FONT_COOKIE);
+            g_mainScreen->text_copy(
+                _elapsed.get(), 0, to<UWORD>(elapsed_y()), STATS_COLOR, FONT_COOKIE);
         }
 
         debug_view_state::~debug_view_state()
@@ -119,10 +118,9 @@ namespace NEONengine
             // Nothing was drawn when the text could not be made.
             if (!_memory || !_elapsed) return;
 
-            // Zero-sized until the first reading, which screenRestoreRect refuses.
-            screenRestoreRect(
-                g_mainScreen, 0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
-            screenRestoreRect(g_mainScreen,
+            // Zero-sized until the first reading, which g_mainScreen->restore_rect refuses.
+            g_mainScreen->restore_rect(0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
+            g_mainScreen->restore_rect(
                 0,
                 elapsed_y(),
                 _elapsed->uwActualWidth,

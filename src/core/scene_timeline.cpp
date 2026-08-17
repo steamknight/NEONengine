@@ -339,7 +339,7 @@ namespace NEONengine
         steps %= width;
         if (steps == 0) return;
 
-        auto* entries = force_to<ULONG*>(screenGetPalette(g_mainScreen));
+        auto* entries = force_to<ULONG*>(g_mainScreen->palette());
 
         reverse(entries, first, last);
         reverse(entries, first, to<u16>(first + steps - 1));
@@ -365,9 +365,9 @@ namespace NEONengine
         // this frame anyway, and it runs after this does, so it will carry the
         // rotation across on its own. Doing it here as well would rebuild the
         // hardware palette a second time for nothing.
-        if (screenFadeOwnsPalette(g_mainScreen)) return;
+        if (g_mainScreen->fade_owns_palette()) return;
 
-        screenPublishPalette(g_mainScreen, first, to<u16>(last - first + 1));
+        g_mainScreen->publish_palette(first, to<u16>(last - first + 1));
     }
 
     bool scene_timeline::fire_move(data::keyframe const& key, fire_context const& ctx)

@@ -48,8 +48,8 @@ void genericCreate(void)
     g_pEngine = mtl::move(engineResult.value());
     g_pEngine->overlays().bind(&g_stateMessage, &g_stateDialogue);
 
-    screenLoad(NEONengine::g_mainScreen);
-    screenBindMouse(NEONengine::g_mainScreen);
+    NEONengine::g_mainScreen->load();
+    NEONengine::g_mainScreen->bind_mouse();
 
     // The boot scene loads the moment its state is pushed, and F4 cannot be
     // pressed before that, so this is the only chance to see what engine

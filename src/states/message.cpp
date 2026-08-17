@@ -113,7 +113,7 @@ namespace NEONengine
             {
                 if (auto art = frame->render(_box_width, _box_height, 0))
                 {
-                    screenBlitCopy(g_mainScreen,
+                    g_mainScreen->blit_copy(
                         art.get(),
                         0,
                         0,
@@ -136,7 +136,7 @@ namespace NEONengine
                 // only as wide as the caption itself.
                 u16 const captionX
                     = to<u16>(contentX + (contentWidth - caption->uwActualWidth) / 2);
-                screenTextCopy(g_mainScreen,
+                g_mainScreen->text_copy(
                     caption.get(),
                     captionX,
                     contentY,
@@ -144,7 +144,7 @@ namespace NEONengine
                     FONT_COOKIE);
             }
 
-            screenTextCopy(g_mainScreen,
+            g_mainScreen->text_copy(
                 text.get(),
                 contentX,
                 to<u16>(contentY + captionHeight),
@@ -175,7 +175,7 @@ namespace NEONengine
 
         message_state::~message_state()
         {
-            screenRestoreRect(g_mainScreen,
+            g_mainScreen->restore_rect(
                 to<WORD>(_box_x),
                 to<WORD>(_box_y),
                 to<WORD>(_box_width),

@@ -203,7 +203,7 @@ namespace NEONengine
                 glyphs->uwActualHeight = box.height;
             }
 
-            screenTextCopy(g_mainScreen,
+            g_mainScreen->text_copy(
                 glyphs.get(),
                 box.x,
                 top_of(region.control_bits, box, glyphs->uwActualHeight),

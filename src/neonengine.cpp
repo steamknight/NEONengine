@@ -87,14 +87,14 @@ namespace NEONengine
             return mtl::unexpected(error_code::UI_PALETTE_LOAD_FAILED);
         }
         ace::paletteLoadFromFd(
-            mtl::move(uiPaletteFd), screenGetPalette(g_mainScreen), UI_PALETTE_COLOR_COUNT);
+            mtl::move(uiPaletteFd), g_mainScreen->palette(), UI_PALETTE_COLOR_COUNT);
 
         NE_LOG("UI font %hux%hu, %hu chars; palette[0]=%08lx palette[1]=%08lx",
             to<UWORD>(uiFont->uwWidth),
             to<UWORD>(uiFont->uwHeight),
             to<UWORD>(uiFont->ubChars),
-            to<ULONG>(force_to<ULONG const*>(screenGetPalette(g_mainScreen))[0]),
-            to<ULONG>(force_to<ULONG const*>(screenGetPalette(g_mainScreen))[1]));
+            to<ULONG>(force_to<ULONG const*>(g_mainScreen->palette())[0]),
+            to<ULONG>(force_to<ULONG const*>(g_mainScreen->palette())[1]));
 
         auto textRenderer = text_renderer::create(uiFont.get());
         if (!textRenderer)
@@ -243,6 +243,6 @@ namespace NEONengine
         apply_pending_language();
         _overlays.present(g_gameStateManager);
         stateProcess(g_gameStateManager);
-        screenProcess(g_mainScreen);
+        g_mainScreen->process();
     }
 }  // namespace NEONengine

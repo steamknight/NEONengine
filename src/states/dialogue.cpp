@@ -93,9 +93,9 @@ namespace NEONengine
          */
         void apply_speaker_color(u16 speaker_id)
         {
-            // AGA palette entries are ULONG; screenGetPalette() types the
-            // buffer as UWORD* for the ACE API, so index it with ULONG stride.
-            auto* palette = force_to<ULONG*>(screenGetPalette(g_mainScreen));
+            // AGA palette entries are ULONG; the screen owns the reference
+            // palette buffer, so index it with ULONG stride through the owner.
+            auto* palette = force_to<ULONG*>(g_mainScreen->palette());
 
             ULONG color = palette[DIALOGUE_TEXT_COLOR];
 
@@ -107,7 +107,7 @@ namespace NEONengine
             }
 
             palette[DIALOGUE_TEXT_COLOR] = color;
-            screenPublishPalette(g_mainScreen, DIALOGUE_TEXT_COLOR, 1);
+            g_mainScreen->publish_palette(DIALOGUE_TEXT_COLOR, 1);
         }
 
         /** @brief What "More..." says, in the player's language. */
@@ -212,7 +212,7 @@ namespace NEONengine
          */
         void dialogue_state::erase_frame()
         {
-            screenRestoreRect(g_mainScreen,
+            g_mainScreen->restore_rect(
                 to<WORD>(_frame_x),
                 to<WORD>(_frame_y),
                 to<WORD>(_frame_width),
@@ -232,7 +232,7 @@ namespace NEONengine
          */
         void dialogue_state::erase_portrait()
         {
-            screenRestoreRect(g_mainScreen,
+            g_mainScreen->restore_rect(
                 to<WORD>(_portrait_x),
                 to<WORD>(_portrait_y),
                 to<WORD>(_portrait_width),
@@ -269,12 +269,12 @@ namespace NEONengine
 
             if (drawn.number)
             {
-                screenTextCopy(
-                    g_mainScreen, drawn.number.get(), drawn.x, drawn.y, color, FONT_COOKIE);
+                g_mainScreen->text_copy(
+                    drawn.number.get(), drawn.x, drawn.y, color, FONT_COOKIE);
             }
 
-            screenTextCopy(
-                g_mainScreen, drawn.text.get(), drawn.text_x, drawn.y, color, FONT_COOKIE);
+            g_mainScreen->text_copy(
+                drawn.text.get(), drawn.text_x, drawn.y, color, FONT_COOKIE);
         }
 
         /**
@@ -301,7 +301,7 @@ namespace NEONengine
         {
             // Slots are laid out in scene space while the pointer reports
             // display space, so the pointer is shifted rather than every slot.
-            auto const offset_y = screenGetOffset(g_mainScreen).y;
+            auto const offset_y = g_mainScreen->offset();
             auto const pointerY = mouseGetY(MOUSE_PORT_1);
             if (pointerY < offset_y) return NO_SLOT;
 
@@ -648,7 +648,7 @@ namespace NEONengine
             {
                 if (auto art = frame->render(_frame_width, _frame_height, 0))
                 {
-                    screenBlitCopy(g_mainScreen,
+                    g_mainScreen->blit_copy(
                         art.get(),
                         0,
                         0,
@@ -671,7 +671,7 @@ namespace NEONengine
                 // only as wide as the name itself.
                 u16 const headingX
                     = to<u16>(contentX + (contentWidth - heading->uwActualWidth) / 2);
-                screenTextCopy(g_mainScreen,
+                g_mainScreen->text_copy(
                     heading.get(),
                     headingX,
                     contentY,
@@ -683,7 +683,7 @@ namespace NEONengine
             // is asked for a rectangle, and one with no rows in it is not one.
             if (text->uwActualHeight)
             {
-                screenTextCopy(g_mainScreen,
+                g_mainScreen->text_copy(
                     text.get(),
                     contentX,
                     to<u16>(contentY + headingHeight),

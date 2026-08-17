@@ -111,7 +111,7 @@ namespace NEONengine
          * column the scene has just had back. So call this whenever the speaker
          * changes, not only when the new one has artwork.
          *
-         * Takes scene-space coordinates, as screenBlitCopy does.
+         * Takes scene-space coordinates, as Screen::blit_copy does.
          */
         void show(u16 speaker_id, u16 x, u16 y);
 

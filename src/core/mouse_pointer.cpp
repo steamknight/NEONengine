@@ -119,7 +119,7 @@ namespace NEONengine
 
         // pSheet releases itself when it leaves scope.
 
-        spriteManagerCreate(screenGetView(g_mainScreen), 0, NULL);
+        spriteManagerCreate(g_mainScreen->view(), 0, NULL);
         systemSetDmaBit(DMAB_SPRITE, 1);
 
         // An attached pair indexes a 16-aligned bank, here entries 16..31. The

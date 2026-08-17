@@ -21,79 +21,55 @@ namespace NEONengine
     constexpr int PAL_OFFSET  = 28;
     constexpr int NTSC_OFFSET = 0;
 
-    struct Screen
+    Screen::Screen()
+        : pView(nullptr), pViewport(nullptr), pBuffer(nullptr), pFade(nullptr), uwOffset(0), pHeldBack(nullptr)
     {
-        tView* pView;
-        tVPort* pViewport;
-        tSimpleBufferManager* pBuffer;
-        tFade* pFade;
-        UWORD uwOffset;
-        tBitMap* pHeldBack;  ///< The buffer a freeze took out of rotation.
-    };
+        uwOffset = systemIsPal() ? PAL_OFFSET : NTSC_OFFSET;
 
-    Screen* screenCreate()
-    {
-        Screen* screen = force_to<Screen*>(memAllocFastClear(sizeof(Screen)));
-        if (screen)
-        {
-            screen->uwOffset = systemIsPal() ? PAL_OFFSET : NTSC_OFFSET;
+        pView = viewCreate(0, TAG_VIEW_GLOBAL_PALETTE, TRUE, TAG_VIEW_USES_AGA, TRUE, TAG_END);
+        if (!pView) return;
 
-            screen->pView
-                = viewCreate(0, TAG_VIEW_GLOBAL_PALETTE, TRUE, TAG_VIEW_USES_AGA, TRUE, TAG_END);
+        pViewport = vPortCreate(0,
+            TAG_VPORT_BPP,
+            BIT_DEPTH,
+            TAG_VPORT_USES_AGA,
+            TRUE,
+            TAG_VPORT_FMODE,
+            3,
+            TAG_VPORT_VIEW,
+            pView,
+            TAG_END);
 
-            screen->pViewport = vPortCreate(0,
-                TAG_VPORT_BPP,
-                BIT_DEPTH,
-                TAG_VPORT_USES_AGA,
-                TRUE,
-                TAG_VPORT_FMODE,
-                3,
-                TAG_VPORT_VIEW,
-                screen->pView,
-                TAG_END);
+        pBuffer = simpleBufferCreate(0,
+            TAG_SIMPLEBUFFER_BITMAP_FLAGS,
+            BMF_INTERLEAVED | BMF_CLEAR,
+            TAG_SIMPLEBUFFER_VPORT,
+            pViewport,
+            TAG_SIMPLEBUFFER_IS_DBLBUF,
+            TRUE,
+            TAG_END);
 
-            screen->pBuffer = simpleBufferCreate(0,
-                TAG_SIMPLEBUFFER_BITMAP_FLAGS,
-                BMF_INTERLEAVED | BMF_CLEAR,
-                TAG_SIMPLEBUFFER_VPORT,
-                screen->pViewport,
-                TAG_SIMPLEBUFFER_IS_DBLBUF,
-                TRUE,
-                TAG_END);
+        pFade = fadeCreate(pView,
+            pView->pFirstVPort->pPalette,
+            MAX_COLORS,
+            CURSOR_PALETTE_FIRST,
+            CURSOR_PALETTE_COUNT);
 
-            screen->pFade = fadeCreate(screen->pView,
-                screen->pView->pFirstVPort->pPalette,
-                MAX_COLORS,
-                CURSOR_PALETTE_FIRST,
-                CURSOR_PALETTE_COUNT);
-
-            // The bob manager draws into these two buffers and undraws from
-            // them, so it lives and dies with them. A scene resets it rather
-            // than building its own.
-            bobManagerCreate(
-                screen->pBuffer->pFront, screen->pBuffer->pBack, screen->pBuffer->pBack->Rows);
-        }
-
-        return screen;
+        bobManagerCreate(
+            pBuffer->pFront, pBuffer->pBack, pBuffer->pBack->Rows);
     }
 
-    void screenDestroy(Screen* screen)
+    Screen::~Screen()
     {
-        // you don't need to destroy the viewport, it's destroyed by the view.
-        if (screen)
-        {
-            bobManagerDestroy();
-            simpleBufferDestroy(screen->pBuffer);
-            viewDestroy(screen->pView);
-            fadeDestroy(screen->pFade);
-            // Nothing may touch the struct past this point. Clearing the
-            // caller's own pointer is the caller's job; doing it here only ever
-            // cleared this function's copy of it.
-            memFree(screen, sizeof(Screen));
-        }
+        if (!pView) return;
+
+        bobManagerDestroy();
+        simpleBufferDestroy(pBuffer);
+        viewDestroy(pView);
+        fadeDestroy(pFade);
     }
 
-    void screenLoad(Screen* screen)
+    void Screen::load()
     {
         UBYTE was_using_system = systemIsUsed();
         if (was_using_system)
@@ -101,7 +77,7 @@ namespace NEONengine
             systemUnuse();
         }
 
-        viewLoad(screen->pView);
+        viewLoad(pView);
 
         if (was_using_system)
         {
@@ -109,196 +85,75 @@ namespace NEONengine
         }
     }
 
-    void screenProcess(Screen* screen)
+    void Screen::fade_to_black(UBYTE ubDuration,
+        UBYTE ubFadeMusic,
+        tCbFadeOnDone cbOnDone)
     {
-        if (screen->pFade->eState != FADE_STATE_IDLE)
+        fadeSet(pFade, FADE_STATE_OUT, ubDuration, ubFadeMusic, cbOnDone);
+    }
+
+    void Screen::fade_from_black(UBYTE ubDuration,
+        UBYTE ubFadeMusic,
+        tCbFadeOnDone cbOnDone)
+    {
+        fadeSet(pFade, FADE_STATE_IN, ubDuration, ubFadeMusic, cbOnDone);
+    }
+
+    void Screen::process()
+    {
+        if (pFade->eState != FADE_STATE_IDLE)
         {
-            fadeProcess(screen->pFade);
+            fadeProcess(pFade);
         }
 
-        // viewProcessManagers() runs the simple buffer manager, which swaps the
-        // double buffer once per frame. Calling simpleBufferProcess() again here
-        // would swap a second time, leaving the back buffer unchanged for drawing
-        // (and permanently desyncing the bob manager).
-        viewProcessManagers(screen->pView);
+        viewProcessManagers(pView);
         copProcessBlocks();
 
         debug_start_idle();
-        vPortWaitForEnd(screen->pViewport);
+        vPortWaitForEnd(pViewport);
         debug_stop_idle();
     }
 
-    void screenFreezeDisplay(Screen* screen)
+    void Screen::freeze_display()
     {
-        if (screen->pHeldBack) return;
+        if (pHeldBack) return;
 
-        // simpleBufferProcess() does nothing at all when the two are the same
-        // pointer: it neither rewrites the bitplane pointers nor swaps. Pointing
-        // the back buffer at the displayed one also aims every draw helper at
-        // the screen, since they all target the back buffer.
-        screen->pHeldBack        = screen->pBuffer->pBack;
-        screen->pBuffer->pBack   = screen->pBuffer->pFront;
+        pHeldBack      = pBuffer->pBack;
+        pBuffer->pBack = pBuffer->pFront;
     }
 
-    void screenResumeDisplay(Screen* screen)
+    void Screen::resume_display()
     {
-        if (!screen->pHeldBack) return;
+        if (!pHeldBack) return;
 
-        screen->pBuffer->pBack = screen->pHeldBack;
-        screen->pHeldBack      = nullptr;
+        pBuffer->pBack = pHeldBack;
+        pHeldBack      = nullptr;
     }
 
-    void screenRestoreRect(Screen* screen, WORD wX, WORD wY, WORD wWidth, WORD wHeight)
+    void Screen::restore_rect(WORD wX, WORD wY, WORD wWidth, WORD wHeight)
     {
-        if (!screen->pHeldBack) return;
-
-        // The blitter reads a size of zero as 1024 rows of 64 words, so an
-        // empty rectangle paints 128 KB over the display and past the end of
-        // it. Callers compute these from what they drew, and drew nothing.
+        if (!pHeldBack) return;
         if (wWidth <= 0 || wHeight <= 0) return;
 
-        // Not MINTERM_COPY: it would zero the pixels outside the rectangle in its
-        // two edge groups of 16, blacking out up to 15 columns either side.
-        blitCopy(screen->pHeldBack,
+        blitCopy(pHeldBack,
             wX,
-            wY + screen->uwOffset,
-            screen->pBuffer->pBack,
+            wY + uwOffset,
+            pBuffer->pBack,
             wX,
-            wY + screen->uwOffset,
+            wY + uwOffset,
             wWidth,
             wHeight,
             MINTERM_COOKIE);
     }
 
-    void screenClear(Screen* screen, UBYTE ubColorIndex)
+    void Screen::duplicate_back_to_front()
     {
-        blitRect(
-            screen->pBuffer->pBack, 0, screen->uwOffset, SCREEN_WIDTH, SCREEN_HEIGHT, ubColorIndex);
-    }
-
-    void screenFadeToBlack(Screen* screen,
-        UBYTE ubDuration,
-        UBYTE ubFadeMusic,
-        tCbFadeOnDone cbOnDone)
-    {
-        fadeSet(screen->pFade, FADE_STATE_OUT, ubDuration, ubFadeMusic, cbOnDone);
-    }
-
-    bool screenIsFadingOut(Screen* screen)
-    {
-        return screen->pFade->eState == FADE_STATE_OUT;
-    }
-
-    bool screenFadeOwnsPalette(Screen* screen)
-    {
-        // The two states fadeProcess() steps over. Asked before screenProcess()
-        // runs, so this is what the fade is about to do this frame, not what it
-        // did last one.
-        return screen->pFade->eState != FADE_STATE_IDLE
-            && screen->pFade->eState != FADE_STATE_EVENT_FIRED;
-    }
-
-    UBYTE screenPaletteRatio(Screen* screen)
-    {
-        return screen->pFade->ubRatio;
-    }
-
-    void screenPublishPalette(Screen* screen, u16 first, u16 count)
-    {
-        auto const* pRef = force_to<ULONG const*>(screen->pFade->pPaletteRef);
-        auto* pLive      = force_to<ULONG*>(screen->pView->pFirstVPort->pPalette);
-
-        UBYTE const ratio = screen->pFade->ubRatio;
-        for (u16 entry = first; entry < first + count; ++entry)
-        {
-            pLive[entry] = paletteColorDimAga(pRef[entry], ratio);
-        }
-
-        viewUpdateGlobalPalette(screen->pView);
-    }
-
-    void screenFadeFromBlack(Screen* screen,
-        UBYTE ubDuration,
-        UBYTE ubFadeMusic,
-        tCbFadeOnDone cbOnDone)
-    {
-        fadeSet(screen->pFade, FADE_STATE_IN, ubDuration, ubFadeMusic, cbOnDone);
-    }
-
-    void screenSetCursorBandExempt(Screen* screen, bool exempt)
-    {
-        fadeSetExempt(
-            screen->pFade, CURSOR_PALETTE_FIRST, exempt ? CURSOR_PALETTE_COUNT : UWORD(0));
-        if (!exempt) return;
-
-        // Held out of the fade from here on, so the live entries have to be
-        // given their colors now: nothing else writes them, and they would
-        // otherwise keep whatever brightness the last fade happened to leave.
-        auto const* pRef = force_to<ULONG const*>(screen->pFade->pPaletteRef);
-        auto* pLive      = force_to<ULONG*>(screen->pView->pFirstVPort->pPalette);
-        for (UWORD i = 0; i < CURSOR_PALETTE_COUNT; ++i)
-        {
-            pLive[CURSOR_PALETTE_FIRST + i] = pRef[CURSOR_PALETTE_FIRST + i];
-        }
-        viewUpdateGlobalPalette(screen->pView);
-    }
-
-    void screenVwait(Screen* screen)
-    {
-        debug_start_idle();
-        vPortWaitForEnd(screen->pViewport);
-        debug_stop_idle();
-    }
-
-    void screenBindMouse(Screen* screen)
-    {
-        // Set the bounds just slightly smaller so that the pointer is always visible
-        mouseSetBounds(MOUSE_PORT_1,
-            0,
-            screen->uwOffset,
-            SCREEN_WIDTH - 1,
-            SCREEN_HEIGHT + screen->uwOffset - 1);
-    }
-
-    void screenToScreenSpace(Screen* screen, tUwRect* pRect)
-    {
-        pRect->uwY += screen->uwOffset;
-    }
-
-    tView* screenGetView(Screen* screen)
-    {
-        return screen->pView;
-    }
-
-    tBitMap* screenGetBackBuffer(Screen* screen)
-    {
-        return screen->pBuffer->pBack;
-    }
-
-    tBitMap* screenGetFrontBuffer(Screen* screen)
-    {
-        return screen->pBuffer->pFront;
-    }
-
-    UWORD* screenGetPalette(Screen* screen)
-    {
-        return screen->pFade->pPaletteRef;
-    }
-
-    data::point<u16> screenGetOffset(Screen* screen)
-    {
-        return data::point<u16>{ screen->uwOffset, 0 };
-    }
-
-    void screenDuplicateBackToFront(Screen* screen)
-    {
-        tBitMap* pBack  = screen->pBuffer->pBack;
-        tBitMap* pFront = screen->pBuffer->pFront;
+        tBitMap* pBack  = pBuffer->pBack;
+        tBitMap* pFront = pBuffer->pFront;
         blitCopy(pBack, 0, 0, pFront, 0, 0, SCREEN_WIDTH, pBack->Rows, MINTERM_COPY);
     }
 
-    void screenBlitCopy(Screen* screen,
-        tBitMap const* pSrc,
+    void Screen::blit_copy(tBitMap const* pSrc,
         WORD wSrcX,
         WORD wSrcY,
         WORD wDstX,
@@ -310,16 +165,15 @@ namespace NEONengine
         blitCopy(pSrc,
             wSrcX,
             wSrcY,
-            screen->pBuffer->pBack,
+            pBuffer->pBack,
             wDstX,
-            wDstY + screen->uwOffset,
+            wDstY + uwOffset,
             wWidth,
             wHeight,
             ubMinterm);
     }
 
-    void screenBlitMask(Screen* screen,
-        tBitMap const* pSrc,
+    void Screen::blit_copy_mask(tBitMap const* pSrc,
         WORD wSrcX,
         WORD wSrcY,
         WORD wDstX,
@@ -331,22 +185,113 @@ namespace NEONengine
         blitCopyMask(pSrc,
             wSrcX,
             wSrcY,
-            screen->pBuffer->pBack,
+            pBuffer->pBack,
             wDstX,
-            wDstY + screen->uwOffset,
+            wDstY + uwOffset,
             wWidth,
             wHeight,
             pMsk);
     }
 
-    void screenTextCopy(Screen* screen,
-        tTextBitMap* pTextBitMap,
+    void Screen::text_copy(tTextBitMap* pTextBitMap,
         UWORD uwX,
         UWORD uwY,
         UBYTE ubColor,
         UBYTE ubFlags)
     {
-        fontDrawTextBitMap(
-            screen->pBuffer->pBack, pTextBitMap, uwX, uwY + screen->uwOffset, ubColor, ubFlags);
+        fontDrawTextBitMap(pBuffer->pBack, pTextBitMap, uwX, uwY + uwOffset, ubColor, ubFlags);
     }
+
+    void Screen::clear(UBYTE ubColorIndex)
+    {
+        blitRect(pBuffer->pBack, 0, uwOffset, SCREEN_WIDTH, SCREEN_HEIGHT, ubColorIndex);
+    }
+
+    bool Screen::is_fading_out() const
+    {
+        return pFade->eState == FADE_STATE_OUT;
+    }
+
+    bool Screen::fade_owns_palette() const
+    {
+        return pFade->eState != FADE_STATE_IDLE && pFade->eState != FADE_STATE_EVENT_FIRED;
+    }
+
+    UBYTE Screen::palette_ratio() const
+    {
+        return pFade->ubRatio;
+    }
+
+    void Screen::publish_palette(u16 first, u16 count)
+    {
+        auto const* pRef = force_to<ULONG const*>(pFade->pPaletteRef);
+        auto* pLive      = force_to<ULONG*>(pView->pFirstVPort->pPalette);
+
+        UBYTE const ratio = pFade->ubRatio;
+        for (u16 entry = first; entry < first + count; ++entry)
+        {
+            pLive[entry] = paletteColorDimAga(pRef[entry], ratio);
+        }
+
+        viewUpdateGlobalPalette(pView);
+    }
+
+    void Screen::set_cursor_band_exempt(bool exempt)
+    {
+        fadeSetExempt(pFade, CURSOR_PALETTE_FIRST, exempt ? CURSOR_PALETTE_COUNT : UWORD(0));
+        if (!exempt) return;
+
+        auto const* pRef = force_to<ULONG const*>(pFade->pPaletteRef);
+        auto* pLive      = force_to<ULONG*>(pView->pFirstVPort->pPalette);
+        for (UWORD i = 0; i < CURSOR_PALETTE_COUNT; ++i)
+        {
+            pLive[CURSOR_PALETTE_FIRST + i] = pRef[CURSOR_PALETTE_FIRST + i];
+        }
+        viewUpdateGlobalPalette(pView);
+    }
+
+    void Screen::vwait()
+    {
+        debug_start_idle();
+        vPortWaitForEnd(pViewport);
+        debug_stop_idle();
+    }
+
+    void Screen::bind_mouse()
+    {
+        mouseSetBounds(MOUSE_PORT_1,
+            0,
+            uwOffset,
+            SCREEN_WIDTH - 1,
+            SCREEN_HEIGHT + uwOffset - 1);
+    }
+
+    tView* Screen::view() const { return pView; }
+    UWORD Screen::offset() const { return uwOffset; }
+    tBitMap* Screen::back_buffer() const { return pBuffer ? pBuffer->pBack : nullptr; }
+    tBitMap* Screen::front_buffer() const { return pBuffer ? pBuffer->pFront : nullptr; }
+    UWORD* Screen::palette() { return pFade ? force_to<UWORD*>(pFade->pPaletteRef) : nullptr; }
+    UWORD const* Screen::palette() const { return pFade ? force_to<UWORD const*>(pFade->pPaletteRef) : nullptr; }
+
+    Screen* screenCreate()
+    {
+        Screen* screen = force_to<Screen*>(memAllocFastClear(sizeof(Screen)));
+        if (screen)
+        {
+            new (screen) Screen();
+        }
+
+        return screen;
+    }
+
+    void screenDestroy(Screen* screen)
+    {
+        if (screen)
+        {
+            screen->~Screen();
+            memFree(screen, sizeof(Screen));
+        }
+    }
+
+
 }  // namespace NEONengine

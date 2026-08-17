@@ -68,7 +68,7 @@ namespace NEONengine::tests
 
         void set_report_palette()
         {
-            UWORD* palette         = screenGetPalette(g_mainScreen);
+            UWORD* palette         = g_mainScreen->palette();
             palette[COLOR_HEADING] = 0x0FFF;  // white
             palette[COLOR_FAILURE] = 0x0F44;  // red
             palette[COLOR_PASSED]  = 0x04E4;  // green
@@ -100,7 +100,7 @@ namespace NEONengine::tests
 
             if (s_y + 2 * height > SCREEN_HEIGHT) return;
 
-            screenTextCopy(g_mainScreen, text.get(), 0, s_y, color, FONT_COOKIE);
+            g_mainScreen->text_copy(text.get(), 0, s_y, color, FONT_COOKIE);
             s_y = to<u16>(s_y + height);
         }
 
@@ -115,7 +115,7 @@ namespace NEONengine::tests
             }
             if (!text) return;
 
-            screenTextCopy(g_mainScreen,
+            g_mainScreen->text_copy(
                 text.get(),
                 0,
                 to<u16>(SCREEN_HEIGHT - text->uwActualHeight),
@@ -129,8 +129,8 @@ namespace NEONengine::tests
         ACE_LOG_BLOCK("testRunner");
 
         set_report_palette();
-        screenFadeFromBlack(g_mainScreen, 25, 0, NULL);
-        screenClear(g_mainScreen, 0);
+        g_mainScreen->fade_from_black(25, 0, NULL);
+        g_mainScreen->clear(0);
 
         s_y              = 0;
         u32 suiteCount   = 0;
@@ -175,7 +175,7 @@ namespace NEONengine::tests
         NE_LOG("%lu/%lu test suites passed", to<ULONG>(suitesPassed), to<ULONG>(suiteCount));
         draw_summary(summary, suitesPassed == suiteCount ? COLOR_PASSED : COLOR_FAILED);
 
-        screenDuplicateBackToFront(g_mainScreen);
+        g_mainScreen->duplicate_back_to_front();
     }
 
     bool runTestSuite(char const* szSuiteName, Test tests[], u32 testCount)

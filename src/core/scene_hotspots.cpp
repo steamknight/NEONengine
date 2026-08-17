@@ -194,7 +194,7 @@ namespace NEONengine
 
         // Bounds are authored in scene space while the pointer reports display
         // space, so shift the one pointer rather than every hotspot.
-        auto const offset_y = screenGetOffset(g_mainScreen).y;
+        auto const offset_y = g_mainScreen->offset();
         auto const pointer_x = mouseGetX(MOUSE_PORT_1);
         auto const pointer_y = mouseGetY(MOUSE_PORT_1);
 
