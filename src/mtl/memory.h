@@ -6,6 +6,8 @@
 
 #include <ace/managers/memory.h>
 
+#include <mtl/utility.h>
+
 // Placement new declaration (since we don't use std::new)
 inline void* operator new(decltype(sizeof(int)), void* ptr) noexcept
 {
@@ -186,11 +188,12 @@ namespace mtl
         T* _pointer;
     };
 
-    template<typename T, typename... Args>
+    template<typename T, MemF MemFlags = MemF::Fast, typename... Args>
     unique_ptr<T> make_unique(Args&&... args)
     {
-        return unique_ptr<T>(new T(forward<Args>(args)...));
+        return unique_ptr<T>(new (MemFlags) T(forward<Args>(args)...));
     }
+
 }  // namespace mtl
 
 // Placement new operators that take MemF for memory type selection.

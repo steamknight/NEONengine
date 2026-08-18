@@ -5,6 +5,8 @@
 
 #include <ace/managers/viewport/simplebuffer.h>
 
+#include <mtl/memory.h>
+
 #include "core/spatial.h"
 #include "utils/fade.h"
 
@@ -13,19 +15,19 @@ typedef struct _tTextBitMap tTextBitMap;
 namespace NEONengine
 {
 
+    /**
+     * @brief The display width in pixels.
+     */
     constexpr int SCREEN_WIDTH  = 320;
+
+    /**
+     * @brief The display height in pixels.
+     */
     constexpr int SCREEN_HEIGHT = 200;
 
     /**
      * @brief The palette band the hardware pointer draws from.
      *
-     * An attached sprite pair indexes a 16-aligned bank, here entries 16..31,
-     * but it only reads the entries its art actually names. The cursor sheet is
-     * authored in the top half, so 24..31 belong to the pointer alone: nothing
-     * else may use them, and the fade leaves them lit so the cursor stays
-     * readable while a load blocks the loop on a blacked-out screen.
-     *
-     * Text regions and the rest of the UI therefore have entries 0..23.
      */
     constexpr UWORD CURSOR_PALETTE_FIRST = 24;
     constexpr UWORD CURSOR_PALETTE_COUNT = 8;
@@ -43,6 +45,7 @@ namespace NEONengine
          * @brief Run the screen's per-frame update logic.
          */
         void process();
+
         /**
          * @brief Clear the screen with a palette index.
          */
@@ -52,6 +55,7 @@ namespace NEONengine
          * @brief Freeze the live display while an overlay draws over the scene.
          */
         void freeze_display();
+
         /**
          * @brief Resume the live display after a frozen overlay is done.
          */
@@ -61,6 +65,7 @@ namespace NEONengine
          * @brief Restore a scene rectangle from the held back buffer.
          */
         void restore_rect(WORD wX, WORD wY, WORD wWidth, WORD wHeight);
+
         /**
          * @brief Copy the back buffer over the front buffer.
          */
@@ -180,7 +185,7 @@ namespace NEONengine
     /**
      * @brief The engine's single display owner.
      */
-    extern Screen* g_mainScreen;
+    extern mtl::unique_ptr<Screen> g_mainScreen;
 
     /**
      * @brief Holds the display still for as long as the object lives.

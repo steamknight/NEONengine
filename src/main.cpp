@@ -11,6 +11,8 @@
 #include <ace/managers/ptplayer.h>
 #include <ace/managers/state.h>
 
+#include <mtl/memory.h>
+
 #include "build_number.h"
 #include "core/asset_cache.h"
 #include "core/debug_keys.h"
@@ -34,7 +36,7 @@ void genericCreate(void)
     ptplayerCreate(systemIsPal());
 
     g_gameStateManager = stateManagerCreate();
-    g_mainScreen       = screenCreate();
+    g_mainScreen       = mtl::make_unique<NEONengine::Screen>();
 
     auto engineResult = engine::initialize();
     if (!engineResult)
@@ -81,12 +83,11 @@ void genericDestroy(void)
         NEONengine::g_pEngine = nullptr;
     }
 
-    screenDestroy(NEONengine::g_mainScreen);
+    NEONengine::g_mainScreen = nullptr;
     musicFree();
     ptplayerDestroy();
     mouseDestroy();
     keyDestroy();
-    systemDestroy();
 
     // Run global/static destructors that registered with __cxa_atexit
     __cxa_finalize(nullptr);

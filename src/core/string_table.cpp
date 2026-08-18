@@ -229,23 +229,23 @@ namespace NEONengine
             return mtl::unexpected(header.error());
         }
 
-        auto pTable    = string_table_ptr(new (MemF::Fast) string_table());
+        auto table     = mtl::make_unique<string_table>();
         auto const& hd = header.value();
 
-        pTable->_language     = to<language>(hd.language_id);
-        pTable->_build_period = hd.build_period;
-        pTable->_build_number = hd.build_number;
+        table->_language     = to<language>(hd.language_id);
+        table->_build_period = hd.build_period;
+        table->_build_number = hd.build_number;
 
-        pTable->_payload.resize(hd.payload_size);
+        table->_payload.resize(hd.payload_size);
         if (hd.payload_size != 0
-            && fileRead(pFile.get(), pTable->_payload.data(), hd.payload_size) != hd.payload_size)
+            && fileRead(pFile.get(), table->_payload.data(), hd.payload_size) != hd.payload_size)
         {
             NE_LOG("payload is shorter than its declared %lu bytes",
                 to<ULONG>(hd.payload_size));
             return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
         }
 
-        auto const checksum = adler32(pTable->_payload.data(), hd.payload_size);
+        auto const checksum = adler32(table->_payload.data(), hd.payload_size);
         if (checksum != hd.checksum)
         {
             NE_LOG("checksum %08lx does not match the header's %08lx",
@@ -257,7 +257,7 @@ namespace NEONengine
         // contract is that exactly string_count records fill the payload
         // exactly, so anything else is a malformed file rather than a table to
         // be salvaged.
-        pTable->_offsets.reserve(hd.string_count);
+        table->_offsets.reserve(hd.string_count);
 
         u32 offset = 0;
         for (u32 index = 0; index < hd.string_count; ++index)
@@ -271,7 +271,7 @@ namespace NEONengine
                 return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
             }
 
-            auto* pRecord     = pTable->_payload.data() + offset;
+            auto* pRecord     = table->_payload.data() + offset;
             auto const length = to<u32>(bstr_view::from_bstr(pRecord).length());
 
             // Each test subtracts from the bytes that are left rather than
@@ -286,7 +286,7 @@ namespace NEONengine
                 return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
             }
 
-            pTable->_offsets.push_back(pRecord);
+            table->_offsets.push_back(pRecord);
             offset += sizeof(u32) + length + padding;
         }
 
@@ -299,12 +299,12 @@ namespace NEONengine
             return mtl::unexpected(error_code::MALFORMED_PAYLOAD);
         }
 
-        pTable->_string_count = to<u16>(pTable->_offsets.size());
+        table->_string_count = to<u16>(table->_offsets.size());
 
         NE_LOG("loaded '%s', %hu strings",
-            language_code(pTable->_language), pTable->_string_count);
+            language_code(table->_language), table->_string_count);
 
-        return mtl::move(pTable);
+        return mtl::move(table);
     }
 
     u32 string_table::peek_language_name(language lang, char* pBuffer, u32 capacity)

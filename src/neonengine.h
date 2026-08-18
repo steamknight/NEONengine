@@ -116,6 +116,7 @@ namespace NEONengine
     class pending_request
     {
         public:  ///////////////////////////////////////////////////////////////////////////////////
+
         /**
          * @brief Records @p request, replacing anything already waiting.
          *
@@ -166,6 +167,7 @@ namespace NEONengine
 
     class engine;
     using engine_ptr = mtl::unique_ptr<engine>;
+    using screen_ptr = mtl::unique_ptr<Screen>;
 
     class engine
     {

@@ -40,11 +40,13 @@ namespace NEONengine
     }
 
     tStateManager* g_gameStateManager = nullptr;
-    Screen* g_mainScreen              = nullptr;
+    screen_ptr g_mainScreen           = nullptr;
     engine_ptr g_pEngine              = nullptr;
 
     engine::result engine::initialize()
     {
+        mtl::system_use_guard guard;
+
         auto gameData = game_data::load();
         if (!gameData)
         {
@@ -63,9 +65,7 @@ namespace NEONengine
             return mtl::unexpected(error_code::BOOT_SCENE_INVALID);
         }
 
-        auto assets = asset_cache_ptr(new (mtl::MemF::Fast) asset_cache(gd->pak()));
-
-        mtl::system_use_guard guard;  // systemUse()/systemUnuse() around all disk access below.
+        auto assets = mtl::make_unique<asset_cache>(gd->pak());
 
         auto uiFontFd = assets->open(gd->ui_state().font_hash);
         if (!uiFontFd)
@@ -132,7 +132,7 @@ namespace NEONengine
             NE_LOG("The project ships no UI nine-patch");
         }
 
-        auto pointer = mouse_pointer_ptr(new (mtl::MemF::Fast) mouse_pointer(*gd, *assets));
+        auto pointer = mtl::make_unique<mouse_pointer>(*gd, *assets);
 
         // English is the one language the format guarantees is present, so it is
         // the boot language; set_language() swaps to another once one is chosen.
@@ -150,7 +150,7 @@ namespace NEONengine
             return mtl::unexpected(error_code::STRING_TABLE_LOAD_FAILED);
         }
 
-        auto result            = engine_ptr(new (mtl::MemF::Fast) engine());
+        auto result            = mtl::make_unique<engine>();
         result->_game_data     = mtl::move(gameData.value());
         result->_assets        = mtl::move(assets);
         result->_pointer       = mtl::move(pointer);
@@ -167,7 +167,7 @@ namespace NEONengine
 
         auto const scripts   = result->_game_data->scripts();
         auto const functions = result->_game_data->function_offsets();
-        result->_vm          = noir_vm_ptr(new (mtl::MemF::Fast) noir_vm(  //
+        result->_vm          = mtl::make_unique<noir_vm>(  //
             result->_session.get_flags(),
             result->_session.get_values(),
             scripts.data(),
@@ -175,7 +175,7 @@ namespace NEONengine
             functions.data(),
             to<u16>(functions.size()),
             &engine_bridge(),
-            result.get()));
+            result.get());
 
         NE_LOG("VM ready - %lu bytecode bytes, %hu funcs, %hu flags, %hu values",
             to<ULONG>(scripts.size()),

@@ -262,7 +262,7 @@ namespace NEONengine
         }
 
         ace::pakfile_ptr _pak;         ///< The open game pak, kept for the run (self-closing).
-        mtl::vector<u8> _buffer;  ///< The whole .neon image, in Fast RAM (self-freeing).
+        mtl::vector<u8> _buffer;       ///< The whole .neon image, in Fast RAM (self-freeing).
         data::chunk_header const* _chunks[data::KNOWN_CHUNK_COUNT]{};  ///< Each known chunk's header in the buffer.
     };
 }  // namespace NEONengine
