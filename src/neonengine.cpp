@@ -2,10 +2,6 @@
 
 #include "types.h"
 
-#include "core/logger.h"
-#include "core/noir_bridge.h"
-#include "core/scene_bobs.h"
-
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/ptplayer.h>
@@ -15,6 +11,12 @@
 #include <ace++/palette.h>
 
 #include <mtl/utility.h>
+
+#include "core/logger.h"
+#include "core/music.h"
+#include "core/noir_bridge.h"
+#include "core/scene_bobs.h"
+
 
 NE_LOG_DOMAIN(Core);
 
@@ -43,9 +45,44 @@ namespace NEONengine
     screen_ptr g_mainScreen           = nullptr;
     engine_ptr g_pEngine              = nullptr;
 
+    void initialize_ace()
+    {
+        log_init();
+
+        keyCreate();
+        mouseCreate(MOUSE_PORT_1);
+        ptplayerCreate(systemIsPal());
+
+        g_gameStateManager = stateManagerCreate();
+        g_mainScreen       = mtl::make_unique<Screen>();
+
+        g_mainScreen->load();
+        g_mainScreen->bind_mouse();
+    }
+
+    void uninitialize_ace()
+    {
+        g_mainScreen = nullptr;
+
+        stateManagerDestroy(g_gameStateManager);
+        g_gameStateManager = nullptr;
+
+        musicFree();
+        ptplayerDestroy();
+        mouseDestroy();
+        keyDestroy();
+    }
+
+    engine::~engine() noexcept
+    {
+        uninitialize_ace();
+    }
+
     engine::result engine::initialize()
     {
         mtl::system_use_guard guard;
+
+        initialize_ace();
 
         auto gameData = game_data::load();
         if (!gameData)

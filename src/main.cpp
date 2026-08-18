@@ -29,15 +29,6 @@ extern "C" void __cxa_finalize(void*);
 
 void genericCreate(void)
 {
-    log_init();
-
-    keyCreate();
-    mouseCreate(MOUSE_PORT_1);
-    ptplayerCreate(systemIsPal());
-
-    g_gameStateManager = stateManagerCreate();
-    g_mainScreen       = mtl::make_unique<NEONengine::Screen>();
-
     auto engineResult = engine::initialize();
     if (!engineResult)
     {
@@ -49,9 +40,6 @@ void genericCreate(void)
     }
     g_pEngine = mtl::move(engineResult.value());
     g_pEngine->overlays().bind(&g_stateMessage, &g_stateDialogue);
-
-    NEONengine::g_mainScreen->load();
-    NEONengine::g_mainScreen->bind_mouse();
 
     // The boot scene loads the moment its state is pushed, and F4 cannot be
     // pressed before that, so this is the only chance to see what engine
@@ -74,20 +62,7 @@ void genericProcess(void)
 
 void genericDestroy(void)
 {
-    stateManagerDestroy(g_gameStateManager);
-
-    // The engine holds sprites and bitmaps that read the view and the OS on
-    // their way out, so it goes down while both are still up.
-    {
-        mtl::system_use_guard guard;
-        NEONengine::g_pEngine = nullptr;
-    }
-
-    NEONengine::g_mainScreen = nullptr;
-    musicFree();
-    ptplayerDestroy();
-    mouseDestroy();
-    keyDestroy();
+    NEONengine::g_pEngine = nullptr;
 
     // Run global/static destructors that registered with __cxa_atexit
     __cxa_finalize(nullptr);

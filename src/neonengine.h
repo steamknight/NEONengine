@@ -185,6 +185,8 @@ namespace NEONengine
         using result = mtl::expected<engine_ptr, error_code>;
 
         public:  //////////////////////////////////////////////////////////////////////////////////
+        ~engine() noexcept;
+
         tFont* default_font() noexcept { return _ui_font.get(); }
         text_renderer* default_text_renderer() noexcept { return _text_renderer.get(); }
 
