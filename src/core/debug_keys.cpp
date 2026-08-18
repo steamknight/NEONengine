@@ -2,6 +2,7 @@
 
 #include "neonengine.h"
 
+#include <ace/managers/game.h>
 #include <ace/managers/key.h>
 #include <ace/managers/memory.h>
 #include <ace/managers/state.h>
@@ -75,6 +76,12 @@ namespace NEONengine
         {
             log_mute_ace(!log_ace_muted());
             NE_LOG_ALWAYS("ACE logging %s", log_ace_muted() ? "muted" : "on");
+        }
+
+        if (keyUse(KEY_F9))
+        {
+            NE_LOG_ALWAYS("F9 pressed: exiting");
+            gameExit();
         }
     }
 }  // namespace NEONengine

@@ -35,11 +35,11 @@ namespace NEONengine
     /**
      * @brief Owns the viewport, palette and fade state for the engine.
      */
-    class Screen
+    class screen
     {
         public:  //////////////////////////////////////////////////////////////////////////////
-        Screen();
-        ~Screen();
+        screen();
+        ~screen();
 
         /**
          * @brief Run the screen's per-frame update logic.
@@ -183,35 +183,23 @@ namespace NEONengine
     };
 
     /**
-     * @brief The engine's single display owner.
-     */
-    extern mtl::unique_ptr<Screen> g_mainScreen;
-
-    /**
      * @brief Holds the display still for as long as the object lives.
      */
-    class freezes_display
+    class freeze_display
     {
-        protected: ////////////////////////////////////////////////////////////////////////////////
-        freezes_display() noexcept { g_mainScreen->freeze_display(); }
-        ~freezes_display() noexcept { g_mainScreen->resume_display(); }
+        public: ////////////////////////////////////////////////////////////////////////////////
+        freeze_display(screen& scr) noexcept : _screen(scr)
+        {
+            _screen.freeze_display();
+        }
+        ~freeze_display() noexcept
+        {
+            _screen.resume_display();
+        }
+
+        private: ///////////////////////////////////////////////////////////////////////////////
+        screen& _screen;
     };
-
-    /**
-     * @brief Create the full 200px PAL screen view.
-     *
-     * @return The new screen.
-     */
-    Screen* screenCreate();
-
-    /**
-     * @brief Destroy the screen and its ACE resources.
-     *
-     * @param screen A valid screen.
-     */
-    void screenDestroy(Screen* screen);
-
-
 
 }  // namespace NEONengine
 

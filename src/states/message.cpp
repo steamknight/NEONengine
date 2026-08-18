@@ -44,7 +44,7 @@ namespace NEONengine
         }
 
         /** @brief One box of text, up until the player dismisses it. */
-        class message_state : private freezes_display
+        class message_state
         {
             public:  //////////////////////////////////////////////////////////////////////////////
             bool create();
@@ -57,6 +57,7 @@ namespace NEONengine
             u16 _box_y{ 0 };
             u16 _box_width{ 0 };
             u16 _box_height{ 0 };
+            freeze_display _freeze_display{ g_pEngine->main_screen() };
         };
 
         bool message_state::create()
@@ -113,7 +114,7 @@ namespace NEONengine
             {
                 if (auto art = frame->render(_box_width, _box_height, 0))
                 {
-                    g_mainScreen->blit_copy(
+                    g_pEngine->main_screen().blit_copy(
                         art.get(),
                         0,
                         0,
@@ -136,7 +137,7 @@ namespace NEONengine
                 // only as wide as the caption itself.
                 u16 const captionX
                     = to<u16>(contentX + (contentWidth - caption->uwActualWidth) / 2);
-                g_mainScreen->text_copy(
+                g_pEngine->main_screen().text_copy(
                     caption.get(),
                     captionX,
                     contentY,
@@ -144,7 +145,7 @@ namespace NEONengine
                     FONT_COOKIE);
             }
 
-            g_mainScreen->text_copy(
+            g_pEngine->main_screen().text_copy(
                 text.get(),
                 contentX,
                 to<u16>(contentY + captionHeight),
@@ -175,7 +176,7 @@ namespace NEONengine
 
         message_state::~message_state()
         {
-            g_mainScreen->restore_rect(
+            g_pEngine->main_screen().restore_rect(
                 to<WORD>(_box_x),
                 to<WORD>(_box_y),
                 to<WORD>(_box_width),

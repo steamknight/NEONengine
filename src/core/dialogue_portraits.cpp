@@ -72,7 +72,7 @@ namespace NEONengine
 
         data::bitmap_ref const& ref = bitmaps[bitmap_id];
 
-        UBYTE const depth = g_mainScreen->back_buffer()->Depth;
+        UBYTE const depth = _main_screen.back_buffer()->Depth;
 
         // Chip RAM: the blitter reads these exactly as the exporter wrote
         // them, with the band's base already in the pixels.
@@ -153,13 +153,13 @@ namespace NEONengine
 
     void dialogue_portraits::publish_band(ULONG const* colors)
     {
-        auto* reference = force_to<ULONG*>(g_mainScreen->palette());
+        auto* reference = force_to<ULONG*>(_main_screen.palette());
         for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
         {
             reference[PORTRAIT_PALETTE_FIRST + i] = colors[i];
         }
 
-        g_mainScreen->publish_palette(PORTRAIT_PALETTE_FIRST, PORTRAIT_PALETTE_COLORS);
+        _main_screen.publish_palette(PORTRAIT_PALETTE_FIRST, PORTRAIT_PALETTE_COLORS);
     }
 
     void dialogue_portraits::load(data::range page_range)
@@ -191,7 +191,7 @@ namespace NEONengine
 
         // Taken now rather than at the first draw: the band has to go back the
         // way it was even if no page turns out to have a portrait to draw.
-        auto const* reference = force_to<ULONG const*>(g_mainScreen->palette());
+        auto const* reference = force_to<ULONG const*>(_main_screen.palette());
         for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
         {
             _band_held[i] = reference[PORTRAIT_PALETTE_FIRST + i];
@@ -233,7 +233,7 @@ namespace NEONengine
 
         if (shown->mask)
         {
-            g_mainScreen->blit_copy_mask(
+            _main_screen.blit_copy_mask(
                 shown->image.get(),
                 0,
                 0,
@@ -247,7 +247,7 @@ namespace NEONengine
 
         // Not MINTERM_COPY: the portrait's left edge is not on a 16-pixel
         // boundary, and that minterm would blank the columns either side of it.
-        g_mainScreen->blit_copy(
+        _main_screen.blit_copy(
             shown->image.get(),
             0,
             0,

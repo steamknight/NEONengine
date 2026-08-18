@@ -42,7 +42,6 @@ namespace NEONengine
     }
 
     tStateManager* g_gameStateManager = nullptr;
-    screen_ptr g_mainScreen           = nullptr;
     engine_ptr g_pEngine              = nullptr;
 
     void initialize_ace()
@@ -54,16 +53,10 @@ namespace NEONengine
         ptplayerCreate(systemIsPal());
 
         g_gameStateManager = stateManagerCreate();
-        g_mainScreen       = mtl::make_unique<Screen>();
-
-        g_mainScreen->load();
-        g_mainScreen->bind_mouse();
     }
 
     void uninitialize_ace()
     {
-        g_mainScreen = nullptr;
-
         stateManagerDestroy(g_gameStateManager);
         g_gameStateManager = nullptr;
 
@@ -83,6 +76,10 @@ namespace NEONengine
         mtl::system_use_guard guard;
 
         initialize_ace();
+
+        auto main_screen = mtl::make_unique<screen>();
+        main_screen->load();
+        main_screen->bind_mouse();
 
         auto gameData = game_data::load();
         if (!gameData)
@@ -124,14 +121,14 @@ namespace NEONengine
             return mtl::unexpected(error_code::UI_PALETTE_LOAD_FAILED);
         }
         ace::paletteLoadFromFd(
-            mtl::move(uiPaletteFd), g_mainScreen->palette(), UI_PALETTE_COLOR_COUNT);
+            mtl::move(uiPaletteFd), main_screen->palette(), UI_PALETTE_COLOR_COUNT);
 
         NE_LOG("UI font %hux%hu, %hu chars; palette[0]=%08lx palette[1]=%08lx",
             to<UWORD>(uiFont->uwWidth),
             to<UWORD>(uiFont->uwHeight),
             to<UWORD>(uiFont->ubChars),
-            to<ULONG>(force_to<ULONG const*>(g_mainScreen->palette())[0]),
-            to<ULONG>(force_to<ULONG const*>(g_mainScreen->palette())[1]));
+            to<ULONG>(force_to<ULONG const*>(main_screen->palette())[0]),
+            to<ULONG>(force_to<ULONG const*>(main_screen->palette())[1]));
 
         auto textRenderer = text_renderer::create(uiFont.get());
         if (!textRenderer)
@@ -169,7 +166,7 @@ namespace NEONengine
             NE_LOG("The project ships no UI nine-patch");
         }
 
-        auto pointer = mtl::make_unique<mouse_pointer>(*gd, *assets);
+        auto pointer = mtl::make_unique<mouse_pointer>(*main_screen, *gd, *assets);
 
         // English is the one language the format guarantees is present, so it is
         // the boot language; set_language() swaps to another once one is chosen.
@@ -188,13 +185,14 @@ namespace NEONengine
         }
 
         auto result            = mtl::make_unique<engine>();
+        result->_main_screen   = mtl::move(main_screen);
         result->_game_data     = mtl::move(gameData.value());
         result->_assets        = mtl::move(assets);
         result->_pointer       = mtl::move(pointer);
         result->_ui_font       = mtl::move(uiFont);
         result->_text_renderer = mtl::move(textRenderer.value());
         result->_nine_patch    = mtl::move(uiFrame);
-        result->_caption_ink   = create_caption_ink(result->_ui_font.get());
+        result->_caption_ink   = create_caption_ink(result->_ui_font.get(), result->_main_screen->back_buffer()->Depth);
         result->_strings      = mtl::move(strings.value());
 
         // The playthrough's memory of what the player has read and taken, sized
@@ -273,13 +271,13 @@ namespace NEONengine
         ptplayerProcess();
     }
 
-    void engine::frame() noexcept
+    void engine::process() noexcept
     {
         update_input();
         update_audio();
         apply_pending_language();
         _overlays.present(g_gameStateManager);
         stateProcess(g_gameStateManager);
-        g_mainScreen->process();
+        _main_screen->process();
     }
 }  // namespace NEONengine

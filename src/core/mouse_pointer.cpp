@@ -27,7 +27,7 @@ namespace NEONengine
 #define POINTER_BPP    4
 #define SPRITE_BPP     2
 
-    mouse_pointer::mouse_pointer(game_data const& data, asset_cache& cache)
+    mouse_pointer::mouse_pointer(screen& main_screen, game_data const& data, asset_cache& cache)
     {
         auto const& ui     = data.ui_state();
         auto const bitmaps = data.bitmaps();
@@ -119,7 +119,7 @@ namespace NEONengine
 
         // pSheet releases itself when it leaves scope.
 
-        spriteManagerCreate(g_mainScreen->view(), 0, NULL);
+        spriteManagerCreate(main_screen.view(), 0, NULL);
         systemSetDmaBit(DMAB_SPRITE, 1);
 
         // An attached pair indexes a 16-aligned bank, here entries 16..31. The

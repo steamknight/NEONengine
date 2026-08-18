@@ -10,7 +10,7 @@ namespace NEONengine
      *
      * Routes VM game-call opcodes to engine systems. The @ref noir_bridge table
      * holds plain function pointers with no context argument, so its functions
-     * reach the running engine through the g_pEngine / g_mainScreen globals;
+     * reach the running engine through the g_pEngine global;
      * nothing calls them until a script runs, and by then the engine is live.
      * Pass its address to the noir_vm constructor.
      *

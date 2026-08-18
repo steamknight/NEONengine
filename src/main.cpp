@@ -55,7 +55,7 @@ void genericCreate(void)
 
 void genericProcess(void)
 {
-    g_pEngine->frame();
+    g_pEngine->process();
 
     debug_keys_process();
 }

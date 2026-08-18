@@ -57,7 +57,7 @@ namespace NEONengine
      *
      * @return The bitmap, or null when there is no font or no Chip RAM.
      */
-    ace::bitmap_ptr create_caption_ink(tFont const* font);
+    ace::bitmap_ptr create_caption_ink(tFont const* font, u8 depth);
 
     class scene_bobs
     {

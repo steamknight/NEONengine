@@ -45,7 +45,7 @@ namespace NEONengine
         constexpr UBYTE CAPTION_MASK_COLOR   = 0xFF;  ///< Sets every plane, making a bob mask.
     }  // namespace
 
-    ace::bitmap_ptr create_caption_ink(tFont const* font)
+    ace::bitmap_ptr create_caption_ink(tFont const* font, u8 depth)
     {
         if (!font) return nullptr;
 
@@ -56,7 +56,7 @@ namespace NEONengine
 
         auto ink = ace::bitmapCreate(CAPTION_MAX_WIDTH,
             height,
-            g_mainScreen->back_buffer()->Depth,
+            depth,
             BMF_INTERLEAVED);
         if (ink) blitRect(ink.get(), 0, 0, CAPTION_MAX_WIDTH, height, CAPTION_COLOR);
 
@@ -198,7 +198,7 @@ namespace NEONengine
         _captions.reserve(hotspots.size());
 
         bool any          = false;
-        UBYTE const depth = g_mainScreen->back_buffer()->Depth;
+        UBYTE const depth = g_pEngine->main_screen().back_buffer()->Depth;
         for (u16 i = 0; i < hotspots.size(); ++i)
         {
             _captions.push_back(caption{});
@@ -285,8 +285,8 @@ namespace NEONengine
         // AGA palette entries are ULONG; the screen owns the reference palette
         // and exposes it in the type the ACE API expects, so index with ULONG
         // stride to land on the right entry.
-        ULONG* pPalette           = force_to<ULONG*>(g_mainScreen->palette());
-        auto const screenOffset = data::point<u16>{ g_mainScreen->offset(), 0 };
+        ULONG* pPalette           = force_to<ULONG*>(g_pEngine->main_screen().palette());
+        auto const screenOffset = data::point<u16>{ g_pEngine->main_screen().offset(), 0 };
 
         // An empty or out-of-bounds range simply yields no bobs.
         if (!instances.is_empty())
@@ -373,7 +373,7 @@ namespace NEONengine
         // ACE documents sPos as the one field a caller may write; the undraw
         // record is taken when the bob is pushed, so a moved bob still erases
         // itself from where it was last drawn in each buffer.
-        asset->bob.sPos = pos + data::point<u16>{ g_mainScreen->offset(), 0 };
+        asset->bob.sPos = pos + data::point<u16>{ g_pEngine->main_screen().offset(), 0 };
     }
 
     void scene_bobs::set_instance_visible(u16 index, bool visible)
@@ -389,7 +389,7 @@ namespace NEONengine
         if (!asset) return false;
 
         pos = data::point<u16>{ asset->bob.sPos.uwY, asset->bob.sPos.uwX }
-            - data::point<u16>{ g_mainScreen->offset(), 0 };
+            - data::point<u16>{ g_pEngine->main_screen().offset(), 0 };
         return true;
     }
 
@@ -422,7 +422,7 @@ namespace NEONengine
         // of phase with the manager. Re-sync before drawing; it's a no-op when
         // already aligned. ACE only auto-corrects this under ACE_DEBUG, so without
         // it a release build would keep drawing bobs into the wrong buffer.
-        auto* pBack = g_mainScreen->back_buffer();
+        auto* pBack = g_pEngine->main_screen().back_buffer();
         bobSetCurrentBuffer(pBack);
         bobBegin(pBack);
         for (auto& asset : _assets)
@@ -457,7 +457,7 @@ namespace NEONengine
         // Bobs are placed in display space, which the screen shifts down in PAL.
         // The box is always the full height even when the text is shorter, so it
         // is the box that has to stay on screen.
-        WORD const top    = to<WORD>(g_mainScreen->offset());
+        WORD const top    = to<WORD>(g_pEngine->main_screen().offset());
         WORD const bottom = to<WORD>(top + SCREEN_HEIGHT - to<WORD>(ink->Rows));
 
         // Below the pointer by preference, above it when that would run off the

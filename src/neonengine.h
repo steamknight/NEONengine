@@ -167,7 +167,7 @@ namespace NEONengine
 
     class engine;
     using engine_ptr = mtl::unique_ptr<engine>;
-    using screen_ptr = mtl::unique_ptr<Screen>;
+    using screen_ptr = mtl::unique_ptr<screen>;
 
     class engine
     {
@@ -304,11 +304,13 @@ namespace NEONengine
         void set_current_scene(u16 scene_id) noexcept { _current_scene = scene_id; }
 
         /**
-         * @brief Runs one frame, in the order a frame has to happen in.
+         * @brief Runs one frame.
          */
-        void frame() noexcept;
+        void process() noexcept;
 
         static result initialize();
+
+        screen& main_screen() noexcept { return *_main_screen; }
 
         private: //////////////////////////////////////////////////////////////////////////////////
 
@@ -327,6 +329,8 @@ namespace NEONengine
         void apply_pending_language() noexcept;
 
         private:  //////////////////////////////////////////////////////////////////////////////////
+
+        screen_ptr                       _main_screen{ nullptr };
 
         game_data_ptr                    _game_data{ nullptr };
         // Declared after the game data: it borrows that object's pak, so it has

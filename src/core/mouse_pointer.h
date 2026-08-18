@@ -11,6 +11,7 @@
 
 #include "core/asset_cache.h"
 #include "core/game_data.h"
+#include "core/screen.h"
 #include "game_data_format.h"
 
 namespace NEONengine
@@ -52,9 +53,10 @@ namespace NEONengine
          *
          * Reads the pak and takes Chip RAM, so construct this under a system-use
          * guard. A project with no usable sheet leaves the pointer inert rather
-         * than failing: ready() says which happened.
+         * than failing: ready() says which happened. The main screen is needed
+         * to publish the pointer's sprites.
          */
-        mouse_pointer(game_data const& data, asset_cache& cache);
+        mouse_pointer(screen& main_screen, game_data const& data, asset_cache& cache);
 
         /** @brief Frees the cursors. Hands memory back to the OS. */
         ~mouse_pointer();

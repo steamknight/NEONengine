@@ -53,7 +53,7 @@ namespace NEONengine
         bool clear_text_called;
         bool stop_music_called;
 
-        // Screen
+        // screen
         u16 fade_out_frames;
         u16 fade_in_frames;
         u16 screen_clr_color;

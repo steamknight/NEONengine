@@ -155,7 +155,7 @@ namespace NEONengine
             {
                 auto const& ref = gd.bitmaps()[sc.background_bitmap_id];
                 ace::paletteLoadFromFd(g_pEngine->assets().open(ref.palette_hash),
-                    g_mainScreen->palette(),
+                    g_pEngine->main_screen().palette(),
                     SCENE_PALETTE_COLORS);
 
                 auto bg = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.bitmap_hash), 0);
@@ -168,10 +168,10 @@ namespace NEONengine
                     // planes) behind. Clear to index 0 first in that case.
                     bool const covers_screen = sc.offset.x == 0 && sc.offset.y == 0
                         && sc.width >= SCREEN_WIDTH && sc.height >= SCREEN_HEIGHT
-                        && bg->Depth >= g_mainScreen->back_buffer()->Depth;
-                    if (!covers_screen) g_mainScreen->clear(0);
+                        && bg->Depth >= g_pEngine->main_screen().back_buffer()->Depth;
+                    if (!covers_screen) g_pEngine->main_screen().clear(0);
 
-                    g_mainScreen->blit_copy(
+                    g_pEngine->main_screen().blit_copy(
                         bg.get(),
                         0,
                         0,
@@ -192,7 +192,7 @@ namespace NEONengine
             if (showsUi)
             {
                 ace::paletteLoadFromFd(g_pEngine->assets().open(gd.ui_state().ui_palette_hash),
-                    g_mainScreen->palette(), UI_PALETTE_COLORS);
+                    g_pEngine->main_screen().palette(), UI_PALETTE_COLORS);
             }
 
             // Only a scene that shows the pointer holds its band out of the
@@ -200,11 +200,11 @@ namespace NEONengine
             // those entries, so there they have to dim like everything else -
             // and the pointer has to go, or it would draw itself in whatever
             // colors the background put in its band.
-            g_mainScreen->set_cursor_band_exempt(showsUi);
+            g_pEngine->main_screen().set_cursor_band_exempt(showsUi);
             g_pEngine->pointer().set_visible(showsUi);
 
             scene_text_draw(sc);
-            g_mainScreen->duplicate_back_to_front();
+            g_pEngine->main_screen().duplicate_back_to_front();
         }
 
         /**
@@ -392,7 +392,7 @@ namespace NEONengine
             // from black with the project's default so a script-less scene is
             // still visible.
             u16 const frames = gd.config().default_fade_frames;
-            g_mainScreen->fade_from_black(
+            g_pEngine->main_screen().fade_from_black(
                 to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
             return false;
         }
@@ -423,11 +423,11 @@ namespace NEONengine
             switch (request.kind)
             {
                 case modal_kind::fade_out:
-                    g_mainScreen->fade_to_black(fade_frames(), 0, scene_fade_done);
+                    g_pEngine->main_screen().fade_to_black(fade_frames(), 0, scene_fade_done);
                     return;
 
                 case modal_kind::fade_in:
-                    g_mainScreen->fade_from_black(fade_frames(), 0, scene_fade_done);
+                    g_pEngine->main_screen().fade_from_black(fade_frames(), 0, scene_fade_done);
                     return;
 
                 case modal_kind::show_dialog:
@@ -516,7 +516,7 @@ namespace NEONengine
         systemUnuse();
         // The boot load blocks for over a second with the pointer on screen, and
         // draw_backdrop only settles the band once it has the scene in hand.
-        g_mainScreen->set_cursor_band_exempt(true);
+        g_pEngine->main_screen().set_cursor_band_exempt(true);
         show_wait_pointer();
         // Every later load is followed by the same frame's own VM update; this
         // one runs before the loop starts, so the entry script's FADE_IN needs
@@ -552,7 +552,7 @@ namespace NEONengine
         // of flicking back to its normal role in that gap.
         bool const transitioning = g_pEngine->language_changed()
             || g_pEngine->pending_system_kind() == system_kind::load_scene
-            || g_mainScreen->is_fading_out();
+            || g_pEngine->main_screen().is_fading_out();
 
         // Cheap and idempotent: the frame's own pointer update and
         // screenProcess() publish it, so the fade needs nothing special.
@@ -588,7 +588,7 @@ namespace NEONengine
         // more after the SET_LANG - and that load repaints the backdrop anyway,
         // so waiting for the fade to settle keeps the decode from being done
         // twice and thrown away once.
-        if (_backdrop_stale && !g_mainScreen->is_fading_out())
+        if (_backdrop_stale && !g_pEngine->main_screen().is_fading_out())
         {
             _backdrop_stale = false;
             redraw_backdrop();

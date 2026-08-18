@@ -95,7 +95,7 @@ namespace NEONengine
         {
             // AGA palette entries are ULONG; the screen owns the reference
             // palette buffer, so index it with ULONG stride through the owner.
-            auto* palette = force_to<ULONG*>(g_mainScreen->palette());
+            auto* palette = force_to<ULONG*>(g_pEngine->main_screen().palette());
 
             ULONG color = palette[DIALOGUE_TEXT_COLOR];
 
@@ -107,7 +107,7 @@ namespace NEONengine
             }
 
             palette[DIALOGUE_TEXT_COLOR] = color;
-            g_mainScreen->publish_palette(DIALOGUE_TEXT_COLOR, 1);
+            g_pEngine->main_screen().publish_palette(DIALOGUE_TEXT_COLOR, 1);
         }
 
         /** @brief What "More..." says, in the player's language. */
@@ -117,7 +117,7 @@ namespace NEONengine
         }
 
         /** @brief One conversation, from the page it opens on to the box coming down. */
-        class dialogue_state : private freezes_display
+        class dialogue_state
         {
             public:  //////////////////////////////////////////////////////////////////////////////
             bool create();
@@ -158,7 +158,7 @@ namespace NEONengine
             dialogue_session _session;
 
             /// The speaker artwork this conversation can show.
-            dialogue_portraits _portraits{ g_pEngine->data(), g_pEngine->assets() };
+            dialogue_portraits _portraits{ g_pEngine->main_screen(), g_pEngine->data(), g_pEngine->assets() };
 
             /// The frame on screen, in scene space. Zero-sized when none is up.
             u16 _frame_x{ 0 };
@@ -194,6 +194,8 @@ namespace NEONengine
 
             /// The slot that pause is showing off, taken when it runs out.
             u8 _pending{ NO_SLOT };
+
+            freeze_display _freeze_display{ g_pEngine->main_screen() };
         };
 
         /** @brief Who the page on show is spoken by, or NO_ID. */
@@ -212,7 +214,7 @@ namespace NEONengine
          */
         void dialogue_state::erase_frame()
         {
-            g_mainScreen->restore_rect(
+            g_pEngine->main_screen().restore_rect(
                 to<WORD>(_frame_x),
                 to<WORD>(_frame_y),
                 to<WORD>(_frame_width),
@@ -232,7 +234,7 @@ namespace NEONengine
          */
         void dialogue_state::erase_portrait()
         {
-            g_mainScreen->restore_rect(
+            g_pEngine->main_screen().restore_rect(
                 to<WORD>(_portrait_x),
                 to<WORD>(_portrait_y),
                 to<WORD>(_portrait_width),
@@ -269,11 +271,11 @@ namespace NEONengine
 
             if (drawn.number)
             {
-                g_mainScreen->text_copy(
+                g_pEngine->main_screen().text_copy(
                     drawn.number.get(), drawn.x, drawn.y, color, FONT_COOKIE);
             }
 
-            g_mainScreen->text_copy(
+            g_pEngine->main_screen().text_copy(
                 drawn.text.get(), drawn.text_x, drawn.y, color, FONT_COOKIE);
         }
 
@@ -301,7 +303,7 @@ namespace NEONengine
         {
             // Slots are laid out in scene space while the pointer reports
             // display space, so the pointer is shifted rather than every slot.
-            auto const offset_y = g_mainScreen->offset();
+            auto const offset_y = g_pEngine->main_screen().offset();
             auto const pointerY = mouseGetY(MOUSE_PORT_1);
             if (pointerY < offset_y) return NO_SLOT;
 
@@ -648,7 +650,7 @@ namespace NEONengine
             {
                 if (auto art = frame->render(_frame_width, _frame_height, 0))
                 {
-                    g_mainScreen->blit_copy(
+                    g_pEngine->main_screen().blit_copy(
                         art.get(),
                         0,
                         0,
@@ -671,7 +673,7 @@ namespace NEONengine
                 // only as wide as the name itself.
                 u16 const headingX
                     = to<u16>(contentX + (contentWidth - heading->uwActualWidth) / 2);
-                g_mainScreen->text_copy(
+                g_pEngine->main_screen().text_copy(
                     heading.get(),
                     headingX,
                     contentY,
@@ -683,7 +685,7 @@ namespace NEONengine
             // is asked for a rectangle, and one with no rows in it is not one.
             if (text->uwActualHeight)
             {
-                g_mainScreen->text_copy(
+                g_pEngine->main_screen().text_copy(
                     text.get(),
                     contentX,
                     to<u16>(contentY + headingHeight),

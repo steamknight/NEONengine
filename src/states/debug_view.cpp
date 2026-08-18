@@ -30,7 +30,7 @@ namespace NEONengine
         constexpr UBYTE STATS_COLOR = 24;
 
         /** @brief What is left of each kind of memory, and how long we have run. */
-        class debug_view_state : private freezes_display
+        class debug_view_state
         {
             public:  //////////////////////////////////////////////////////////////////////////////
             bool create();
@@ -52,6 +52,8 @@ namespace NEONengine
 
             char _memory_text[64]{};
             char _elapsed_text[32]{};
+
+            freeze_display _freeze_display{ g_pEngine->main_screen() };
         };
 
         bool debug_view_state::create()
@@ -101,15 +103,15 @@ namespace NEONengine
             sprintf(_elapsed_text, "Elapsed Time: %lds.", now / _fps);
             fontFillTextBitMap(_font, _elapsed.get(), _elapsed_text);
 
-            g_mainScreen->restore_rect(0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
-            g_mainScreen->text_copy(_memory.get(), 0, 0, STATS_COLOR, FONT_COOKIE);
+            g_pEngine->main_screen().restore_rect(0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
+            g_pEngine->main_screen().text_copy(_memory.get(), 0, 0, STATS_COLOR, FONT_COOKIE);
 
-            g_mainScreen->restore_rect(
+            g_pEngine->main_screen().restore_rect(
                 0,
                 elapsed_y(),
                 _elapsed->uwActualWidth,
                 _elapsed->uwActualHeight);
-            g_mainScreen->text_copy(
+            g_pEngine->main_screen().text_copy(
                 _elapsed.get(), 0, to<UWORD>(elapsed_y()), STATS_COLOR, FONT_COOKIE);
         }
 
@@ -118,9 +120,9 @@ namespace NEONengine
             // Nothing was drawn when the text could not be made.
             if (!_memory || !_elapsed) return;
 
-            // Zero-sized until the first reading, which g_mainScreen->restore_rect refuses.
-            g_mainScreen->restore_rect(0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
-            g_mainScreen->restore_rect(
+            // Zero-sized until the first reading, which g_pEngine->main_screen().restore_rect refuses.
+            g_pEngine->main_screen().restore_rect(0, 0, _memory->uwActualWidth, _memory->uwActualHeight);
+            g_pEngine->main_screen().restore_rect(
                 0,
                 elapsed_y(),
                 _elapsed->uwActualWidth,

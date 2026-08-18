@@ -32,6 +32,7 @@
 #include "core/asset_cache.h"
 #include "core/game_data.h"
 #include "core/game_data_format.h"
+#include "core/screen.h"
 
 namespace NEONengine
 {
@@ -62,8 +63,8 @@ namespace NEONengine
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
         /** @brief Reads portraits from @p data through @p cache; both must outlive this. */
-        dialogue_portraits(game_data& data, asset_cache& cache) noexcept
-            : _data(data), _cache(cache)
+        dialogue_portraits(screen& main_screen, game_data& data, asset_cache& cache) noexcept
+            : _main_screen(main_screen), _data(data), _cache(cache)
         {
         }
 
@@ -111,11 +112,12 @@ namespace NEONengine
          * column the scene has just had back. So call this whenever the speaker
          * changes, not only when the new one has artwork.
          *
-         * Takes scene-space coordinates, as Screen::blit_copy does.
+         * Takes scene-space coordinates
          */
         void show(u16 speaker_id, u16 x, u16 y);
 
         private:  /////////////////////////////////////////////////////////////////////////////////
+
         /// One loaded portrait: its artwork, its mask, and the colors it needs.
         struct portrait
         {
@@ -152,8 +154,9 @@ namespace NEONengine
          */
         void release_band();
 
-        game_data&   _data;
-        asset_cache& _cache;
+        screen&         _main_screen;
+        game_data&       _data;
+        asset_cache&    _cache;
 
         /// Every portrait the running conversation can show, in no order.
         mtl::vector<portrait> _portraits;
