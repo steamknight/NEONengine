@@ -209,7 +209,7 @@ endif()
 # -Wwrite-strings. Kept out of the toolchain flags so a fresh configure gets it.
 set(NE_WARNINGS_AS_ERRORS ON CACHE BOOL "Fail the build on a warning in NEONengine's own sources")
 
-target_compile_options(${GAME_LINKED} PRIVATE -Wall -Wextra -Wno-write-strings)
+target_compile_options(${GAME_LINKED} PRIVATE -Wall -Wextra -Wno-write-strings -fno-rtti)
 
 # The property rather than a bare -Werror: it survives a compiler change, and
 # configuring with `cmake --compile-no-warning-as-error` lifts it without

@@ -37,6 +37,7 @@
 #include "tests/noir_vm_tests.h"
 #include "tests/noir_vm_timeline_tests.h"
 #include "tests/noir_vm_value_ops_tests.h"
+#include "tests/state_manager_tests.h"
 #include "tests/track_clock_tests.h"
 
 NE_LOG_DOMAIN(Test);
@@ -148,6 +149,7 @@ namespace NEONengine::tests
         RUN_SUITE(nine_patch);
         RUN_SUITE(dialogue_session);
         RUN_SUITE(track_clock);
+        RUN_SUITE(state_manager);
         RUN_SUITE(noir_vm);
         RUN_SUITE(noir_vm_data_move);
         RUN_SUITE(noir_vm_arithmetic);
