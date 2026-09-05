@@ -19,6 +19,7 @@
 #include "core/overlay_system.h"
 #include "core/screen.h"
 #include "core/state_host.h"
+#include "core/state_manager.h"
 #include "core/string_table.h"
 #include "core/text_render.h"
 #include "types.h"
@@ -219,6 +220,15 @@ namespace NEONengine
          */
         game_session& session() noexcept { return _session; }
 
+        /**
+         * @brief Constructs the first state the state manager runs.
+        */
+        template<state_type T, typename... Args>
+        void start_state(Args&&... args)
+        {
+            _states.start<T>(mtl::forward<Args>(args)...);
+        }
+
 
         /** @brief The active language's strings. */
         string_table& strings() noexcept { return *_strings; }
@@ -346,6 +356,7 @@ namespace NEONengine
 
         // Current game session, overwriten on new/save/load game.
         game_session                     _session{};
+        state_manager                    _states{};
 
         // Language requested by a script, awaiting a swap.
         pending_request<language>        _pending_language{};
