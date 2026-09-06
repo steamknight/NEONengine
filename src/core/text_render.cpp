@@ -174,7 +174,7 @@ namespace NEONengine
         {
             if (pLines[idx].width > width) width = pLines[idx].width;
         }
-        if (width > maxWidth || width == 0) width = maxWidth;
+        if (width > maxWidth) width = maxWidth;
 
         return width;
     }
@@ -208,6 +208,11 @@ namespace NEONengine
         }
 
         ensure_line_bitmap(maxWidth);
+        if (!_line_bitmap)
+        {
+            NE_LOG("Could not allocate the line bitmap.");
+            return ace::text_bitmap_ptr(nullptr);
+        }
 
         // Break text into lines
         auto lines = mtl::array<line_data, MAX_LINES>();
@@ -217,6 +222,7 @@ namespace NEONengine
         if (lineCount == 0) { return ace::text_bitmap_ptr(nullptr); }
 
         u16 const contentWidth = content_width(lines.begin(), lineCount, maxWidth);
+        if (contentWidth == 0) return ace::text_bitmap_ptr(nullptr);
 
         // Allocate the result bitmap
         u16 height = _font->uwHeight * lineCount;

@@ -11,12 +11,13 @@ namespace NEONengine
     void dialogue_session::create(mtl::span<data::dialogue> dialogues,
         mtl::span<data::page> pages,
         mtl::span<data::choice> choices,
-        dialogue_bridge const* bridge) noexcept
+        dialogue_bridge const* bridge, dialogue_context* context) noexcept
     {
         _dialogues     = dialogues;
         _pages         = pages;
         _choices       = choices;
         _bridge        = bridge;
+        _context       = context;
         _page_range    = data::range{};
         _current       = data::NO_ID;
         collect_choices();
@@ -28,7 +29,7 @@ namespace NEONengine
         _current      = data::NO_ID;
         collect_choices();
 
-        if (dialogue_id >= _dialogues.size()) return false;
+        if (dialogue_id >= _dialogues.size() || _bridge->is_terminated(_context)) return false;
 
         auto const& dialogue = _dialogues[dialogue_id];
 
@@ -202,7 +203,7 @@ namespace NEONengine
         // of. Recorded whether or not the one-time bit is set, as a page's read
         // bit is: taking it is the fact, and only availability cares about the
         // bit.
-        _bridge->mark_choice_taken(choice_id);
+        _bridge->mark_choice_taken(_context, choice_id);
 
         apply_flags(choice.set_flag_id, choice.clear_flag_id);
 
@@ -220,17 +221,17 @@ namespace NEONengine
 
     void dialogue_session::apply_flags(u16 set_flag_id, u16 clear_flag_id) noexcept
     {
-        if (set_flag_id != data::NO_ID) _bridge->set_flag(set_flag_id, true);
-        if (clear_flag_id != data::NO_ID) _bridge->set_flag(clear_flag_id, false);
+        if (set_flag_id != data::NO_ID) _bridge->set_flag(_context, set_flag_id, true);
+        if (clear_flag_id != data::NO_ID) _bridge->set_flag(_context, clear_flag_id, false);
     }
 
     bool dialogue_session::run_script(u16 function_id) noexcept
     {
         if (function_id == data::NO_ID) return false;
 
-        _bridge->run_script(function_id);
+        _bridge->run_script(_context, function_id);
 
-        return _bridge->is_terminated();
+        return _bridge->is_terminated(_context);
     }
 
     void dialogue_session::end() noexcept
@@ -245,12 +246,12 @@ namespace NEONengine
 
         if ((page.flags & data::PAGE_FLAG_ENABLED) == 0) return false;
 
-        if (page.check_flag_id != data::NO_ID && !_bridge->get_flag(page.check_flag_id))
+        if (page.check_flag_id != data::NO_ID && !_bridge->get_flag(_context, page.check_flag_id))
         {
             return false;
         }
 
-        if ((page.flags & data::PAGE_FLAG_ONE_TIME) != 0 && _bridge->is_page_read(page_id))
+        if ((page.flags & data::PAGE_FLAG_ONE_TIME) != 0 && _bridge->is_page_read(_context, page_id))
         {
             return false;
         }
@@ -264,12 +265,12 @@ namespace NEONengine
 
         if ((choice.flags & data::CHOICE_FLAG_ENABLED) == 0) return false;
 
-        if (choice.check_flag_id != data::NO_ID && !_bridge->get_flag(choice.check_flag_id))
+        if (choice.check_flag_id != data::NO_ID && !_bridge->get_flag(_context, choice.check_flag_id))
         {
             return false;
         }
 
-        if ((choice.flags & data::CHOICE_FLAG_ONE_TIME) != 0 && _bridge->is_choice_taken(choice_id))
+        if ((choice.flags & data::CHOICE_FLAG_ONE_TIME) != 0 && _bridge->is_choice_taken(_context, choice_id))
         {
             return false;
         }
@@ -327,7 +328,7 @@ namespace NEONengine
             if (!is_available(candidate)) continue;
 
             _current = candidate;
-            _bridge->mark_page_read(candidate);
+            _bridge->mark_page_read(_context, candidate);
 
             // The author's flags first, then the script, so the script has the
             // last word over what the page was written to set.

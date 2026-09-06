@@ -2,10 +2,10 @@
 
 #include "types.h"
 
+#include <ace/managers/game.h>
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/ptplayer.h>
-#include <ace/managers/state.h>
 
 #include <ace++/bitmap.h>
 #include <ace++/palette.h>
@@ -17,6 +17,7 @@
 #include "core/noir_bridge.h"
 #include "core/scene_bobs.h"
 
+#include "states/scene.h"
 
 NE_LOG_DOMAIN(Core);
 
@@ -39,10 +40,25 @@ namespace NEONengine
             return strings.build_period() == hd.build_period
                 && strings.build_number() == hd.build_number;
         }
-    }
 
-    tStateManager* g_gameStateManager = nullptr;
-    engine_ptr g_pEngine              = nullptr;
+        /** @brief Reports what is left of each kind of memory. */
+        void log_free_memory()
+        {
+            auto chipSize = memGetFreeChipSize();
+            auto fastSize = AvailMem(MEMF_FAST);
+            auto anySize  = AvailMem(MEMF_ANY);
+
+            NE_LOG("Chip: %ld.%3ld KB, Fast: %ld.%3ld KB, Any:  %ld.%3ld KB ",
+                chipSize >> 10,
+                chipSize & 0x3FF,
+                fastSize >> 10,
+                fastSize & 0x3FF,
+                anySize >> 10,
+                anySize & 0x3FF);
+        }
+    }  // namespace
+
+    engine_ptr g_pEngine = nullptr;
 
     void initialize_ace()
     {
@@ -51,15 +67,10 @@ namespace NEONengine
         keyCreate();
         mouseCreate(MOUSE_PORT_1);
         ptplayerCreate(systemIsPal());
-
-        g_gameStateManager = stateManagerCreate();
     }
 
     void uninitialize_ace()
     {
-        stateManagerDestroy(g_gameStateManager);
-        g_gameStateManager = nullptr;
-
         musicFree();
         ptplayerDestroy();
         mouseDestroy();
@@ -68,7 +79,14 @@ namespace NEONengine
 
     engine::~engine() noexcept
     {
+        _states.clear();
         uninitialize_ace();
+    }
+
+    void engine::start()
+    {
+        _states.start<scene_state>(*this, _game_data->config().boot_scene_id);
+
     }
 
     engine::result engine::initialize()
@@ -77,9 +95,17 @@ namespace NEONengine
 
         initialize_ace();
 
+        auto result = mtl::make_unique<engine>();
+        if (!result)
+        {
+            uninitialize_ace();
+            return mtl::unexpected(error_code::ENGINE_ALLOCATION_FAILED);
+        }
+
         auto main_screen = mtl::make_unique<screen>();
         main_screen->load();
         main_screen->bind_mouse();
+        main_screen->set_cursor_band_exempt(true);
 
         auto gameData = game_data::load();
         if (!gameData)
@@ -184,7 +210,6 @@ namespace NEONengine
             return mtl::unexpected(error_code::STRING_TABLE_LOAD_FAILED);
         }
 
-        auto result            = mtl::make_unique<engine>();
         result->_main_screen   = mtl::move(main_screen);
         result->_game_data     = mtl::move(gameData.value());
         result->_assets        = mtl::move(assets);
@@ -217,6 +242,9 @@ namespace NEONengine
             to<UWORD>(functions.size()),
             to<UWORD>(result->_session.get_flags().size()),
             to<UWORD>(result->_session.get_values().size()));
+
+        // Log the what the engine startup left in the asset cache before we load any scenes.
+        result->_assets->log(*result->_game_data);
 
         return result;
     }
@@ -264,6 +292,36 @@ namespace NEONengine
     {
         keyProcess();
         mouseProcess();
+
+        // Process the debug keys
+        //
+        // F2: Log the free memory in each kind of RAM
+        // F3: Log the asset cache contents
+        // F4: Clear the asset cache
+        // F5: Toggle muting of ACE's log output
+        // F9: Shut down the engine and exit the game
+
+        if (keyUse(KEY_F2)) log_free_memory();
+
+        if (keyUse(KEY_F3)) _assets->log(*_game_data);
+
+        if (keyUse(KEY_F4))
+        {
+            g_pEngine->assets().clear();
+            NE_LOG_ALWAYS("asset cache cleared on request");
+        }
+
+        if (keyUse(KEY_F5))
+        {
+            log_mute_ace(!log_ace_muted());
+            NE_LOG_ALWAYS("ACE logging %s", log_ace_muted() ? "muted" : "on");
+        }
+
+        if (keyUse(KEY_F9))
+        {
+            NE_LOG_ALWAYS("F9 pressed: shutting down the engine and exiting the game");
+            gameExit();
+        }
     }
 
     void engine::update_audio() noexcept
@@ -276,8 +334,18 @@ namespace NEONengine
         update_input();
         update_audio();
         apply_pending_language();
-        _overlays.present(g_gameStateManager);
-        stateProcess(g_gameStateManager);
+
+        auto const result = _states.update();
+        if (result != state_update_result::ok)
+        {
+            if (result == state_update_result::error)
+                NE_LOG_ALWAYS("Fatal state error: %s", _states.error());
+            _states.clear();
+
+            gameExit();
+            return;
+        }
+
         _main_screen->process();
     }
 }  // namespace NEONengine

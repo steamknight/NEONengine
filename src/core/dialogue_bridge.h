@@ -7,9 +7,7 @@
  * nothing else, so everything it has to reach outside itself goes through here
  * and tests substitute a mock.
  *
- * The functions take no context argument. Production wires them to the running
- * engine through the g_pEngine global, exactly as the VM's bridge does; nothing
- * calls them until a dialogue is on screen, and by then the engine is live.
+ * Each call uses the host bound to the session.
  */
 
 #ifndef __DIALOGUE_BRIDGE_H__INCLUDED__
@@ -19,6 +17,15 @@
 
 namespace NEONengine
 {
+    class game_session;
+    class noir_vm;
+
+    struct dialogue_context
+    {
+        game_session& _session;
+        noir_vm& _vm;
+    };
+
     /**
      * @brief Function pointer table bridging a dialogue session to the engine.
      *
@@ -32,7 +39,7 @@ namespace NEONengine
          * Called once as each page is displayed. What is done with that -
          * today, a bit in the game session - is the engine's business.
          */
-        void (*mark_page_read)(u16 page_index);
+        void (*mark_page_read)(dialogue_context* host, u16 page_index);
 
         /**
          * @brief Whether the page at global PAGS @p page_index has been read.
@@ -40,7 +47,7 @@ namespace NEONengine
          * Asked of every page the conversation is about to land on, because a
          * one-time page that has been read is no longer available.
          */
-        bool (*is_page_read)(u16 page_index);
+        bool (*is_page_read)(dialogue_context* host, u16 page_index);
 
         /**
          * @brief Records that the choice at global CHOC @p choice_index was taken.
@@ -50,7 +57,7 @@ namespace NEONengine
          * choice the first time the player laid eyes on it, so it could never
          * be picked.
          */
-        void (*mark_choice_taken)(u16 choice_index);
+        void (*mark_choice_taken)(dialogue_context* host, u16 choice_index);
 
         /**
          * @brief Whether the choice at global CHOC @p choice_index was taken.
@@ -58,7 +65,7 @@ namespace NEONengine
          * Asked of every choice the page on show could offer, because a
          * one-time choice that has been taken is no longer available.
          */
-        bool (*is_choice_taken)(u16 choice_index);
+        bool (*is_choice_taken)(dialogue_context* host, u16 choice_index);
 
         /**
          * @brief The current value of game state flag @p flag_id.
@@ -67,7 +74,7 @@ namespace NEONengine
          * Never asked for the no-flag sentinel: a record with no check flag is
          * available on that count without the engine being consulted.
          */
-        bool (*get_flag)(u16 flag_id);
+        bool (*get_flag)(dialogue_context* host, u16 flag_id);
 
         /**
          * @brief Writes game state flag @p flag_id.
@@ -76,7 +83,7 @@ namespace NEONengine
          * as it is displayed or taken. Never called for the no-flag sentinel:
          * a record that sets or clears nothing asks the engine for nothing.
          */
-        void (*set_flag)(u16 flag_id, bool value);
+        void (*set_flag)(dialogue_context* host, u16 flag_id, bool value);
 
         /**
          * @brief Runs script @p function_id here and now, to its end.
@@ -87,7 +94,7 @@ namespace NEONengine
          * reports itself; see ADR-0001. Never called for the no-function
          * sentinel.
          */
-        void (*run_script)(u16 function_id);
+        void (*run_script)(dialogue_context* host, u16 function_id);
 
         /**
          * @brief Whether the VM has latched terminated.
@@ -96,13 +103,13 @@ namespace NEONengine
          * changing scene - carries no modal guard, so it does fire from a
          * dialogue script, and the conversation it was read in is over.
          */
-        bool (*is_terminated)();
+        bool (*is_terminated)(dialogue_context* host);
     };
 
     /**
      * @brief The engine's shared dialogue bridge.
      *
-     * Pass its address to dialogue_session::create().
+     * Pass its address and a dialogue_context to dialogue_session::create().
      */
     dialogue_bridge const& engine_dialogue_bridge() noexcept;
 }  // namespace NEONengine

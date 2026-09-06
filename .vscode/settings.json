@@ -1,4 +1,8 @@
 {
+    "cmake.cmakePath": "C:\\Program Files\\CMake\\bin\\cmake.exe",
+    "terminal.integrated.env.windows": {
+        "PATH": "${env:ProgramFiles}\\CMake\\bin;${env:PATH}"
+    },
     "files.associations": {
         "main.h": "c",
         "system.h": "c",

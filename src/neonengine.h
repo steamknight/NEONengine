@@ -1,7 +1,6 @@
 #ifndef __NEONENGINE_H__INCLUDED__
 #define __NEONENGINE_H__INCLUDED__
 
-#include <ace/managers/state.h>
 #include <ace/managers/system.h>
 
 #include <ace++/font.h>
@@ -18,11 +17,11 @@
 #include "core/noir_vm.h"
 #include "core/overlay_system.h"
 #include "core/screen.h"
-#include "core/state_host.h"
 #include "core/state_manager.h"
 #include "core/string_table.h"
 #include "core/text_render.h"
 #include "types.h"
+#include "utils/assert.h"
 
 namespace NEONengine
 {
@@ -167,6 +166,7 @@ namespace NEONengine
     };
 
     class engine;
+    class scene_runtime;
     using engine_ptr = mtl::unique_ptr<engine>;
     using screen_ptr = mtl::unique_ptr<screen>;
 
@@ -181,12 +181,30 @@ namespace NEONengine
             FAILED_TO_CREATE_TEXT_RENDERER,
             STRING_TABLE_LOAD_FAILED,
             BOOT_SCENE_INVALID,
+            ENGINE_ALLOCATION_FAILED,
         };
 
         using result = mtl::expected<engine_ptr, error_code>;
 
         public:  //////////////////////////////////////////////////////////////////////////////////
         ~engine() noexcept;
+        
+        /**
+         * @brief Begins the game's execution by loading the boot scene.
+         */
+        void start();
+
+        /**
+         * @brief Begins the game's execution by loading a state of type @p T, constructed with @p args.
+         * 
+         * @tparam T The type of the state to start.
+         * @param args Arguments to forward to the state's constructor.
+        */
+        template<state_type T, typename... Args>
+        void start_state(Args&&... args)
+        {
+            _states.start<T>(mtl::forward<Args>(args)...);
+        }
 
         tFont* default_font() noexcept { return _ui_font.get(); }
         text_renderer* default_text_renderer() noexcept { return _text_renderer.get(); }
@@ -213,22 +231,31 @@ namespace NEONengine
         mouse_pointer& pointer() noexcept { return *_pointer; }
         noir_vm& vm() noexcept { return *_vm; }
 
+        void bind_scene_runtime(scene_runtime& runtime) noexcept
+        {
+            assert(!_scene_runtime, "a scene runtime is already bound");
+            _scene_runtime = &runtime;
+        }
+
+        bool unbind_scene_runtime(scene_runtime& runtime) noexcept
+        {
+            if (_scene_runtime != &runtime) return false;
+            _scene_runtime = nullptr;
+            return true;
+        }
+
+        scene_runtime& scene() noexcept
+        {
+            assert(_scene_runtime, "no scene runtime is bound");
+            return *_scene_runtime;
+        }
+
         /**
          * @brief What the player has done, as opposed to what the data says.
          *
          * Created at boot and held for as long as the playthrough lasts.
          */
         game_session& session() noexcept { return _session; }
-
-        /**
-         * @brief Constructs the first state the state manager runs.
-        */
-        template<state_type T, typename... Args>
-        void start_state(Args&&... args)
-        {
-            _states.start<T>(mtl::forward<Args>(args)...);
-        }
-
 
         /** @brief The active language's strings. */
         string_table& strings() noexcept { return *_strings; }
@@ -353,6 +380,7 @@ namespace NEONengine
         ace::bitmap_ptr                  _caption_ink{ nullptr };
         string_table_ptr                 _strings{ nullptr };
         noir_vm_ptr                      _vm{ nullptr };
+        scene_runtime*                    _scene_runtime{ nullptr };
 
         // Current game session, overwriten on new/save/load game.
         game_session                     _session{};
@@ -369,18 +397,6 @@ namespace NEONengine
     };
 
     extern engine_ptr g_pEngine;
-
-    extern tState g_stateDebugView,  //
-        g_stateScene,                //
-        g_stateDialogue,             //
-        g_stateMessage;
-
-#ifdef ACE_TEST_RUNNER
-    namespace tests
-    {
-        extern tState g_stateTestRunner;
-    }
-#endif
 
 }  // namespace NEONengine
 

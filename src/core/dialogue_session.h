@@ -39,14 +39,13 @@ namespace NEONengine
         /**
          * @brief Points the session at the records and the engine it will use.
          *
-         * None of the spans is copied and the bridge is not owned: all four
-         * have to outlive the session. Nothing is on show until begin()
-         * succeeds.
+         * The records, bridge and context must outlive the session.
+         * Nothing is on show until begin() succeeds.
          */
         void create(mtl::span<data::dialogue> dialogues,
             mtl::span<data::page> pages,
             mtl::span<data::choice> choices,
-            dialogue_bridge const* bridge) noexcept;
+            dialogue_bridge const* bridge, dialogue_context* context = nullptr) noexcept;
 
         /**
          * @brief Starts the dialogue @p dialogue_id at its first available page.
@@ -325,6 +324,7 @@ namespace NEONengine
         mtl::span<data::page> _pages;          ///< All PAGS records.
         mtl::span<data::choice> _choices;      ///< All CHOC records.
         dialogue_bridge const* _bridge{ nullptr };
+        dialogue_context* _context{ nullptr };
 
         data::range _page_range{};      ///< The running dialogue's PAGS range.
         u16 _current{ data::NO_ID };    ///< Global index of the page on show.

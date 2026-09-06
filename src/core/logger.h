@@ -81,18 +81,6 @@ namespace NEONengine
     constexpr ULONG NE_LOG_MASK_DEFAULT = 0xFFFFFFFFUL;
 
     /**
-     * @brief Whether ACE's own log output starts silenced.
-     *
-     * ACE's writers check a mute flag first, so this needs no ACE patch and
-     * leaves ACE_DEBUG in place. ACE_DEBUG also enables bobCheckGood and the
-     * bob buffer auto-correction scene_bobs::draw() depends on.
-     *
-     * The script VM's diagnostics and the assert and fatal paths still write
-     * through ACE. Muting takes those with it.
-     */
-    constexpr bool NE_LOG_MUTE_ACE = false;
-
-    /**
      * @brief The domains that currently print.
      */
     extern ULONG g_logMask;

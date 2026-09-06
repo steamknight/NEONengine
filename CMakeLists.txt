@@ -139,6 +139,12 @@ if(NE_LOGGING)
     add_compile_definitions(NE_LOGGING)
 endif()
 
+set(NE_LOG_MUTE_ACE ON CACHE BOOL "Mute ACE-specific logging on startup")
+
+if (NE_LOG_MUTE_ACE)
+    add_compile_definitions(NE_LOG_MUTE_ACE)
+endif()
+
 # ACE
 set(ACE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/ace" CACHE PATH "Path to the ACE source tree (defaults to the modules/ace submodule)")
 # SYSTEM: ACE's headers reach us as -isystem rather than -I, so warnings raised

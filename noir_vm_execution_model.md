@@ -38,9 +38,15 @@ other session exists.
 
 When a script asks for something that takes over the screen — a line of speech,
 a conversation, a save — the bridge records the request and the script stops for
-the frame. The next frame the scene acts on the request and stops calling the
-timeline and the VM until the screen is free again. The script resumes where it
-left off, because nothing moved it.
+the update. The scene can answer after the VM returns in that same update.
+Overlay entry waits for the next state-manager update; a fade can start before
+the current frame reaches the display. The VM stays blocked until the request's
+owner releases it, then the script resumes after the call.
+
+Message and dialogue states are temporary no-ops on this branch: entry logs and
+skips the content, the first update requests pop, and actual destruction releases
+an accepted modal wait. They draw no UI and run no dialogue scripts. The rules
+for full dialogue below still apply when that UI returns.
 
 That is the whole blocking mechanism. It costs no per-session state.
 
@@ -257,7 +263,7 @@ Rules:
   get through in a second of normal work.
 - A modal call kills the script, before the request is recorded. Nothing is
   going to draw a frame to put the box on screen, and a request left behind
-  would be acted on next frame by a scene that never asked for it.
+  would reach a later scene update that never asked for it.
 - A `WAIT` is stepped over. Nothing ages it, so honouring it would stop the
   script for good.
 
@@ -314,19 +320,25 @@ kinds of deferred call differ in nothing but how the latch is lifted:
 | **Terminal** | `reset_execution()` | go with it |
 
 `resume_execution()` is called by whoever answered the request: the fade's own
-callback, or an overlay state on its way down. Nothing else calls it. **A modal
+callback, an entered modal overlay on its way down, or the handler of a skipped
+request. **A modal
 request that nothing answers stops every script for the rest of the scene, and
-says nothing about it.** A bridge call that records a request the engine cannot
-act on yet has to lift the latch itself.
+says nothing about it.** The handler must wait until the VM has latched after
+the bridge callback returns. Resuming inside that callback would be too early.
+The overlay system answers empty SAY and modals dropped behind a diagnostic in
+`present()`. A diagnostic itself owns no modal wait and cannot release a fade.
 
 The VM keeps the latch rather than trusting the scene to remember one. There is
-one flag, in one place, and `noir_vm::blocked()` is the only answer to "is
-something on screen": no second copy to fall out of step with it.
+one state, in one place, and `noir_vm::blocked()` tells the scene whether it may
+run scheduled scripts. It does not say whether an overlay is on screen:
+diagnostics and debug can suspend the scene without owning a modal wait.
 
 `GOTO_SCENE` is safe from `execute_now` for the same reason it is deferred. A
 conversation choice can leave the room: the request is recorded during the
-dialogue's update, and the scene tears down at the top of the next frame, with
-nothing on the call stack that is about to be destroyed.
+full dialogue's update and the dialogue requests pop. The next manager update
+pops it and resumes the scene, which queues replacement. The following manager
+update destroys the outgoing scene before entering the replacement. None of
+these requests destroys an object while its update is on the call stack.
 
 `execute_now` runs whether the VM is blocked or not — that is the point of it.
 A dialogue choice script runs while the box that is holding the VM is still on
@@ -352,42 +364,48 @@ either way: the next scene's own entry script sets that scene up.
 
 ## The frame
 
-The scene decides what runs. The VM does not know whether anything is on screen.
+The engine runs input, audio, the pending language change, the state manager,
+then the screen. A finished or failed manager makes the engine clear states and
+exit without rendering. The manager applies the previous update's transition
+before it updates the current top. Push and replace construct a pending object
+at request time, but entry waits until that next manager update.
+
+Only the scene decides when its timeline, hotspots and VM run:
 
 ```
-0.  Act on requests recorded last frame
-      system  → load the scene, save, start a new game, quit
-      teardown the VM if a terminal call is still owed one
-      modal   → put it on screen
-1.  Update modals
-2.  Update the timeline     skipped while the VM is blocked
-                            or a scene change is waiting
-3.  Update the UI           skipped while the VM is blocked
-4.  Update the VM           blocks itself; skipped if a scene change is waiting
+0.  Answer pending system requests; return if replacement was queued
+1.  Start pending fades or dialogue requests; rebuild changed language
+2.  Present a pending overlay; return if a push was queued
+3.  Update timeline, then hotspots, when VM and rendered language allow
+      check system requests after each; return on replacement
+4.  Update VM at most once, unless blocked
+5.  Check system requests again; start new fades before display
+6.  Rebuild changed language; update pointer and bobs; draw bobs
+7.  Present a newly posted overlay; return on push
+8.  Queue debug entry if F1 was pressed
 ```
 
-The scene asks `noir_vm::blocked()` rather than keeping a flag of its own. The
-VM latches itself the moment a script makes a modal call and stays latched until
-whoever answered it resumes it, so the two questions — "is the VM held" and "is
-a modal up" — have the same answer by construction.
+Each return on a transition matters: the manager accepts only one transition
+request per update. Entry failure is fatal, not a pop back to a suspended parent.
+Constructors must not load resources or consume requests, since the manager may
+destroy a pending object without ever entering it.
 
-The scene stops with the VM for two reasons. A fade is the front half of a scene
-change, so anything a track moved is about to be thrown away, a keyframe running
-a script could queue a second scene change, and a hovered hotspot would put its
-role back over the WAIT pointer. An overlay adds a stronger one: it restores the
-pixels it covered from a buffer taken when it went up, so anything moving
-underneath would be painted back where it no longer is.
+The scene checks the VM's latch before timeline and hotspot work. During a fade
+it still updates and draws bobs, but it does not run timeline scripts or process
+clicks. When an overlay is the top state, the manager does not update the scene
+at all. Music and sound already playing keep playing.
 
-A box of text is not one of these steps. Anything with something to say posts it
-to a single slot, and the main loop puts the box up before it runs any state at
-all. The box then runs in the scene's place rather than inside it, so none of
-the steps above happen while it is on screen. The steps above see a box only in
-that they do not run.
+Only the scene presents the shared overlay slot, not the engine's outer loop.
+The first request keeps that slot until entry. Text is copied into the slot and
+again into the pending message state. A state queued before a language swap
+therefore does not borrow freed strings. No overlay presents another overlay.
 
-This is why a script that fails before a scene exists still reaches the player.
-It is also why the box is drawn where it cannot be painted over: a bridge call
-runs inside step 4, and putting the box up from there would leave the rest of
-step 4, and the drawing that follows it, to cover what had just been drawn.
+The scene records the language it rendered, rather than relying on a one-frame
+change flag. It catches changes made while suspended when it resumes. It defers
+rebuilding while fading out or black awaiting a transition. Before debug entry,
+the scene draws its current bob pose into the alternate buffer; after pop it
+resynchronizes hotspot button edges. The temporary message and dialogue states
+do not freeze or restore the display.
 
 A fade is the one modal with nothing on the state stack to take it down, so its
 own callback is where it lifts the latch. That is the only difference between a
@@ -399,24 +417,16 @@ put on screen; a system request says which game to play. `SAVE` records a system
 request from a modal call, because saving is not a scene change but the session
 that asked for it lives on.
 
-The teardown in step 0 is unconditional and belongs to the VM, not to any one
-request. A terminal call stops the VM and is owed a `reset_execution()`; if
-acting on its request did not deliver one - the scene failed to load, or nothing
-implements that request yet - this is where it arrives. Without it a request
-nobody answers would stop scripting for the rest of the session. A modal request
-nothing can answer yet has no such backstop: whoever drops one lifts the latch
-where it drops it.
+For scene replacement, outgoing scene destruction resets the VM and clears its
+requests before the incoming scene enters. Failed entry then stops the manager;
+it cannot resume the old script. Unimplemented terminal requests take the
+existing reset path in the scene's request handler. A SAVE stub resumes its
+modal caller instead.
 
-Modals update before the timeline so that a modal closing in step 1 lets both
-the timeline and the VM run in the same frame. They stop together and start
-together.
-
-One effect worth knowing: between two lines of speech the timeline gets exactly
-one tick, so on-screen animation advances by a single frame per line.
-
-While a modal is up the whole scene holds still. Animation stops. Timeline
-keyframes do not fire. Music and sound already playing keep playing, because
-the replayer does not depend on the timeline.
+An entered no-op overlay requests pop in its first update, but that request
+does not release the VM. The next manager update destroys it, releases its
+accepted modal wait, and resumes the scene. The scene can then advance the
+timeline and VM in that update. `resume_execution()` never lifts a terminal latch.
 
 ---
 

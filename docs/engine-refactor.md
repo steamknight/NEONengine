@@ -35,6 +35,11 @@ The goals the work is measured against:
 
 4a, 4b and 1 are done. Items 2 and 3 are done. Items 5 and 6 are what remain.
 
+**Current state model:** [item 3](#3-states-get-a-context) now describes heap-owned,
+deferred states. It supersedes the static `state_host`, permanent scene state,
+and engine-level overlay presentation described in the earlier work below.
+Sections 1, 2 and 4b retain that work's history, not the current state API.
+
 Item 4 split in two, and the halves wanted different neighbours. 4a, the bridge
 context, went first: mechanical, self-contained, and what unlocks every later
 reduction in global reach. 4b, the overlay slot, went next because it deletes the
@@ -273,106 +278,181 @@ way. And it thins the scene state down to an adapter.
 
 ## 3. States get a context
 
-**Done.** The rest of this section records what the change was and why.
+**The current implementation replaces `state_host`.** `state_manager` owns
+Fast RAM state objects through `state_ptr`. There is one `scene_state` per loaded
+scene, not a permanent object with placement-new storage for changing runtimes.
+The earlier static-storage and private-host-access rationale no longer applies.
 
-**Now.** ACE's `tState` is four `void(*)()` slots with no user pointer. That is
-why `message.cpp` keeps `s_boxX`, `s_boxY`, `s_boxWidth` and `s_boxHeight` at
-file scope, and why `dialogue.cpp` does far more of the same across 36 KB.
-Overlay state is process-global and outlives the state it belongs to.
+### Lifetime and transitions
 
-**Change.** A `state_host<T>` template owning a `T` and generating the four C
-thunks from it: `tState g_stateMessage = state_host<message_state>::table();`.
+`start`, `push` and `replace` construct the pending object at request time.
+They do not call `pushed()` then. The next manager update applies the transition,
+calls `pushed()`, then updates the new top in that same update.
 
-**Payoff.** Create and destroy become a constructor and a destructor, so the
-freeze/restore-rect pairing in `message.cpp` turns into RAII instead of two
-functions that have to agree. `dialogue.cpp`, the second-largest file in the
-tree, is the main beneficiary.
+- Push suspends the current top before entering the new state.
+- Replace destroys the outgoing top **before** entering its replacement.
+- Pop destroys the top, then resumes and updates the state below it.
+- A state may request only one transition in an update. Control is valid only
+  during that callback.
+- Constructors store inputs and copy owned payloads; resource loading belongs
+  in `pushed()`. A pending state can die without ever entering.
+- Allocation or entry failure is fatal. The manager retains the error text and
+  does not resume a suspended parent. Later updates run no callbacks.
+- `clear()` destroys pending and stacked states without resuming any of them.
 
-### What the shape is, and why
+`engine::process()` runs input, audio, pending language, the state manager, then
+the screen. A finished or failed manager makes the engine clear states and exit
+before rendering; failure also logs the error. Engine shutdown clears states
+before ACE shutdown. Startup establishes the OS-use baseline and cursor palette
+exemption once, before the first state enters. The test-runner state stays up
+after its report; F9 exits.
 
-**A hosted state never pops itself.** ACE's `statePop` runs `cbDestroy`
-synchronously (`state.c:114`), so `T` would be destroyed with its own member
-functions on the stack — `dialogue.cpp` pops from two frames down. `create()`
-and `loop()` return whether the state stays up and the host does the popping.
-That also takes the state manager out of `T` entirely.
+### Scene ownership and errors
 
-**The object lives in static storage, not the heap.** ACE's allocator turns the
-OS on and off around every call (`memory.c:225`), and a push happens mid-frame
-with the display frozen. Static storage costs the same bytes the file statics it
-replaces already cost — `message_state` measures 8, exactly its four `u16`.
+`scene_state(engine&, id)` owns a `scene_runtime_ptr`, built only during entry.
+The engine holds a borrowed pointer for `engine::scene()` and the VM bridge.
+Binding asserts that no runtime is already registered; unbinding checks identity.
+The registered runtime stays alive while an overlay suspends the scene.
 
-**`state_host<T>::instance()` stayed private.** The scene state reaches its own
-instance through `friend T`, which is how the noir bridge gets the runtime
-without anything outside naming the state. Friendship is all or nothing, so a
-state also sees its host's storage and thunks; that is still narrower than a
-public accessor, and no state sees another's, because each `T` has its own host.
+Only destruction of the state that owns that registration clears scene requests,
+overlays and VM execution. An unentered or failed state must not reset a different
+scene's VM or unbind its runtime. Runtime destruction runs under an OS-use guard;
+member order still releases hotspots before bobs. Scene destruction does not
+free music: `MUSIC_KEEP` carries it across a replacement, and `MUSIC_SILENCE`
+stops it when the incoming scene loads.
 
-**`freezes_display` is a base, not a member.** A base is destroyed after every
-member and after the derived destructor's body, which is the order
-`screenRestoreRect` needs. A first-declared member gives the same order only
-while it stays first.
+An invalid scene id or required backdrop resource failure returns an explicit
+entry error. Palette loads validate their header and read lengths. Missing
+optional assets keep their previous skip behavior. A missing entry script is
+not an entry failure; it starts the configured default fade.
 
-### What has landed
+### Scene update order
 
-**Done.** All four states are hosted: message (`9a6a011`), the debug view
-(`57e8daa`), dialogue (`e496a6e`) and the scene (`a5440b6`).
+The scene handles system requests before modals or overlays. It checks again
+after timeline, hotspot and VM work, so a scene change cannot lose to an overlay
+queued in that work. A replacement request stops the current scene update.
+The VM runs at most once per scene update. A fade requested by that VM update
+starts before the screen displays the frame, not one frame later.
 
-**The portraits went with the dialogue state.** `dialogue_portraits` was the last
-of item 2's modules still written as free functions over file statics, and item 2
-sent it here because it lives for one conversation rather than one scene. It is
-now a class held by value in `dialogue_state`, taking `game_data&` and
-`asset_cache&` the way the scene modules do.
+Only the scene presents overlays, both before gameplay work and after drawing.
+Each successful presentation ends its update, so it cannot queue another state
+transition. F1 comes last. Before any overlay enters, `suspended()` draws the
+displayed bob pose into the alternate buffer. Later blits wait for that draw
+before using the buffer. Message, dialogue and debug states all restore from it.
+`resumed()`
+resynchronizes hotspot button edges so a dismissal press cannot become a
+scene click.
 
-Where that member sits is worth writing down, because a palette band rides on it.
-The band belongs to the scene's bobs, and the portraits may only hand it back
-once the frame and the portrait show the scene's own pixels again. C++ destroys a
-member after the enclosing destructor's body — where `erase_frame()` and
-`erase_portrait()` run — and before the `freezes_display` base lets the display
-go again. So the order the band needs is the order the language already gives,
-and the hand-written `dialogue_portraits_unload()` call that used to hold it is
-gone.
+The scene records the language used to render it, rather than relying on the
+engine's one-frame language-change flag. A change during suspension therefore
+triggers caption and scene-text rebuilding when the scene returns. Rebuilding
+waits during fade-out. Once black, the VM gets a chance to request a scene change
+before rebuilding; if it stays, the scene rebuilds that frame rather than
+leaving hotspots and tracks paused indefinitely.
 
-`draw()` and `release_band()` became one `show()`. A speaker with no portrait now
-draws nothing and hands the band back; the state used to have to know to ask for
-that itself.
+### Message and dialogue overlays
 
-**The scene state took the runtime.** `scene_runtime` hung off the engine, reached
-through `engine::scene()`, which dereferenced a nullable in a header every
-translation unit includes for the sake of eight call sites. It is now a member of
-the hosted state, held in a buffer and placement-new'd per scene, which retired
-`engine::scene()`, `build_scene()`, `drop_scene()`, `scene_runtime_ptr`, the
-hand-written deleter, and one of item 6's Fast RAM allocations — 260 bytes the
-linker reserves once instead of every load asking for them.
+Both states render their full UI. They borrow the engine for display resources,
+plus an explicit VM and overlay system. Constructors store dependencies and
+copy message payloads; `pushed()` consumes the slot and prepares resources
+before freezing the display.
 
-**The move buys locality, not lifetime, and the plan should not have implied
-otherwise.** The runtime lives one scene; the state lives the whole game. Nothing
-is married by the move. What it buys is that the nullable is named in one file
-rather than fifty, and that the rule it depends on is written where it can be
-checked.
+A message builds wrapped body and caption glyphs and an optional nine-patch
+frame. Width stays within the screen, and tall text clips to the frame's lower
+edge. Entry consumes opening mouse and space presses. Idle updates allocate
+nothing; a fresh click or space requests pop. Empty content or lines with no
+measured glyph width close normally without freezing. A failed allocation for
+nonempty content returns an entry error instead of silently dismissing the
+message.
 
-That rule is narrower than it first reads. The four bridge callbacks reach the
-runtime through `current_scene_runtime()`, and the invariant is *the scene state
-is on the stack with a scene loaded* — not *the scene state is running*. A
-dialogue script runs through `vm().execute_now()` from the dialogue state's own
-loop with the scene suspended underneath, and a `HOTSPOT_ON` in one lands there.
-The runtime is alive throughout, because a suspended state has not been
-destroyed.
+A dialogue owns a `dialogue_session`, drawn choice glyphs and portraits for its
+page range. `dialogue_context` holds the game session and the supplied VM.
+`dialogue_session::create()` binds that context as the bridge's `void*` host;
+scripts must run on that VM, not a global one. No available entry page, empty
+page text or a terminal VM ends entry normally without acquiring the display.
+Other page-build errors return an explicit error. A refresh failure logs the
+error and requests engine exit, which clears states before another screen draw.
 
-**A context on the VM's host was rejected**, and the reason is structural rather
-than a preference: ACE hands a state nothing, so a context could only be reached
-through a global or static storage, and one on the engine is the engine.
-`.scratch/state-host/issues/01` records the argument in full, including the two
-claims for it that turned out to be false already.
+The dialogue draws one frame beside the optional portrait, as
+[ADR 0003](adr/0003-dialogue-draws-one-frame.md) requires. It includes the
+speaker, page, numbered choices and localized choice-set control. Missing
+control text is an error when choices need rotation; the engine does not
+substitute English. Mouse hover changes choice colors; clicking selects at
+once. Number keys hold the selection highlighted for the configured frame
+count, consuming other input during that hold. Rotation does not take a choice
+or rerun the page's display script.
 
-`s_backdropStale` became a member and its reset in the teardown went with it —
-the flag now dies with the state that owns it, which is the whole point of the
-item. `load_scene`, `redraw_backdrop`, `rebuild_for_language` and
-`apply_system_request` became members. Everything touching no scene state stayed
-a free function taking what it needs.
+Already drawn glyphs survive a string-table swap. The current page and choice
+set keep their glyph bitmaps until navigation; the next page or set uses the
+current strings. No displayed choice retains a borrowed string-table view.
+Scene language reconciliation runs after the overlay returns.
 
-**One caveat on every assert this item added.** `assert` compiles to nothing
-without `ACE_DEBUG`, which had gone missing from the build cache. An invariant
-"that can be asserted" is checked in a debug build and documented in every other.
+Destruction erases the overlay's pixels. The dialogue state waits before
+publishing page colors and, when frozen, before restoring palette colors on
+exit. Bitmap deleters already wait before freeing their memory; buffer-pointer
+changes need no separate wait. Dialogue cleanup frees portraits and restores
+their palette band, restores the
+previous text color, unfreezes the display and frees remaining glyphs. A
+portrait takes its palette band only when shown, not while loading. Unentered
+states and empty entries own no display changes. Clearing the manager uses
+the same cleanup, before destroying the suspended scene runtime.
+
+The first message, diagnostic or dialogue owns the slot until entry. The slot
+copies text and captions, and the pending message state copies them again so
+slot reuse cannot change its payload. `message_request::modal_wait` distinguishes
+SAY from diagnostics. Only an entered modal state's destructor resumes its
+caller; construction, cancellation before entry and pop requests do not.
+Diagnostic destruction cannot release a fade. Resuming never clears a terminal
+latch.
+
+An empty SAY, or a modal dropped behind a diagnostic, still causes the VM to
+latch after its bridge callback. The overlay system answers that skipped wait
+in `present()`, after the VM has returned. A modal already accepted in the slot
+keeps ownership of its wait instead.
+
+[ADR 0001](adr/0001-dialogue-scripts-cannot-make-modal-calls.md) governs page
+and choice scripts: `execute_now` permits terminal requests and forbids modal
+calls. Dialogue navigation checks termination after each script and abandons
+any page destination. The scene handles the terminal request after overlay
+cleanup, before any queued diagnostic. Script errors can queue a diagnostic,
+but only the scene presents it; a visible dialogue never hosts another modal.
+Unavailable pages still scan forward by index under
+[ADR 0002](adr/0002-unavailable-pages-are-skipped-by-index.md).
+
+### Regression scope
+
+`overlay_state_tests.h` runs real VM bytecode, the overlay system and rendered
+states through the real manager, using the initialized engine's display assets.
+It checks pending destruction, first-wins behavior, entry/pop latch timing,
+diagnostic/fade separation, terminal latch preservation, and empty or dropped
+modal requests. Pixel checks cover owned body and caption bytes, slot reuse,
+alignment, wrapping, colors, width boundaries, tall messages and restoration.
+Dialogue checks cover opening input, page reads, mouse hover and selection,
+keyboard hold, choice rotation, speaker palette changes and cleanup. Independent
+long-choice string tables exercise layout without changing authored assets.
+Language tests release the original table while choices remain drawn and check
+the next page against the new language's glyphs.
+
+`scene_state_tests.h` checks real scene entry errors, pending scene/debug
+destruction and borrowed-runtime access. Loaded-scene cases use read-only,
+scriptless authored scenes and observe the real scene callbacks. They cover
+dialogue-to-message-to-scene restoration, bob buffer preparation, clearing an
+active overlay, terminal request priority and successful scene replacement.
+A bound dialogue-session display script uses the engine bridge and VM to
+request that replacement while a real dialogue is visible. This tests the
+request and closure path, not an authored displayed page containing GOTO_SCENE.
+
+Tests snapshot and restore game progress, strings, VM, input and report pixels.
+Missing required fixtures fail assertions rather than silently skipping tests.
+Language tests load through the public string-table API and replace the table
+directly; they cover glyph lifetime and scene reconciliation, not the deferred
+language-request phase of `engine::process()`. They never reenter that function
+from the test runner's entry callback.
+
+Amiga runtime checks still need to cover deterministic allocation failures,
+required-resource read failures, fade completion and fade-out language timing,
+F1 restoration and music continuity. The tests do not exhaust shared memory to
+force allocation errors. Building the suites is not evidence that they ran.
 
 ## 4a. A context on the bridge
 

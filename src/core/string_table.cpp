@@ -92,7 +92,7 @@ namespace NEONengine
             using error_code = string_table::error_code;
 
             noir_header header;
-            if (fileRead(pFile, &header, sizeof(noir_header)) != sizeof(noir_header))
+            if (fileReadBytes(pFile, force_to<UBYTE*>(&header), sizeof(noir_header)) != sizeof(noir_header))
             {
                 NE_LOG("could not read a %lu byte header",
                     to<ULONG>(sizeof(noir_header)));
@@ -238,7 +238,7 @@ namespace NEONengine
 
         table->_payload.resize(hd.payload_size);
         if (hd.payload_size != 0
-            && fileRead(pFile.get(), table->_payload.data(), hd.payload_size) != hd.payload_size)
+            && fileReadBytes(pFile.get(), table->_payload.data(), hd.payload_size) != hd.payload_size)
         {
             NE_LOG("payload is shorter than its declared %lu bytes",
                 to<ULONG>(hd.payload_size));
@@ -329,7 +329,7 @@ namespace NEONengine
         // The first record starts immediately after the header, which is exactly
         // where reading the header left the cursor.
         u32 length = 0;
-        if (fileRead(pFile.get(), &length, sizeof(length)) != sizeof(length)) return 0;
+        if (fileReadBytes(pFile.get(), force_to<UBYTE*>(&length), sizeof(length)) != sizeof(length)) return 0;
         if (length == 0 || hd.payload_size < sizeof(u32)
             || length > hd.payload_size - sizeof(u32))
         {
@@ -337,7 +337,7 @@ namespace NEONengine
         }
 
         auto const copied = (length < capacity - 1) ? length : capacity - 1;
-        if (copied != 0 && fileRead(pFile.get(), pBuffer, copied) != copied) return 0;
+        if (copied != 0 && fileReadBytes(pFile.get(), force_to<UBYTE*>(pBuffer), copied) != copied) return 0;
         pBuffer[copied] = '\0';
 
         return copied;

@@ -9,17 +9,16 @@
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
 #include <ace/managers/ptplayer.h>
-#include <ace/managers/state.h>
 
 #include <mtl/memory.h>
 
 #include "build_number.h"
-#include "core/asset_cache.h"
-#include "core/debug_keys.h"
-#include "core/game_data.h"
 #include "core/logger.h"
-#include "core/music.h"
+
+#ifdef ACE_TEST_RUNNER
 #include "test.h"
+#include "tests/test_runner.h"
+#endif
 
 NE_LOG_DOMAIN(Core);
 
@@ -38,26 +37,19 @@ void genericCreate(void)
         gameExit();
         return;
     }
-    g_pEngine = mtl::move(engineResult.value());
-    g_pEngine->overlays().bind(&g_stateMessage, &g_stateDialogue);
 
-    // The boot scene loads the moment its state is pushed, and F4 cannot be
-    // pressed before that, so this is the only chance to see what engine
-    // startup alone left in the cache. Everything after it belongs to a scene.
-    g_pEngine->assets().log(g_pEngine->data());
+    g_pEngine = mtl::move(engineResult.value());
 
 #ifdef ACE_TEST_RUNNER
-    statePush(g_gameStateManager, &tests::g_stateTestRunner);
+    g_pEngine->start_state<tests::test_runner_state>(*g_pEngine);
 #else
-    statePush(g_gameStateManager, &g_stateScene);
+    g_pEngine->start();
 #endif
 }
 
 void genericProcess(void)
 {
     g_pEngine->process();
-
-    debug_keys_process();
 }
 
 void genericDestroy(void)

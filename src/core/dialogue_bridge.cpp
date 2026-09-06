@@ -2,52 +2,55 @@
 
 #include "types.h"
 
-#include "neonengine.h"
+#include <mtl/utility.h>
+
+#include "core/game_session.h"
+#include "core/noir_vm.h"
 
 namespace NEONengine
 {
     namespace
     {
-        void db_mark_page_read(u16 page_index)
+        void db_mark_page_read(dialogue_context* host, u16 page_index)
         {
-            if (g_pEngine) g_pEngine->session().mark_page_read(page_index);
+            mtl::to<dialogue_context*>(host)->_session.mark_page_read(page_index);
         }
 
-        bool db_is_page_read(u16 page_index)
+        bool db_is_page_read(dialogue_context* host, u16 page_index)
         {
-            return g_pEngine && g_pEngine->session().is_page_read(page_index);
+            return mtl::to<dialogue_context*>(host)->_session.is_page_read(page_index);
         }
 
-        void db_mark_choice_taken(u16 choice_index)
+        void db_mark_choice_taken(dialogue_context* host, u16 choice_index)
         {
-            if (g_pEngine) g_pEngine->session().mark_choice_taken(choice_index);
+            mtl::to<dialogue_context*>(host)->_session.mark_choice_taken(choice_index);
         }
 
-        bool db_is_choice_taken(u16 choice_index)
+        bool db_is_choice_taken(dialogue_context* host, u16 choice_index)
         {
-            return g_pEngine && g_pEngine->session().is_choice_taken(choice_index);
+            return mtl::to<dialogue_context*>(host)->_session.is_choice_taken(choice_index);
         }
 
-        bool db_get_flag(u16 flag_id)
+        bool db_get_flag(dialogue_context* host, u16 flag_id)
         {
-            return g_pEngine && g_pEngine->session().get_flags().test(flag_id);
+            return mtl::to<dialogue_context*>(host)->_session.get_flags().test(flag_id);
         }
 
-        void db_set_flag(u16 flag_id, bool value)
+        void db_set_flag(dialogue_context* host, u16 flag_id, bool value)
         {
-            if (g_pEngine) g_pEngine->session().get_flags().set(flag_id, value);
+            mtl::to<dialogue_context*>(host)->_session.get_flags().set(flag_id, value);
         }
 
-        void db_run_script(u16 function_id)
+        void db_run_script(dialogue_context* host, u16 function_id)
         {
-            // The result is deliberately dropped: a script that died has already
-            // put its message in front of the player through the VM's own error
-            // path, and the conversation carries on regardless. Only the
-            // terminated latch, asked for separately, changes what it does next.
-            if (g_pEngine) (void)g_pEngine->vm().execute_now(function_id);
+            // Nonterminal errors stay queued until the dialogue closes.
+            (void)mtl::to<dialogue_context*>(host)->_vm.execute_now(function_id);
         }
 
-        bool db_is_terminated() { return g_pEngine && g_pEngine->vm().terminated(); }
+        bool db_is_terminated(dialogue_context* host)
+        {
+            return mtl::to<dialogue_context*>(host)->_vm.terminated();
+        }
 
         constexpr dialogue_bridge g_engine_dialogue_bridge = {
             .mark_page_read    = db_mark_page_read,

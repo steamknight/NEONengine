@@ -83,19 +83,19 @@ namespace NEONengine
 
         dlg_mock_log g_dlg_log;
 
-        void dlg_mock_mark_page_read(u16 page_index)
+        void dlg_mock_mark_page_read(dialogue_context*, u16 page_index)
         {
             g_dlg_log.record(dlg_call_kind::mark_page_read, page_index);
             if (page_index < dlg_mock_log::MAX_PAGES) g_dlg_log.page_read[page_index] = true;
         }
 
-        bool dlg_mock_is_page_read(u16 page_index)
+        bool dlg_mock_is_page_read(dialogue_context*, u16 page_index)
         {
             if (page_index >= dlg_mock_log::MAX_PAGES) return false;
             return g_dlg_log.page_read[page_index];
         }
 
-        void dlg_mock_mark_choice_taken(u16 choice_index)
+        void dlg_mock_mark_choice_taken(dialogue_context*, u16 choice_index)
         {
             g_dlg_log.record(dlg_call_kind::mark_choice_taken, choice_index);
             if (choice_index < dlg_mock_log::MAX_CHOICES)
@@ -104,26 +104,26 @@ namespace NEONengine
             }
         }
 
-        bool dlg_mock_is_choice_taken(u16 choice_index)
+        bool dlg_mock_is_choice_taken(dialogue_context*, u16 choice_index)
         {
             if (choice_index >= dlg_mock_log::MAX_CHOICES) return false;
             return g_dlg_log.choice_taken[choice_index];
         }
 
-        bool dlg_mock_get_flag(u16 flag_id)
+        bool dlg_mock_get_flag(dialogue_context*, u16 flag_id)
         {
             ++g_dlg_log.flag_reads;
             if (flag_id >= dlg_mock_log::MAX_FLAGS) return false;
             return g_dlg_log.flags[flag_id];
         }
 
-        void dlg_mock_set_flag(u16 flag_id, bool value)
+        void dlg_mock_set_flag(dialogue_context*, u16 flag_id, bool value)
         {
             g_dlg_log.record(value ? dlg_call_kind::set_flag : dlg_call_kind::clear_flag, flag_id);
             if (flag_id < dlg_mock_log::MAX_FLAGS) g_dlg_log.flags[flag_id] = value;
         }
 
-        void dlg_mock_run_script(u16 function_id)
+        void dlg_mock_run_script(dialogue_context*, u16 function_id)
         {
             g_dlg_log.record(dlg_call_kind::run_script, function_id);
 
@@ -136,7 +136,7 @@ namespace NEONengine
             }
         }
 
-        bool dlg_mock_is_terminated()
+        bool dlg_mock_is_terminated(dialogue_context*)
         {
             if (g_dlg_log.terminating_script == data::NO_ID) return false;
 

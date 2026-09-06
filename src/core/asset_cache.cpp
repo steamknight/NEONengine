@@ -5,6 +5,7 @@
 #include <ace/managers/memory.h>
 #include <ace/utils/file.h>
 
+#include <mtl/memory.h>
 #include <mtl/utility.h>
 #include <mtl/vector.h>
 
@@ -48,7 +49,7 @@ namespace NEONengine
                 return nullptr;
             }
 
-            if (fileRead(file, bytes, size) != size)
+            if (fileReadBytes(file, bytes, size) != size)
             {
                 memFree(bytes, size);
                 return nullptr;

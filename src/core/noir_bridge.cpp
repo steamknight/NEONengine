@@ -24,8 +24,7 @@ namespace NEONengine
         inline constexpr auto on_engine = host_call<engine, Fn>;
 
         // ── Screen ───────────────────────────────────────────────────────────
-        // Fades are deferred modals: the scene starts them at the top of the
-        // next frame and holds the VM until they finish.
+        // The scene starts deferred fades after the VM update and holds it until they finish.
         void nb_fade_out(engine& e, u16 frames)
         {
             e.request_modal(modal_kind::fade_out, frames);
@@ -42,13 +41,13 @@ namespace NEONengine
             e.request_system(system_kind::load_scene, scene_id);
         }
         u16 nb_get_scene(engine& e) { return e.current_scene(); }
-        void nb_hotspot_on(engine&, u16 id)
+        void nb_hotspot_on(engine& e, u16 id)
         {
-            current_scene_runtime().hotspots().set_enabled(id, true);
+            e.scene().hotspots().set_enabled(id, true);
         }
-        void nb_hotspot_off(engine&, u16 id)
+        void nb_hotspot_off(engine& e, u16 id)
         {
-            current_scene_runtime().hotspots().set_enabled(id, false);
+            e.scene().hotspots().set_enabled(id, false);
         }
 
         void nb_set_pointer(engine& e, u16 type)
@@ -71,6 +70,7 @@ namespace NEONengine
         {
             if (!message) return;
 
+            NE_LOG("Script Error: %s", message);
             e.overlays().post_message(message_request{
                 .text          = bstr_view(message),
                 .caption       = "Script Error",
@@ -96,6 +96,7 @@ namespace NEONengine
         {
             e.overlays().post_message(message_request{
                 .text = e.strings().get_string(string_id),
+                .modal_wait = true,
             });
         }
         void nb_show_dialog(engine& e, u16 dialogue_id)
@@ -111,8 +112,8 @@ namespace NEONengine
         // ── Timeline ─────────────────────────────────────────────────────────
         // A track name means a track in the current scene, so naming one that
         // another scene owns does nothing here.
-        void nb_anim_play(engine&, u16 name_id) { current_scene_runtime().timeline().play(name_id); }
-        void nb_anim_stop(engine&, u16 name_id) { current_scene_runtime().timeline().stop(name_id); }
+        void nb_anim_play(engine& e, u16 name_id) { e.scene().timeline().play(name_id); }
+        void nb_anim_stop(engine& e, u16 name_id) { e.scene().timeline().stop(name_id); }
 
         // ── System ───────────────────────────────────────────────────────────
         // Records the request; the state loop applies it at a safe point. Doing

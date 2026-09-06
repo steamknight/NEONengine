@@ -50,14 +50,16 @@ namespace NEONengine
     constexpr u16 PORTRAIT_PALETTE_FIRST  = 32;
     constexpr u16 PORTRAIT_PALETTE_COLORS = 32;
 
+    class dialogue_portraits;
+    using dialogue_portraits_ptr = mtl::unique_ptr<dialogue_portraits>;
+
     /**
      * @brief The portraits one conversation can put on screen.
      *
      * The state that draws the box builds one of these as the conversation
      * opens and drops it as the conversation closes, which is when the palette
-     * band goes back. That state erases the frame and the portrait in its own
-     * destructor body, so the pixels under the band are the scene's again
-     * before this object is destroyed.
+     * band goes back. The state must finish erasing the frame and portrait
+     * before destroying this object.
      */
     class dialogue_portraits
     {
@@ -111,6 +113,8 @@ namespace NEONengine
          * instead: the last speaker's colors would otherwise stay live over a
          * column the scene has just had back. So call this whenever the speaker
          * changes, not only when the new one has artwork.
+         *
+         * Finish erasing the previous frame and portrait before changing speakers.
          *
          * Takes scene-space coordinates
          */

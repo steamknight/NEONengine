@@ -1,194 +1,156 @@
-#include "types.h"
+#include "message.h"
 
 #include "neonengine.h"
 
 #include <ace/managers/blit.h>
 #include <ace/managers/key.h>
 #include <ace/managers/mouse.h>
-#include <ace/managers/state.h>
-#include <ace/macros.h>
-#include <ace/utils/font.h>
-
-#include <ace++/bitmap.h>
-
-#include "core/logger.h"
-#include "core/mouse_pointer.h"
-#include "core/nine_patch.h"
-#include "core/screen.h"
-#include "core/state_host.h"
-#include "core/text_render.h"
-
-NE_LOG_DOMAIN(Text);
 
 namespace NEONengine
 {
     namespace
     {
-        /**
-         * @brief Where the box's top edge goes, given how tall it turned out.
-         *
-         * A box taller than the screen is pinned to the top, since it is the
-         * start of the text that has to be readable.
-         */
+        bstr_view copy_text(char* target, size_t capacity, bstr_view source) noexcept
+        {
+            size_t const length = source.length() < capacity - 1 ? source.length() : capacity - 1;
+            for (size_t i = 0; i < length; ++i) target[i] = source.data()[i];
+            target[length] = '\0';
+            return bstr_view(target, length);
+        }
+
         u16 top_edge_for(message_align align, u16 height)
         {
             if (height + MESSAGE_MARGIN * 2 >= SCREEN_HEIGHT) return 0;
-
             switch (align)
             {
                 case message_align::top: return MESSAGE_MARGIN;
                 case message_align::middle: return to<u16>((SCREEN_HEIGHT - height) / 2);
-                case message_align::bottom:  // fallthrough
+                case message_align::bottom:
                 default: return to<u16>(SCREEN_HEIGHT - height - MESSAGE_MARGIN);
             }
         }
+    }
 
-        /** @brief One box of text, up until the player dismisses it. */
-        class message_state
+    message_state::message_state(engine& engine, noir_vm& vm, overlay_system& overlays,
+        message_request const& request) noexcept
+        : _engine(engine), _vm(vm), _overlays(overlays), _request(request)
+    {
+        _request.text = copy_text(_text, sizeof(_text), request.text);
+        _request.caption = copy_text(_caption, sizeof(_caption), request.caption);
+    }
+
+    mtl::expected<void, char const*> message_state::pushed()
+    {
+        _overlays.clear();
+        auto* renderer = _engine.default_text_renderer();
+        if (!_request.text.is_empty() && !renderer)
+            return mtl::unexpected("No text renderer for the message");
+
+        u16 const box_limit = MIN(_request.max_width, to<u16>(SCREEN_WIDTH));
+        u16 const allowance = box_limit > MESSAGE_MARGIN * 2
+            ? to<u16>(box_limit - MESSAGE_MARGIN * 2) : u16(1);
+        auto const extent = renderer
+            ? renderer->measure_text(_request.text, allowance) : text_extent{};
+        if (extent.width == 0 || extent.height == 0)
         {
-            public:  //////////////////////////////////////////////////////////////////////////////
-            bool create();
-            bool loop();
-            ~message_state();
+            _entered = true;
+            return {};
+        }
 
-            private:  /////////////////////////////////////////////////////////////////////////////
-            /// The box on screen, in scene space. Zero-sized until one is drawn.
-            u16 _box_x{ 0 };
-            u16 _box_y{ 0 };
-            u16 _box_width{ 0 };
-            u16 _box_height{ 0 };
-            freeze_display _freeze_display{ g_pEngine->main_screen() };
-        };
-
-        bool message_state::create()
+        auto* frame = _engine.default_nine_patch();
+        u16 content_width;
+        u16 caption_height = 0;
         {
-            auto const request = g_pEngine->overlays().take_message();
+            mtl::system_use_guard guard;
+            _text_bitmap = renderer->create_text(_request.text, allowance, _request.justify);
+            if (!_text_bitmap) return mtl::unexpected("Cannot allocate message text");
 
-            auto* renderer = g_pEngine->default_text_renderer();
-
-            // The frame is drawn around the text, so what the text may use is what
-            // the caller allowed less a margin on either side, and never more than
-            // the screen holds.
-            u16 const boxLimit = MIN(request.max_width, to<u16>(SCREEN_WIDTH));
-            u16 const allowance
-                = boxLimit > MESSAGE_MARGIN * 2 ? to<u16>(boxLimit - MESSAGE_MARGIN * 2) : u16(1);
-
-            auto text = renderer->create_text(request.text, allowance, request.justify);
-            if (!text)
+            auto const caption_extent = renderer->measure_text(_request.caption, allowance);
+            if (caption_extent.width != 0 && caption_extent.height != 0)
             {
-                // Reachable only with no font to draw with. Leaving the box up
-                // would cost the player a click to dismiss something they cannot
-                // see.
-                NE_LOG("message has nothing to draw; dropping it");
-                return false;
+                _caption_bitmap = renderer->create_text(
+                    _request.caption, allowance, text_justify::CENTER);
+                if (!_caption_bitmap) return mtl::unexpected("Cannot allocate message caption");
+                caption_height = to<u16>(_caption_bitmap->uwActualHeight + MESSAGE_CAPTION_GAP);
             }
 
-            auto caption = request.caption.is_empty()
-                ? ace::text_bitmap_ptr(nullptr)
-                : renderer->create_text(request.caption, allowance, text_justify::CENTER);
-
-            u16 contentWidth = text->uwActualWidth;
-            if (caption && caption->uwActualWidth > contentWidth)
-            {
-                contentWidth = caption->uwActualWidth;
-            }
-
-            u16 const captionHeight
-                = caption ? to<u16>(caption->uwActualHeight + MESSAGE_CAPTION_GAP) : u16(0);
-
-            _box_width  = to<u16>(contentWidth + MESSAGE_MARGIN * 2);
-            _box_height = to<u16>(captionHeight + text->uwActualHeight + MESSAGE_MARGIN * 2);
-
-            // The frame can only be drawn well at certain widths, so the box takes
-            // one of those and the text sits in the middle of whatever that leaves.
-            auto* frame = g_pEngine->default_nine_patch();
+            content_width = _text_bitmap->uwActualWidth;
+            if (_caption_bitmap && _caption_bitmap->uwActualWidth > content_width)
+                content_width = _caption_bitmap->uwActualWidth;
+            _box_width = to<u16>(content_width + MESSAGE_MARGIN * 2);
             if (frame) _box_width = frame->width_for(_box_width);
-
-            _box_x = to<u16>((SCREEN_WIDTH - _box_width) / 2);
-            _box_y = top_edge_for(request.align, _box_height);
-
-            // The display is frozen for this object's whole life, so every draw
-            // below lands on the buffer being shown, and the one held back keeps
-            // the scene as it was for the destructor to paint back.
+            _box_height = MIN(to<u16>(SCREEN_HEIGHT),
+                to<u16>(caption_height + _text_bitmap->uwActualHeight + MESSAGE_MARGIN * 2));
             if (frame)
             {
-                if (auto art = frame->render(_box_width, _box_height, 0))
-                {
-                    g_pEngine->main_screen().blit_copy(
-                        art.get(),
-                        0,
-                        0,
-                        to<WORD>(_box_x),
-                        to<WORD>(_box_y),
-                        to<WORD>(_box_width),
-                        to<WORD>(_box_height),
-                        MINTERM_COOKIE);
-                }
+                _frame_bitmap = frame->render(_box_width, _box_height, 0);
+                if (!_frame_bitmap) return mtl::unexpected("Cannot allocate message frame");
             }
-
-            // Centred in the box rather than at a fixed margin: the frame's width is
-            // whatever it could be drawn at, which is a little more than was asked.
-            u16 const contentX = to<u16>(_box_x + (_box_width - contentWidth) / 2);
-            u16 const contentY = to<u16>(_box_y + MESSAGE_MARGIN);
-
-            if (caption)
-            {
-                // Centred over the text rather than over its own width, which is
-                // only as wide as the caption itself.
-                u16 const captionX
-                    = to<u16>(contentX + (contentWidth - caption->uwActualWidth) / 2);
-                g_pEngine->main_screen().text_copy(
-                    caption.get(),
-                    captionX,
-                    contentY,
-                    request.caption_color,
-                    FONT_COOKIE);
-            }
-
-            g_pEngine->main_screen().text_copy(
-                text.get(),
-                contentX,
-                to<u16>(contentY + captionHeight),
-                request.color,
-                FONT_COOKIE);
-
-            // The pointer keeps its own role while the box is up, so nothing has to
-            // be put back on the way out.
-            g_pEngine->pointer().update();
-
-            // The press that started the script that spoke is still unspent - the
-            // hotspots only ever look at it - and would close the box on the frame
-            // it opened. Spend it here so a fresh one is needed.
-            (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
-            (void)keyUse(KEY_SPACE);
-
-            return true;
         }
 
-        bool message_state::loop()
+        _box_x = to<u16>((SCREEN_WIDTH - _box_width) / 2);
+        _box_y = top_edge_for(_request.align, _box_height);
+        auto& screen = _engine.main_screen();
+        screen.freeze_display();
+        _frozen = true;
+        if (_frame_bitmap)
         {
-            // Nothing else runs while the box is up, so the sprite would sit where
-            // it was until the box came down.
-            g_pEngine->pointer().update();
-
-            return !mouseUse(MOUSE_PORT_1, MOUSE_LMB) && !keyUse(KEY_SPACE);
+            screen.blit_copy(_frame_bitmap.get(), 0, 0,
+                to<WORD>(_box_x), to<WORD>(_box_y),
+                to<WORD>(_box_width), to<WORD>(_box_height), MINTERM_COOKIE);
         }
 
-        message_state::~message_state()
+        u16 const content_x = to<u16>(_box_x + (_box_width - content_width) / 2);
+        u16 const content_y = to<u16>(_box_y + MESSAGE_MARGIN);
+        u16 const content_bottom = to<u16>(_box_y + _box_height - MESSAGE_MARGIN);
+        if (_caption_bitmap)
         {
-            g_pEngine->main_screen().restore_rect(
-                to<WORD>(_box_x),
-                to<WORD>(_box_y),
-                to<WORD>(_box_width),
-                to<WORD>(_box_height));
-
-            // SAY is a modal bridge call, so the script that asked for this box is
-            // parked on the instruction after it and nothing else will start it
-            // again. A box the engine put up for its own reasons parked nothing and
-            // this is a no-op.
-            g_pEngine->vm().resume_execution();
+            _caption_bitmap->uwActualHeight = MIN(
+                _caption_bitmap->uwActualHeight, to<u16>(content_bottom - content_y));
+            screen.text_copy(_caption_bitmap.get(),
+                to<u16>(content_x + (content_width - _caption_bitmap->uwActualWidth) / 2),
+                content_y, _request.caption_color, FONT_COOKIE);
         }
-    }  // namespace
+        u16 const text_y = to<u16>(content_y + caption_height);
+        if (text_y < content_bottom)
+        {
+            // Long wrapped messages must not write past the scene's bottom edge.
+            _text_bitmap->uwActualHeight = MIN(
+                _text_bitmap->uwActualHeight, to<u16>(content_bottom - text_y));
+            screen.text_copy(_text_bitmap.get(), content_x, text_y, _request.color, FONT_COOKIE);
+        }
 
-    tState g_stateMessage = state_host<message_state>::table();
+        _engine.pointer().update();
+        // The hotspot only checked the press that opened this message.
+        (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
+        (void)keyUse(KEY_SPACE);
+        _entered = true;
+        return {};
+    }
+
+    void message_state::update(state_control& control)
+    {
+        _engine.pointer().update();
+        bool const clicked = mouseUse(MOUSE_PORT_1, MOUSE_LMB);
+        bool const pressed = keyUse(KEY_SPACE);
+        if (!_frozen || clicked || pressed) control.pop();
+    }
+
+    message_state::~message_state()
+    {
+        if (_frozen)
+        {
+            _engine.main_screen().restore_rect(
+                to<WORD>(_box_x), to<WORD>(_box_y),
+                to<WORD>(_box_width), to<WORD>(_box_height));
+        }
+        if (_frozen) _engine.main_screen().resume_display();
+        {
+            mtl::system_use_guard guard;
+            _frame_bitmap.reset(nullptr);
+            _caption_bitmap.reset(nullptr);
+            _text_bitmap.reset(nullptr);
+        }
+        if (_entered && _request.modal_wait) _vm.resume_execution();
+    }
 }  // namespace NEONengine

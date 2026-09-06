@@ -1,4 +1,5 @@
-#include "types.h"
+#include "scene.h"
+#include "debug_view.h"
 
 #include "neonengine.h"
 
@@ -6,26 +7,17 @@
 #include <ace/managers/bob.h>
 #include <ace/managers/copper.h>
 #include <ace/managers/game.h>
+#include <ace/managers/key.h>
 #include <ace/managers/log.h>
 #include <ace/managers/system.h>
 
 #include <ace++/bitmap.h>
-#include <ace++/palette.h>
 
 #include <mtl/utility.h>
 
-#include "core/asset_cache.h"
-#include "core/game_data.h"
 #include "core/logger.h"
 #include "core/music.h"
-#include "core/noir_vm.h"
-#include "core/mouse_pointer.h"
-#include "core/scene_runtime.h"
 #include "core/scene_text.h"
-#include "core/screen.h"
-#include "core/state_host.h"
-#include "core/string_table.h"
-#include "utils/assert.h"
 
 NE_LOG_DOMAIN(Scene);
 
@@ -35,637 +27,333 @@ namespace NEONengine
     {
         constexpr u32 MUSIC_KEEP    = 0xFFFFFFFF;
         constexpr u32 MUSIC_SILENCE = 0xFFFFFFFE;
-
-        /// UI colors occupy palette indices 0..31.
         constexpr UWORD UI_PALETTE_COLORS = 32;
-
-        // Backgrounds are authored against all 256 entries rather than the
-        // 80..255 scene band, so the whole palette is loaded and the UI band is
-        // restored afterwards for scenes that show UI. Revisit if a background
-        // ever needs to keep its own colors in 0..31 alongside the UI.
         constexpr UWORD SCENE_PALETTE_COLORS = 256;
 
-        /**
-         * @brief The scene on screen: what it is made of, and what it is doing.
-         *
-         * Holds the runtime in a buffer of its own rather than allocating one,
-         * the way state_host holds a state. The runtime is 260 bytes and the
-         * scene it presents changes many times over a game, so the linker
-         * reserves those bytes once instead of every load asking for them - and
-         * a load can no longer fail for want of somewhere to put it.
-         */
-        class scene_state
-        {
-            public:  //////////////////////////////////////////////////////////////////////////////
-            bool create();
-            bool loop();
-            void resume();
-            ~scene_state();
-
-            /**
-             * @brief The runtime of the scene now on screen.
-             *
-             * Asserts what a caller has to have earned: the scene state is on
-             * the stack, and it has a scene loaded. current_scene_runtime() is
-             * how anything outside this file asks.
-             */
-            static scene_runtime& current_runtime();
-
-            private:  /////////////////////////////////////////////////////////////////////////////
-            /** @brief What this scene is made of. Live only once a scene has loaded. */
-            scene_runtime& runtime();
-
-            /**
-             * @brief Builds the runtime for @p sc.
-             *
-             * Constructs only. A scene already loaded has to be dropped first,
-             * and the caller does that, because what happens between the two -
-             * the old scene's Chip RAM going back before the new one asks for
-             * any - is the reason the order matters.
-             */
-            void construct_runtime(data::scene const& sc);
-
-            /**
-             * @brief Drops the runtime and everything it holds.
-             *
-             * Hands memory back to the OS, so call this under a system-use
-             * guard. Does nothing when no scene is loaded.
-             */
-            void drop_runtime();
-
-            bool load_scene(u16 scene_id);
-            void redraw_backdrop();
-            void rebuild_for_language();
-            void apply_system_request(system_request const& request);
-
-            alignas(scene_runtime) unsigned char _storage[sizeof(scene_runtime)];
-            bool _runtime_live{ false };
-
-            /// A language change left the backdrop's text regions in the old language.
-            bool _backdrop_stale{ false };
-        };
-
-        /**
-         * @brief Lets the scripts a fade parked run again.
-         *
-         * A fade is the one modal with nothing on the state stack to take it
-         * down, so the callback is where it ends. A fade the engine starts for
-         * itself passes no callback and never reaches this - it parked nothing,
-         * and resume_execution() would be a no-op anyway.
-         */
         void scene_fade_done()
         {
             g_pEngine->vm().resume_execution();
         }
 
-        /**
-         * @brief Puts the pointer into its WAIT role and makes it visible.
-         *
-         * Two things have to happen before the loop blocks: the sprite has to be
-         * published (spriteProcessChannel only writes the copper back buffer, so
-         * without copProcessBlocks the swap never happens and the old cursor
-         * stays), and the pointer has to be positioned. Its colors need nothing
-         * - the fade steps over the cursor band, so they are always lit.
-         */
-        void show_wait_pointer()
+        void show_wait_pointer(engine& engine)
         {
-            g_pEngine->pointer().switch_to(pointer_role::WAIT);
-            g_pEngine->pointer().update();
+            engine.pointer().switch_to(pointer_role::WAIT);
+            engine.pointer().update();
+            // Publish the sprite before disk access blocks the frame.
             copProcessBlocks();
         }
 
-        /**
-         * @brief Paints @p sc's static backdrop into both screen buffers.
-         *
-         * The backdrop is the background bitmap, the palette it comes with, and
-         * the scene's text regions. Text regions live here rather than in the
-         * bob set because they never move and the format lets one cover the
-         * whole screen, which as a bob would want more undraw space than the
-         * screen buffers themselves.
-         *
-         * Mirroring back to front last leaves the bob manager an intact
-         * background to undraw against in either frame, so this must run before
-         * any bob is registered. Reads the pak: call under a system-use guard.
-         */
-        void draw_backdrop(data::scene const& sc)
+        mtl::expected<void, char const*> load_palette(engine& engine, u32 hash, UWORD max_colors)
         {
-            auto& gd = g_pEngine->data();
+            auto file = engine.assets().open(hash);
+            if (!file) return mtl::unexpected("Cannot open scene palette");
 
-            if (sc.background_bitmap_id != data::NO_ID)
+            // ACE's void loader cannot report invalid data or short reads.
+            UBYTE mode = 0;
+            UWORD count = 0;
+            if (fileReadBytes(file.get(), &mode, 1) != 1
+                || fileReadWords(file.get(), &count, 1) != 1
+                || mode > 1 || count == 0
+                || fileGetSize(file.get()) < 3 + to<LONG>(count) * (mode ? 4 : 2))
             {
-                auto const& ref = gd.bitmaps()[sc.background_bitmap_id];
-                ace::paletteLoadFromFd(g_pEngine->assets().open(ref.palette_hash),
-                    g_pEngine->main_screen().palette(),
-                    SCENE_PALETTE_COLORS);
+                return mtl::unexpected("Invalid scene palette");
+            }
+            UWORD const colors = count < max_colors ? count : max_colors;
+            auto* palette = engine.main_screen().palette();
+            ULONG const read = mode
+                ? fileReadLongs(file.get(), force_to<ULONG*>(palette), colors)
+                : fileReadWords(file.get(), palette, colors);
+            if (read != colors) return mtl::unexpected("Cannot read scene palette");
+            return {};
+        }
 
-                auto bg = ace::bitmapCreateFromFd(g_pEngine->assets().open(ref.bitmap_hash), 0);
+        mtl::expected<void, char const*> draw_backdrop(engine& engine, data::scene const& scene)
+        {
+            auto& data = engine.data();
+            auto& screen = engine.main_screen();
 
-                if (bg)
-                {
-                    // A planar blit only writes the source's own bitplanes, so a
-                    // background that doesn't span the whole screen at full depth
-                    // leaves the previous scene's pixels (and unwritten high
-                    // planes) behind. Clear to index 0 first in that case.
-                    bool const covers_screen = sc.offset.x == 0 && sc.offset.y == 0
-                        && sc.width >= SCREEN_WIDTH && sc.height >= SCREEN_HEIGHT
-                        && bg->Depth >= g_pEngine->main_screen().back_buffer()->Depth;
-                    if (!covers_screen) g_pEngine->main_screen().clear(0);
+            if (scene.background_bitmap_id != data::NO_ID)
+            {
+                auto const bitmaps = data.bitmaps();
+                if (scene.background_bitmap_id >= bitmaps.size())
+                    return mtl::unexpected("Invalid scene background bitmap id");
 
-                    g_pEngine->main_screen().blit_copy(
-                        bg.get(),
-                        0,
-                        0,
-                        to<WORD>(sc.offset.x),
-                        to<WORD>(sc.offset.y),
-                        to<WORD>(sc.width),
-                        to<WORD>(sc.height),
-                        MINTERM_COPY);
-                }
+                auto const& ref = bitmaps[scene.background_bitmap_id];
+                auto const palette = load_palette(engine, ref.palette_hash, SCENE_PALETTE_COLORS);
+                if (!palette) return palette;
+
+                auto file = engine.assets().open(ref.bitmap_hash);
+                if (!file) return mtl::unexpected("Cannot open scene background bitmap");
+
+                auto background = ace::bitmapCreateFromFd(mtl::move(file), 0);
+                if (!background) return mtl::unexpected("Cannot load scene background bitmap");
+
+                // Clear unwritten planes and pixels when the image does not fill the screen.
+                bool const covers_screen = scene.offset.x == 0 && scene.offset.y == 0
+                    && scene.width >= SCREEN_WIDTH && scene.height >= SCREEN_HEIGHT
+                    && background->Depth >= screen.back_buffer()->Depth;
+                if (!covers_screen) screen.clear(0);
+
+                screen.blit_copy(background.get(), 0, 0,
+                    to<WORD>(scene.offset.x), to<WORD>(scene.offset.y),
+                    to<WORD>(scene.width), to<WORD>(scene.height), MINTERM_COPY);
             }
 
-            // The background claims all 256 entries, which buries the UI
-            // colors loaded at boot. A scene that shows UI needs them back,
-            // so reload the band over the top; a scene that does not keeps
-            // the background's own colors there. Text regions name colors in
-            // this band, so it has to be settled before they are drawn.
-            bool const showsUi = (sc.flags & data::SCENE_FLAG_SHOW_UI) != 0;
-            if (showsUi)
+            // Backgrounds use all 256 colors; restore the UI band before drawing text.
+            bool const shows_ui = (scene.flags & data::SCENE_FLAG_SHOW_UI) != 0;
+            if (shows_ui)
             {
-                ace::paletteLoadFromFd(g_pEngine->assets().open(gd.ui_state().ui_palette_hash),
-                    g_pEngine->main_screen().palette(), UI_PALETTE_COLORS);
+                auto const palette = load_palette(engine, data.ui_state().ui_palette_hash,
+                    UI_PALETTE_COLORS);
+                if (!palette) return palette;
             }
 
-            // Only a scene that shows the pointer holds its band out of the
-            // fade. A scene without UI is free to author its background across
-            // those entries, so there they have to dim like everything else -
-            // and the pointer has to go, or it would draw itself in whatever
-            // colors the background put in its band.
-            g_pEngine->main_screen().set_cursor_band_exempt(showsUi);
-            g_pEngine->pointer().set_visible(showsUi);
-
-            scene_text_draw(sc);
-            g_pEngine->main_screen().duplicate_back_to_front();
+            screen.set_cursor_band_exempt(shows_ui);
+            engine.pointer().set_visible(shows_ui);
+            scene_text_draw(scene);
+            // Bobs must find the new backdrop in either buffer before registration.
+            screen.duplicate_back_to_front();
+            return {};
         }
 
-        /**
-         * @brief Lays the current scene's backdrop down again, in place.
-         *
-         * A language change rewrites what the text regions say, and those are
-         * painted into the backdrop rather than drawn each frame, so the only
-         * way to change them is to repaint it. Everything reloaded is what the
-         * scene already had - the same background, the same palette values - so
-         * nothing fades and nothing else on screen moves.
-         *
-         * Takes its own system-use guard, and blocks for as long as decoding the
-         * background takes, so it declines the work when the scene has no text
-         * regions to restate.
-         */
-        void scene_state::redraw_backdrop()
-        {
-            auto const scenes = g_pEngine->data().scenes();
-            u16 const id = g_pEngine->current_scene();
-            if (id >= scenes.size()) return;
-
-            // Nothing else in the backdrop is localized, so a scene without text
-            // regions would decode its background only to draw the same picture.
-            if (scenes[id].text_region_range.count == 0) return;
-
-            show_wait_pointer();
-
-            mtl::system_use_guard guard;  // OS on for pak/disk access
-
-            // The palette about to be loaded lands on top of whatever the
-            // timeline's cycles have turned, and their record of how far they
-            // have turned would then describe colors that are no longer there.
-            // The timeline stays live across a repaint, so this hands the bands
-            // back without taking the scene down.
-            runtime().timeline().restore_palette();
-            draw_backdrop(scenes[id]);
-
-            // Every bob standing over the old backdrop saved its background from
-            // it, and that has just been painted over. Undrawing those saves
-            // would stamp the old text back wherever a bob happened to be.
-            bobDiscardUndraw();
-        }
-
-        /**
-         * @brief Rebuild what the scene had built out of the string table.
-         *
-         * The engine has already swapped the table, in engine::frame(), before
-         * any state ran this frame. What is left is the scene's own share of the
-         * change: the text it drew out of the old table.
-         */
-        void scene_state::rebuild_for_language()
-        {
-            // Captions and text regions were both built from the table that just
-            // went away. A pending scene is about to rebuild them anyway, so this
-            // only pays for a language change that stays in the current scene.
-            if (g_pEngine->pending_system_kind() == system_kind::load_scene) return;
-
-            mtl::system_use_guard guard;  // OS on for pak/disk access
-            runtime().bobs().reload_captions();
-
-            // Repainting the backdrop is far more expensive than a caption,
-            // so it is only marked here; loop() picks the moment.
-            _backdrop_stale = true;
-        }
-
-        /**
-         * @brief Free Fast RAM in bytes.
-         *
-         * ACE exposes free Chip and free total but not free Fast, and reaching
-         * for AvailMem() directly would mean pulling exec's protos into this
-         * file. Any memory that is not Chip is Fast, so the difference is it.
-         */
         LONG free_fast_size()
         {
             return to<LONG>(memGetFreeSize()) - to<LONG>(memGetFreeChipSize());
         }
 
-        /**
-         * @brief Reports what scene @p scene_id cost in Chip and Fast RAM.
-         *
-         * Measured as free memory before and after the load rather than by
-         * asking each subsystem what it allocated. That catches everything,
-         * including the bob manager's undraw buffers, which ACE sizes and
-         * allocates inside bobReallocateBuffers() where no tally of ours could
-         * see them.
-         *
-         * "used" is a net figure: the previous scene is torn down during this
-         * load, so a scene cheaper than the one before it reports a negative
-         * number. Read the free figures for whether a scene fits at all.
-         */
-        void log_scene_memory(u16 scene_id, LONG chipBefore, LONG fastBefore)
+        void log_scene_memory(u16 scene_id, LONG chip_before, LONG fast_before)
         {
-            LONG const chipAfter = to<LONG>(memGetFreeChipSize());
-            LONG const fastAfter = free_fast_size();
+            LONG const chip_after = to<LONG>(memGetFreeChipSize());
+            LONG const fast_after = free_fast_size();
 
             NE_LOG("scene %hu memory: chip %ld KB free (used %ld KB), fast %ld KB free (used %ld KB)",
-                scene_id,
-                chipAfter / 1024,
-                (chipBefore - chipAfter) / 1024,
-                fastAfter / 1024,
-                (fastBefore - fastAfter) / 1024);
-        }
-
-        /**
-         * @brief Present scene @p scene_id: background, music, and entry script.
-         *
-         * Serves both the initial boot scene and every GOTO_SCENE transition. Pak
-         * access runs under a system_use_guard; music playback and the VM run
-         * afterwards with the system released (the game-loop baseline).
-         *
-         * @return Whether an entry script is now running. When it is, nothing
-         *         has brought the palette up yet: the script's own FADE_IN does
-         *         that on its first slice. A bad scene id also returns false,
-         *         with nothing loaded and the VM left as it was - loop() tears
-         *         it down, because a script that asked to leave is over
-         *         either way.
-         */
-        bool scene_state::load_scene(u16 scene_id)
-        {
-            auto& gd          = g_pEngine->data();
-            auto const scenes = gd.scenes();
-            if (scene_id >= scenes.size())
-            {
-                NE_LOG("invalid scene id %hu (%lu scenes)",
-                    scene_id,
-                    to<ULONG>(scenes.size()));
-                return false;
-            }
-
-            auto const& sc = scenes[scene_id];
-            g_pEngine->set_current_scene(scene_id);
-
-            // GOTO_SCENE ends everything: anything on screen belonged to the old
-            // scene, and a request recorded by a script that is about to be
-            // discarded has nobody left to act for. The VM's own latch goes with
-            // the sessions, in the reset_execution() further down.
-            g_pEngine->take_pending_modal();
-
-            // Everything this load asks the cache for is stamped as wanted now,
-            // which is what stops the load evicting its own assets and what
-            // makes the previous scene's leftovers the first to go.
-            g_pEngine->assets().begin_load();
-
-            LONG const chipBefore = to<LONG>(memGetFreeChipSize());
-            LONG const fastBefore = free_fast_size();
-            // The load lays the whole backdrop down in the current language, so
-            // any repaint a language change was still owed is settled by it.
-            _backdrop_stale = false;
-
-            bool const silence = sc.music_hash == MUSIC_SILENCE;
-            bool music_started = false;
-            {
-                mtl::system_use_guard guard;  // OS on for pak/disk access
-
-                drop_runtime();
-                draw_backdrop(sc);
-                construct_runtime(sc);
-
-                if (!silence && sc.music_hash != MUSIC_KEEP)
-                {
-                    // Uncached on purpose: see game_data::open_asset_uncached.
-                    auto mod = gd.open_asset_uncached(sc.music_hash);
-                    if (mod)
-                    {
-                        musicLoad(mtl::move(mod));
-                        music_started = true;
-                    }
-                }
-            }
-
-            log_scene_memory(scene_id, chipBefore, fastBefore);
-
-            if (silence) musicFree();
-            if (music_started) musicPlayCurrent(1);
-
-            g_pEngine->vm().reset_execution();
-            if (sc.on_enter_function_id != data::NO_ID
-                && g_pEngine->vm().execute(sc.on_enter_function_id))
-            {
-                return true;
-            }
-
-            // No entry script ran, so nothing would bring the palette up (the
-            // loaded palette only reaches the display through a fade). Fade in
-            // from black with the project's default so a script-less scene is
-            // still visible.
-            u16 const frames = gd.config().default_fade_frames;
-            g_pEngine->main_screen().fade_from_black(
-                to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
-            return false;
-        }
-
-        /**
-         * @brief Puts the modal a script asked for last frame on screen.
-         *
-         * A bare FADE_IN/FADE_OUT (no MOV D0, #frames) arrives as 0 frames, so
-         * the project's configured default stands in and scripts can omit the
-         * count.
-         *
-         * The VM is already latched by the call that recorded the request. Each
-         * kind here only has to arrange for something to lift it: a fade does it
-         * from its own callback, a dialogue from the state that answers it. A
-         * kind that arranges neither leaves every script parked for the rest of
-         * the scene.
-         */
-        void start_pending_modal()
-        {
-            auto const request = g_pEngine->take_pending_modal();
-
-            auto fade_frames = [&] {
-                u16 const frames = request.arg1 ? request.arg1
-                                                : g_pEngine->data().config().default_fade_frames;
-                return to<UBYTE>(frames > 255 ? 255 : frames);
-            };
-
-            switch (request.kind)
-            {
-                case modal_kind::fade_out:
-                    g_pEngine->main_screen().fade_to_black(fade_frames(), 0, scene_fade_done);
-                    return;
-
-                case modal_kind::fade_in:
-                    g_pEngine->main_screen().fade_from_black(fade_frames(), 0, scene_fade_done);
-                    return;
-
-                case modal_kind::show_dialog:
-                    // The main loop pushes the dialogue state next frame and
-                    // dialogueDestroy() lifts the latch when it comes down.
-                    g_pEngine->overlays().post_dialogue(request.arg1);
-                    return;
-
-                case modal_kind::none: return;
-            }
-        }
-
-        /**
-         * @brief Act on a system request - a scene change, a save, a new game.
-         *
-         * A kind the engine cannot do yet is logged and dropped, and has to
-         * undo the stop its bridge call put on the VM: a modal one by resuming
-         * it here, a terminal one through the teardown loop() owes it
-         * either way.
-         */
-        void scene_state::apply_system_request(system_request const& request)
-        {
-            switch (request.kind)
-            {
-                case system_kind::load_scene: load_scene(request.arg1); return;
-
-                case system_kind::save_game:
-                    NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.arg1);
-                    // A modal call with no screen to answer it. Until there is
-                    // one, lift the latch here or the script never runs again.
-                    g_pEngine->vm().resume_execution();
-                    return;
-
-                case system_kind::load_game:
-                    NE_LOG("LOAD_GAME slot %hu: no save format yet", request.arg1);
-                    return;
-
-                case system_kind::new_game: NE_LOG("NEW_GAME: nothing to start yet"); return;
-
-                case system_kind::quit_game: NE_LOG("QUIT_GAME: no way out yet"); return;
-
-                case system_kind::none: return;
-            }
+                scene_id, chip_after / 1024, (chip_before - chip_after) / 1024,
+                fast_after / 1024, (fast_before - fast_after) / 1024);
         }
     }  // namespace
 
-    scene_runtime& scene_state::runtime()
+    scene_state::scene_state(engine& engine, u16 scene_id) noexcept
+        : _engine(engine), _scene_id(scene_id)
     {
-        assert(_runtime_live, "reached a scene runtime before a scene loaded");
-        return *reinterpret_cast<scene_runtime*>(_storage);
     }
 
-    void scene_state::construct_runtime(data::scene const& sc)
+    mtl::expected<void, char const*> scene_state::load_scene()
     {
-        assert(!_runtime_live, "built a scene runtime over one still standing");
+        auto& data = _engine.data();
+        auto const scenes = data.scenes();
+        if (_scene_id >= scenes.size()) return mtl::unexpected("Invalid scene id");
 
-        new (_storage) scene_runtime(
-            g_pEngine->data(), g_pEngine->assets(), g_pEngine->pointer(), sc);
-        _runtime_live = true;
+        auto const& scene = scenes[_scene_id];
+        show_wait_pointer(_engine);
+        _engine.assets().begin_load();
+
+        LONG const chip_before = to<LONG>(memGetFreeChipSize());
+        LONG const fast_before = free_fast_size();
+        bool const silence = scene.music_hash == MUSIC_SILENCE;
+        bool music_started = false;
+        {
+            mtl::system_use_guard guard;
+            auto const backdrop = draw_backdrop(_engine, scene);
+            if (!backdrop) return backdrop;
+
+            _runtime = mtl::make_unique<scene_runtime>(
+                data, _engine.assets(), _engine.pointer(), scene);
+            if (!_runtime) return mtl::unexpected("Cannot allocate scene runtime");
+
+            if (!silence && scene.music_hash != MUSIC_KEEP)
+            {
+                auto mod = data.open_asset_uncached(scene.music_hash);
+                if (mod)
+                {
+                    musicLoad(mtl::move(mod));
+                    music_started = true;
+                }
+            }
+        }
+
+        log_scene_memory(_scene_id, chip_before, fast_before);
+        if (silence) musicFree();
+        if (music_started) musicPlayCurrent(1);
+        _rendered_language = _engine.current_language();
+        return {};
     }
 
-    void scene_state::drop_runtime()
+    void scene_state::start_entry_script()
     {
-        if (!_runtime_live) return;
+        auto const& scene = _engine.data().scenes()[_scene_id];
+        _engine.vm().reset_execution();
+        if (scene.on_enter_function_id != data::NO_ID
+            && _engine.vm().execute(scene.on_enter_function_id))
+        {
+            return;
+        }
 
-        runtime().~scene_runtime();
-        _runtime_live = false;
+        u16 const frames = _engine.data().config().default_fade_frames;
+        _engine.main_screen().fade_from_black(
+            to<UBYTE>(frames > 255 ? 255 : frames), 0, nullptr);
     }
 
-    scene_runtime& scene_state::current_runtime()
-    {
-        return state_host<scene_state>::instance().runtime();
-    }
-
-    scene_runtime& current_scene_runtime()
-    {
-        return scene_state::current_runtime();
-    }
-
-    bool scene_state::create()
+    mtl::expected<void, char const*> scene_state::pushed()
     {
         logBlockBegin("State: Scene");
-        // ACE leaves the system 'used' after engine setup; the game loop runs
-        // 'unused'. Drop to that baseline once (as splash does); load_scene
-        // re-enters 'used' briefly via a system_use_guard for each pak access.
-        systemUnuse();
-        // The boot load blocks for over a second with the pointer on screen, and
-        // draw_backdrop only settles the band once it has the scene in hand.
-        g_pEngine->main_screen().set_cursor_band_exempt(true);
-        show_wait_pointer();
-        // Every later load is followed by the same frame's own VM update; this
-        // one runs before the loop starts, so the entry script's FADE_IN needs
-        // priming here or the first frame renders at full brightness.
-        if (load_scene(g_pEngine->data().config().boot_scene_id))
-        {
-            g_pEngine->vm().update();
-        }
+        _log_open = true;
+        auto const result = load_scene();
+        if (!result) return result;
 
-        // A boot scene that could not be loaded leaves nothing for loop() to
-        // run against, and every frame below reads the runtime. engine::
-        // initialize() already refuses an out-of-range boot id, so this is the
-        // belt to that brace rather than a hole anyone can reach today. Ending
-        // the game is what main.cpp does when startup fails, and it beats
-        // popping the only state and looping on a black screen.
-        if (!_runtime_live)
-        {
-            NE_LOG("the boot scene did not load; there is nothing to run");
-            gameExit();
-            return false;
-        }
+        _engine.set_current_scene(_scene_id);
+        _engine.bind_scene_runtime(*_runtime);
+        start_entry_script();
+        return {};
+    }
 
+    void scene_state::start_pending_modal()
+    {
+        auto const request = _engine.take_pending_modal();
+        u16 const frames = request.arg1 ? request.arg1 : _engine.data().config().default_fade_frames;
+        auto const duration = to<UBYTE>(frames > 255 ? 255 : frames);
+        switch (request.kind)
+        {
+            case modal_kind::fade_out:
+                _engine.main_screen().fade_to_black(duration, 0, scene_fade_done);
+                _engine.pointer().switch_to(pointer_role::WAIT);
+                return;
+            case modal_kind::fade_in:
+                _engine.main_screen().fade_from_black(duration, 0, scene_fade_done);
+                return;
+            case modal_kind::show_dialog:
+                _engine.overlays().post_dialogue(request.arg1);
+                return;
+            case modal_kind::none: return;
+        }
+    }
+
+    bool scene_state::apply_system_request(state_control& control)
+    {
+        if (!_engine.has_pending_system()) return false;
+        auto const request = _engine.take_pending_system();
+        switch (request.kind)
+        {
+            case system_kind::load_scene:
+                show_wait_pointer(_engine);
+                control.replace<scene_state>(_engine, request.arg1);
+                return true;
+            case system_kind::save_game:
+                NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.arg1);
+                _engine.vm().resume_execution();
+                break;
+            case system_kind::load_game:
+                NE_LOG("LOAD_GAME slot %hu: no save format yet", request.arg1);
+                break;
+            case system_kind::new_game:
+                NE_LOG("NEW_GAME: nothing to start yet");
+                break;
+            case system_kind::quit_game:
+                NE_LOG("QUIT_GAME: no way out yet");
+                break;
+            case system_kind::none: break;
+        }
+        if (_engine.vm().terminated()) _engine.vm().reset_execution();
+        return false;
+    }
+
+    bool scene_state::rebuild_for_language(bool after_scripts)
+    {
+        if (_rendered_language == _engine.current_language()) return true;
+        auto& screen = _engine.main_screen();
+        // Let a faded-out script request its next scene before decoding this one again.
+        if (screen.is_fading_out()
+            || (!after_scripts && screen.palette_ratio() == 0 && !screen.fade_owns_palette()))
+            return true;
+
+        show_wait_pointer(_engine);
+        mtl::system_use_guard guard;
+        _runtime->bobs().reload_captions();
+        auto const& scene = _engine.data().scenes()[_scene_id];
+        if (scene.text_region_range.count != 0)
+        {
+            _runtime->timeline().restore_palette();
+            auto const result = draw_backdrop(_engine, scene);
+            if (!result)
+            {
+                NE_LOG_ALWAYS("scene %hu language reload failed: %s", _scene_id, result.error());
+                gameExit();
+                return false;
+            }
+            // Saved bob backgrounds still contain the old text.
+            bobDiscardUndraw();
+        }
+        _rendered_language = _engine.current_language();
         return true;
     }
 
-    bool scene_state::loop()
+    void scene_state::update(state_control& control)
     {
-        // ── Requests recorded last frame ─────────────────────────────────────
-
-        // A transition runs from the script's fade-out through the load that
-        // follows it, and in the frames between the two nothing is pending.
-        // Treating the whole span as one event keeps the pointer on WAIT instead
-        // of flicking back to its normal role in that gap.
-        bool const transitioning = g_pEngine->language_changed()
-            || g_pEngine->pending_system_kind() == system_kind::load_scene
-            || g_pEngine->main_screen().is_fading_out();
-
-        // Cheap and idempotent: the frame's own pointer update and
-        // screenProcess() publish it, so the fade needs nothing special.
-        if (transitioning) g_pEngine->pointer().switch_to(pointer_role::WAIT);
-
-        // Language before scene: a script that switches language and then leaves
-        // should present the next scene in the language it just chose. The
-        // engine has already swapped the table by now, in engine::frame(); this
-        // is the scene catching up with it.
-        if (g_pEngine->language_changed())
+        bool const debug_requested = keyUse(KEY_F1);
+        if (apply_system_request(control)) return;
+        if (_engine.has_pending_modal()) start_pending_modal();
+        if (!rebuild_for_language()) return;
+        if (_engine.overlays().present(control, _engine.vm(), _engine))
         {
-            // Re-renders every caption under a system-use guard, so it blocks
-            // for long enough to need the pointer published first.
-            show_wait_pointer();
-            rebuild_for_language();
-        }
-        if (g_pEngine->has_pending_system())
-        {
-            show_wait_pointer();
-            apply_system_request(g_pEngine->take_pending_system());
+            _runtime->bobs().draw();
+            return;
         }
 
-        // A terminal call is owed a teardown. If answering its request did not
-        // deliver one - the scene failed to load, or nothing implements it yet -
-        // it is delivered here, or the VM would never run again.
-        if (g_pEngine->vm().terminated()) g_pEngine->vm().reset_execution();
+        if (_engine.main_screen().is_fading_out())
+            _engine.pointer().switch_to(pointer_role::WAIT);
 
-        if (g_pEngine->has_pending_modal()) start_pending_modal();
-
-        // A language change owes the backdrop a repaint, which costs a full
-        // background decode. A fade-out is the front half of a scene change -
-        // scripts post their GOTO_SCENE from the fade's own callback, a frame or
-        // more after the SET_LANG - and that load repaints the backdrop anyway,
-        // so waiting for the fade to settle keeps the decode from being done
-        // twice and thrown away once.
-        if (_backdrop_stale && !g_pEngine->main_screen().is_fading_out())
+        bool const language_ready = _rendered_language == _engine.current_language();
+        if (!_engine.vm().blocked() && language_ready)
         {
-            _backdrop_stale = false;
-            redraw_backdrop();
+            _runtime->timeline().update();
+            if (apply_system_request(control)) return;
+        }
+        if (!_engine.vm().blocked() && language_ready)
+        {
+            _runtime->hotspots().update();
+            if (apply_system_request(control)) return;
         }
 
-        // ── Modals ───────────────────────────────────────────────────────────
-        // Fades take themselves down through scene_fade_done(). A dismissible
-        // box would be closed here, before the timeline and the VM are asked to
-        // run, so that both start again in the frame it closes.
+        // One VM update per frame, including entry. Start its fade before the first display.
+        if (!_engine.vm().blocked()) _engine.vm().update();
+        if (apply_system_request(control)) return;
+        if (_engine.has_pending_modal()) start_pending_modal();
+        if (!rebuild_for_language(true)) return;
 
-        // One flag, one owner. The VM latches itself the moment a script makes
-        // a modal call and stays latched until whoever answered it resumes it,
-        // so asking the VM is the same as asking whether a modal is up - and
-        // there is no second copy of the answer to fall out of step.
-        //
-        // The scene stops with it, for a strong reason: a fade is the front half
-        // of a scene change, so anything a track moved would be thrown away, a
-        // keyframe running a script could queue a second scene change, and a
-        // hovered hotspot would put its role back over the WAIT pointer. An
-        // overlay has a further one - it restores the pixels it covered from a
-        // buffer taken when it went up, so anything moving underneath would be
-        // painted back where it no longer is.
-        bool const holding = g_pEngine->vm().blocked();
-
-        auto& scene = runtime();
-
-        // ── Timeline ─────────────────────────────────────────────────────────
-        if (!holding) scene.timeline().update();
-
-        // ── UI ───────────────────────────────────────────────────────────────
-        if (!holding) scene.hotspots().update();
-
-        // ── Scripts ──────────────────────────────────────────────────────────
-        // Last, so a session started this frame by a keyframe or a click runs
-        // its first slice now instead of next frame, and so whatever it moves is
-        // drawn below. A hotspot can leave the scene without a script; when one
-        // has, this scene is already over and nothing here should touch it.
-        if (!holding && g_pEngine->pending_system_kind() != system_kind::load_scene)
+        _engine.pointer().update();
+        _runtime->bobs().update();
+        _runtime->bobs().draw();
+        if (_engine.overlays().present(control, _engine.vm(), _engine)) return;
+        if (debug_requested)
         {
-            g_pEngine->vm().update();
+            control.push<debug_view_state>(_engine);
         }
-
-        g_pEngine->pointer().update();
-        scene.bobs().update();
-        scene.bobs().draw();
-
-        // The scene stays up until something else takes it down: nothing here
-        // ends it, and a scene change is a load, not a pop.
-        return true;
     }
 
     scene_state::~scene_state()
     {
-        g_pEngine->take_pending_modal();
-        g_pEngine->take_pending_system();
-
-        // A scene ending takes its scripts with it, latch and all, so a modal
-        // that was still up owes nothing to anyone.
-        g_pEngine->vm().reset_execution();
-
+        if (_runtime)
         {
-            // The runtime hands its memory back to the OS on the way out.
+            if (_engine.unbind_scene_runtime(*_runtime))
+            {
+                _engine.take_pending_modal();
+                _engine.take_pending_system();
+                _engine.overlays().clear();
+                _engine.vm().reset_execution();
+            }
             mtl::system_use_guard guard;
-            drop_runtime();
+            _runtime.reset(nullptr);
         }
-
-        musicFree();
-        logBlockEnd("State: Scene");
+        if (_log_open) logBlockEnd("State: Scene");
     }
 
-    void scene_state::resume()
+    void scene_state::suspended()
     {
-        // The button went unwatched while something was up over the scene, so a
-        // change made in that time would read as a fresh click on whatever lies
-        // under the pointer.
-        runtime().hotspots().resync_button();
+        // Overlays restore from the other buffer, so draw the same pose there.
+        _runtime->bobs().draw();
     }
 
-    tState g_stateScene = state_host<scene_state>::table();
+    void scene_state::resumed()
+    {
+        _runtime->hotspots().resync_button();
+    }
 }  // namespace NEONengine

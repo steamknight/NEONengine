@@ -1,5 +1,6 @@
 #ifdef ACE_TEST_RUNNER
 
+#include "test_runner.h"
 #include "types.h"
 
 #include "neonengine.h"
@@ -37,6 +38,8 @@
 #include "tests/noir_vm_tests.h"
 #include "tests/noir_vm_timeline_tests.h"
 #include "tests/noir_vm_value_ops_tests.h"
+#include "tests/overlay_state_tests.h"
+#include "tests/scene_state_tests.h"
 #include "tests/state_manager_tests.h"
 #include "tests/track_clock_tests.h"
 
@@ -69,11 +72,11 @@ namespace NEONengine::tests
 
         void set_report_palette()
         {
-            UWORD* palette         = g_pEngine->main_screen().palette();
-            palette[COLOR_HEADING] = 0x0FFF;  // white
-            palette[COLOR_FAILURE] = 0x0F44;  // red
-            palette[COLOR_PASSED]  = 0x04E4;  // green
-            palette[COLOR_FAILED]  = 0x0FD2;  // amber
+            auto* palette = force_to<ULONG*>(g_pEngine->main_screen().palette());
+            palette[COLOR_HEADING] = 0xFFFFFF;
+            palette[COLOR_FAILURE] = 0xFF4444;
+            palette[COLOR_PASSED]  = 0x44EE44;
+            palette[COLOR_FAILED]  = 0xFFDD22;
         }
 
         /**
@@ -125,7 +128,7 @@ namespace NEONengine::tests
         }
     }  // namespace
 
-    void testRunnerCreate()
+    mtl::expected<void, char const*> test_runner_state::pushed()
     {
         ACE_LOG_BLOCK("testRunner");
 
@@ -150,6 +153,8 @@ namespace NEONengine::tests
         RUN_SUITE(dialogue_session);
         RUN_SUITE(track_clock);
         RUN_SUITE(state_manager);
+        RUN_SUITE(overlay_state);
+        RUN_SUITE(scene_state);
         RUN_SUITE(noir_vm);
         RUN_SUITE(noir_vm_data_move);
         RUN_SUITE(noir_vm_arithmetic);
@@ -178,6 +183,7 @@ namespace NEONengine::tests
         draw_summary(summary, suitesPassed == suiteCount ? COLOR_PASSED : COLOR_FAILED);
 
         g_pEngine->main_screen().duplicate_back_to_front();
+        return {};
     }
 
     bool runTestSuite(char const* szSuiteName, Test tests[], u32 testCount)
@@ -213,19 +219,10 @@ namespace NEONengine::tests
         return passedTests == testCount;
     }
 
-    void testRunnerProcess()
+    void test_runner_state::update(state_control&)
     {
-        statePop(g_gameStateManager);
+        _engine.pointer().update();
     }
-
-    tState g_stateTestRunner = {
-        .cbCreate  = testRunnerCreate,
-        .cbLoop    = testRunnerProcess,
-        .cbDestroy = NULL,
-        .cbSuspend = NULL,
-        .cbResume  = NULL,
-        .pPrev     = NULL,  // Set by statePush.
-    };
 }  // namespace NEONengine::tests
 
 #endif

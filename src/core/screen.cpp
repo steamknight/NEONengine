@@ -63,18 +63,7 @@ namespace NEONengine
 
     void screen::load()
     {
-        UBYTE was_using_system = systemIsUsed();
-        if (was_using_system)
-        {
-            systemUnuse();
-        }
-
         viewLoad(pView);
-
-        if (was_using_system)
-        {
-            systemUse();
-        }
     }
 
     void screen::fade_to_black(UBYTE ubDuration,

@@ -17,20 +17,26 @@
 		},
 		{
 			"label": "configureGameMode",
-			"type": "shell",
-			"command": "pwsh.exe",
+			"type": "process",
+			"command": "${config:cmake.cmakePath}",
 			"args": [
-				"-c",
-				"cmake -S ${workspaceFolder} -B ${workspaceFolder}/build -DACE_TEST_RUNNER=0"
+				"-S",
+				"${workspaceFolder}",
+				"-B",
+				"${workspaceFolder}\\build",
+				"-DACE_TEST_RUNNER=0"
 			]
 		},
 		{
 			"label": "configureTestMode",
-			"type": "shell",
-			"command": "pwsh.exe",
+			"type": "process",
+			"command": "${config:cmake.cmakePath}",
 			"args": [
-				"-c",
-				"cmake -S ${workspaceFolder} -B ${workspaceFolder}/build -DACE_TEST_RUNNER=1"
+				"-S",
+				"${workspaceFolder}",
+				"-B",
+				"${workspaceFolder}\\build",
+				"-DACE_TEST_RUNNER=1"
 			]
 		},
 		{

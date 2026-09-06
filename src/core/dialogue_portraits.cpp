@@ -37,7 +37,9 @@ namespace NEONengine
 
     dialogue_portraits::~dialogue_portraits()
     {
-        if (_band_taken) publish_band(_band_held);
+        release_band();
+        mtl::system_use_guard guard;
+        _portraits = {};
     }
 
     dialogue_portraits::portrait const* dialogue_portraits::find(u16 bitmap_id) const
@@ -189,15 +191,6 @@ namespace NEONengine
 
         if (_portraits.empty()) return;
 
-        // Taken now rather than at the first draw: the band has to go back the
-        // way it was even if no page turns out to have a portrait to draw.
-        auto const* reference = force_to<ULONG const*>(_main_screen.palette());
-        for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
-        {
-            _band_held[i] = reference[PORTRAIT_PALETTE_FIRST + i];
-        }
-        _band_taken = true;
-
         NE_LOG("loaded %hu portrait(s) for the conversation", to<u16>(_portraits.size()));
     }
 
@@ -227,6 +220,13 @@ namespace NEONengine
 
         if (_band_holder != shown->bitmap_id)
         {
+            if (!_band_taken)
+            {
+                auto const* reference = force_to<ULONG const*>(_main_screen.palette());
+                for (u16 i = 0; i < PORTRAIT_PALETTE_COLORS; ++i)
+                    _band_held[i] = reference[PORTRAIT_PALETTE_FIRST + i];
+                _band_taken = true;
+            }
             publish_band(shown->colors);
             _band_holder = shown->bitmap_id;
         }

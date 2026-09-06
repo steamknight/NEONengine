@@ -8,16 +8,14 @@ namespace NEONengine
     /**
      * @brief The engine's shared NoirVM bridge.
      *
-     * Routes VM game-call opcodes to engine systems. The @ref noir_bridge table
-     * holds plain function pointers with no context argument, so its functions
-     * reach the running engine through the g_pEngine global;
-     * nothing calls them until a script runs, and by then the engine is live.
-     * Pass its address to the noir_vm constructor.
+     * Routes VM game-call opcodes to engine systems. Pass the table's address
+     * and the engine as the host to the noir_vm constructor.
      *
      * Deferred calls do no work here. They record what the script asked for - a
-     * modal request or a scene request - and the scene acts on it at the top of
-     * the next frame, deciding for itself when the VM runs again. The table
-     * declares which calls those are.
+     * modal request or a scene request. The scene can act after the VM returns
+     * in the same update; state entry waits for the next manager update.
+     * Whoever answers a modal releases its wait. The table declares which
+     * calls defer.
      */
     noir_bridge const& engine_bridge() noexcept;
 

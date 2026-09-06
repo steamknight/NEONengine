@@ -1,6 +1,10 @@
 #include "core/overlay_system.h"
 
 #include "core/logger.h"
+#include "core/noir_vm.h"
+#include "core/state_manager.h"
+#include "states/dialogue.h"
+#include "states/message.h"
 #include "types.h"
 
 NE_LOG_DOMAIN(Text);
@@ -28,7 +32,11 @@ namespace NEONengine
 
     void overlay_system::post_message(message_request const& request) noexcept
     {
-        if (_kind != overlay_kind::none || request.text.is_empty()) return;
+        if (_kind != overlay_kind::none || request.text.is_empty())
+        {
+            if (request.modal_wait) skip_modal_wait();
+            return;
+        }
 
         if (request.text.length() >= MESSAGE_TEXT_CAPACITY)
         {
@@ -45,40 +53,44 @@ namespace NEONengine
 
     void overlay_system::post_dialogue(u16 dialogue_id) noexcept
     {
-        if (_kind != overlay_kind::none) return;
+        if (_kind != overlay_kind::none)
+        {
+            skip_modal_wait();
+            return;
+        }
 
         _dialogue = dialogue_id;
         _kind     = overlay_kind::dialogue;
     }
 
-    void overlay_system::present(tStateManager* states) noexcept
+    void overlay_system::skip_modal_wait() noexcept
     {
-        if (_kind == overlay_kind::none || !_message_state || !_dialogue_state) return;
+        NE_LOG("modal request skipped: empty text or an overlay is already pending");
+        if (_kind == overlay_kind::none
+            || (_kind == overlay_kind::message && !_message.modal_wait))
+            _skipped_modal_wait = true;
+    }
 
-        tState const* const on_top = states->pCurrent;
-        if (on_top == _message_state || on_top == _dialogue_state) return;
+    bool overlay_system::present(state_control& control, noir_vm& vm, engine& engine) noexcept
+    {
+        // Bridge callbacks precede the VM's modal latch, so finish skipped calls here.
+        if (_skipped_modal_wait)
+        {
+            _skipped_modal_wait = false;
+            vm.resume_execution();
+        }
 
         switch (_kind)
         {
-            case overlay_kind::message: statePush(states, _message_state); break;
-            case overlay_kind::dialogue: statePush(states, _dialogue_state); break;
-            case overlay_kind::none: break;
+            case overlay_kind::message:
+                control.push<message_state>(engine, vm, *this, _message);
+                return true;
+            case overlay_kind::dialogue:
+                control.push<dialogue_state>(engine, vm, *this, _dialogue);
+                return true;
+            case overlay_kind::none:
+                return false;
         }
-    }
-
-    message_request overlay_system::take_message() noexcept
-    {
-        if (_kind != overlay_kind::message) return message_request{};
-
-        clear();
-        return _message;
-    }
-
-    u16 overlay_system::take_dialogue() noexcept
-    {
-        if (_kind != overlay_kind::dialogue) return 0;
-
-        clear();
-        return _dialogue;
+        return false;
     }
 }  // namespace NEONengine

@@ -40,14 +40,14 @@ namespace NEONengine
         }
         auto const size = to<u32>(signed_size);
 
-        mtl::vector<u8> image;
-        image.resize(size);
-        if (fileRead(neon.get(), image.data(), size) != size)
+        mtl::vector<u8> contents;
+        contents.resize(size);
+        if (fileReadBytes(neon.get(), contents.data(), size) != size)
         {
             return mtl::unexpected(error::READ_FAILED);
         }
 
-        auto const& header = *force_to<data::header const*>(image.data());
+        auto const& header = *force_to<data::header const*>(contents.data());
         if (header.magic != data::NEON_MAGIC)
         {
             return mtl::unexpected(error::BAD_MAGIC);
@@ -67,7 +67,7 @@ namespace NEONengine
             to<ULONG>(header.total_size),
             to<ULONG>(header.chunk_count));
 
-        auto gd = game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(pak), mtl::move(image)));
+        auto gd = game_data_ptr(new (mtl::MemF::Fast) game_data(mtl::move(pak), mtl::move(contents)));
 
         error index_error;
         if (!index_chunks(gd->_buffer.data(), size, gd->_chunks, index_error))

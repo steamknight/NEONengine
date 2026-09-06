@@ -14,6 +14,13 @@ Very much in the early stages.
 
 Built with CMake + Ninja and the Bartman `m68k-amiga-elf` toolchain. Needs CMake 3.25 or newer.
 
+On Windows, use native Windows CMake, not the MSYS version: MSYS misreads the
+toolchain's Windows drive paths. The workspace selects
+`C:\Program Files\CMake\bin\cmake.exe` through `cmake.cmakePath`, which the configure
+tasks also use. New VS Code terminals put `%ProgramFiles%\CMake\bin` first on
+`PATH`. If CMake lives elsewhere, update both workspace settings. Existing
+terminals need to be reopened.
+
 The toolchain lives outside the repo, so its paths are yours rather than the
 project's. Copy the template and edit the three paths in it:
 

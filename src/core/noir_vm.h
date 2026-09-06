@@ -189,8 +189,9 @@ namespace NEONengine
      * built against it.
      *
      * A deferred call records what the script asked for and returns; the opcode
-     * ends the walk, so no session runs again this update. The scene acts on
-     * the request at the top of the next frame.
+     * ends the walk, so no session runs again this update. The scene can act
+     * after the VM returns in the same update. State entry waits for the next
+     * manager update; fades can start before this frame is displayed.
      *
      * Both deferred kinds also latch the VM, because one frame is not long
      * enough: a fade or a dialogue box lasts many. A modal one is lifted by

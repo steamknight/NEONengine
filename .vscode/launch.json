@@ -21,6 +21,8 @@
             "request": "launch",
             "name": "Amiga 1200 Tests",
             "config": "A1200-FAST",
+            // VM fixtures exceed the default 4 KiB AmigaDOS stack.
+            "stack": "65536",
             "program": "${workspaceFolder}/build/neonengine",
             "kickstart": "C:\\Users\\Public\\Documents\\Amiga Files\\Shared\\rom\\amiga-os-310-a1200.rom",
             "internalConsoleOptions": "openOnSessionStart",
