@@ -158,11 +158,12 @@ variables, eleven in `scene_bobs.cpp` alone. Each carried a `_load`/`_clear` pai
 that `sceneCreate` and `sceneDestroy` had to call, in order, by hand.
 
 **Change.** One class per module, the `s_*` state as members, the destructor
-doing what `_clear()` did. A `scene_runtime` holds them by value in teardown
-order. No virtuals: same memory, same generated code.
+doing what `_clear()` did. `scene_state` now holds the four helpers by value,
+in dependency order. The former `scene_runtime` allocation and getter-only
+wrapper are gone.
 
 **A correction to the list.** Nine modules were named here. Only four belong in
-`scene_runtime`, because the other five have different lifetimes:
+the scene state, because the other five have different lifetimes:
 
 - **`scene_text` has no state at all** — zero `s_*` variables, one function over
   its argument. A class around it would be an abstraction earning nothing. Left
@@ -190,9 +191,9 @@ order. No virtuals: same memory, same generated code.
 
 **What landed.** `scene_bobs`, `scene_hotspots`, `scene_timeline` and
 `scene_audio` — renamed **`scene_sound_effects`**, because it holds only effects
-and says so at length about music — are classes owned by a `scene_runtime`. The
-constructor takes the ACE bob manager where `scene_bobs_create()` had it; the
-destructors do what the four `_clear` functions did.
+and says so at length about music — are direct members of `scene_state`.
+Constructors only wire dependencies. Entry loads bobs, effects, hotspots and
+timeline, in that order, after drawing the backdrop.
 
 `sceneDestroy` no longer calls them in a hand-maintained order. Member
 declaration order does, and the reason is written where the members are:
@@ -205,13 +206,10 @@ Dependencies are arguments now. `scene_hotspots` and `scene_timeline` take
 retired about twenty `g_pEngine->data()` reaches. The graph turned out to be
 acyclic, so no back-pointers and no two-phase construction were needed.
 
-`scene_runtime` hangs off the engine, built by the scene state and dropped by it,
-because its parts want the screen and the pak and neither exists when the engine
-is built. `engine::scene()` returns a reference and dereferences its pointer
-unchecked, as `data()` and `vm()` do: every caller runs inside the scene state,
-and a box of text or a conversation is pushed *over* that state rather than
-swapped for it. The nullable accessor it replaced was guarding a case that cannot
-happen.
+The engine borrows the entered `scene_state`. `engine::scene()` returns that
+state so the bridge can reach its hotspots and timeline, including while a
+dialogue suspends it. The state exposes the helpers, not forwarding methods
+for each operation.
 
 **`asset_cache` landed on the engine.** `engine::initialize()` builds it before
 the first UI asset is read, and the engine's destructor releases it, replacing
@@ -236,17 +234,16 @@ straight after `stateManagerDestroy`, because the pointer's destructor reads the
 view and the OS, and both used to be gone by the time global destructors ran.
 Anything the engine gains that touches ACE state depends on that ordering.
 
-**Left for the second half.** Nothing. The runtime is built per scene: its
-constructor takes the scene and does what `load()` did, its destructor does what
-`_clear` did, and `load_scene` reads
+**Current lifetime.** One state owns one scene. The manager destroys the old
+state before entering its replacement:
 
 ```
-drop_scene()  ->  draw_backdrop(sc)  ->  build_scene(sc)
+destroy old state -> draw backdrop -> load bobs, effects, hotspots, timeline
 ```
 
 The palette appears nowhere in that: `~scene_timeline` hands its bands back,
-which is the one place that knows they were turned. The engine only holds the
-runtime, so its pair is named for what it does to it.
+which is the one place that knows they were turned. The engine binds and
+unbinds the state by identity.
 
 Two things had to move first, because they were sitting in `scene_bobs` with the
 wrong lifetime and per-scene construction would have churned both every scene
@@ -257,11 +254,11 @@ never swapped.
 
 A scene is now always loaded once the scene state runs, so `engine::initialize()`
 refuses a project whose boot scene does not exist rather than leaving the state
-to dereference a runtime that was never built.
+to run a scene that never loaded.
 
 That last step had an ordering constraint. `draw_backdrop()` used to call the
 timeline's `restore_palette()` itself, on the *outgoing* scene while loading the
-incoming one, so the old runtime could not be dropped before the backdrop was
+incoming one, so the old helpers could not be dropped before the backdrop was
 painted: the order has to be restore, destroy, paint, construct. That reads as an
 argument against putting the restore in `~scene_timeline`, and it was, for as
 long as `draw_backdrop()` served both the scene load and the language repaint.
@@ -280,7 +277,7 @@ way. And it thins the scene state down to an adapter.
 
 **The current implementation replaces `state_host`.** `state_manager` owns
 Fast RAM state objects through `state_ptr`. There is one `scene_state` per loaded
-scene, not a permanent object with placement-new storage for changing runtimes.
+scene, not a permanent object with placement-new storage for changing resources.
 The earlier static-storage and private-host-access rationale no longer applies.
 
 ### Lifetime and transitions
@@ -309,15 +306,27 @@ after its report; F9 exits.
 
 ### Scene ownership and errors
 
-`scene_state(engine&, id)` owns a `scene_runtime_ptr`, built only during entry.
+`scene_state(engine&, id)` owns bobs, sound effects, hotspots and timeline as
+ordinary members, declared in that order. Their constructors acquire no scene
+resources. `load_scene()` loads them after the backdrop under its OS-use guard.
 The engine holds a borrowed pointer for `engine::scene()` and the VM bridge.
-Binding asserts that no runtime is already registered; unbinding checks identity.
-The registered runtime stays alive while an overlay suspends the scene.
+Binding asserts that no scene is already registered; unbinding checks identity.
+The registered state stays alive while an overlay suspends the scene.
 
 Only destruction of the state that owns that registration clears scene requests,
 overlays and VM execution. An unentered or failed state must not reset a different
-scene's VM or unbind its runtime. Runtime destruction runs under an OS-use guard;
-member order still releases hotspots before bobs. Scene destruction does not
+scene's VM or unbind its state. Bobs record registration during load and reset
+the shared manager only when they registered a set. Empty hotspots only hide
+their own bobs' caption; empty timelines have no palette cycles to restore.
+Reverse member destruction restores timeline bands and releases hotspots before
+bobs.
+
+A guard in the state destructor body would end before member destruction.
+Instead, cleanup uses the guards already at the release sites: ACE's
+`bobDeallocBuffers()`, `bitmapDestroy()` and `ptplayerSfxDestroy()` guard their
+frees. `ace::bitmap_ptr` calls `bitmapDestroy()`; `mtl::vector` frees its storage
+through global delete, which calls ACE's guarded `memFree` in debug and release.
+No extra guard or resource wrapper is needed. Scene destruction does not
 free music: `MUSIC_KEEP` carries it across a replacement, and `MUSIC_SILENCE`
 stops it when the incoming scene loads.
 
@@ -345,7 +354,10 @@ scene click.
 
 The scene records the language used to render it, rather than relying on the
 engine's one-frame language-change flag. A change during suspension therefore
-triggers caption and scene-text rebuilding when the scene returns. Rebuilding
+triggers caption and scene-text rebuilding when the scene returns. Caption
+reload receives the owning scene, not the engine's current scene id. Backdrop
+drawing keeps static text out of the bob set; it needs no presentation class.
+Rebuilding
 waits during fade-out. Once black, the VM gets a chance to request a scene change
 before rebuilding; if it stays, the scene rebuilds that frame rather than
 leaving hotspots and tracks paused indefinitely.
@@ -395,7 +407,7 @@ their palette band, restores the
 previous text color, unfreezes the display and frees remaining glyphs. A
 portrait takes its palette band only when shown, not while loading. Unentered
 states and empty entries own no display changes. Clearing the manager uses
-the same cleanup, before destroying the suspended scene runtime.
+the same cleanup, before destroying the suspended scene.
 
 The first message, diagnostic or dialogue owns the slot until entry. The slot
 copies text and captions, and the pending message state copies them again so
@@ -434,10 +446,15 @@ Language tests release the original table while choices remain drawn and check
 the next page against the new language's glyphs.
 
 `scene_state_tests.h` checks real scene entry errors, pending scene/debug
-destruction and borrowed-runtime access. Loaded-scene cases use read-only,
+destruction and borrowed-state access. Loaded-scene cases use read-only,
 scriptless authored scenes and observe the real scene callbacks. They cover
 dialogue-to-message-to-scene restoration, bob buffer preparation, clearing an
 active overlay, terminal request priority and successful scene replacement.
+Pending cancellation and invalid entry leave an active scene's registration,
+requests, VM, pixels, palette and Chip RAM intact. Clearing a queued replacement
+checks that pending destruction leaves the outgoing bob buffers alive until
+the outgoing state's destructor. A new scene then checks that cleanup allows
+fresh bob registration. The bridge test runs with a real suspended scene.
 A bound dialogue-session display script uses the engine bridge and VM to
 request that replacement while a real dialogue is visible. This tests the
 request and closure path, not an authored displayed page containing GOTO_SCENE.

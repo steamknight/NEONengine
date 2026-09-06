@@ -133,7 +133,11 @@ namespace NEONengine
     }  // namespace
 
     scene_state::scene_state(engine& engine, u16 scene_id) noexcept
-        : _engine(engine), _scene_id(scene_id)
+        : _engine(engine), _scene_id(scene_id),
+          _bobs(engine.data(), engine.assets()),
+          _sound_effects(engine.data(), engine.assets()),
+          _hotspots(engine.data(), _bobs, _sound_effects, engine.pointer()),
+          _timeline(engine.data(), _bobs, _sound_effects)
     {
     }
 
@@ -156,9 +160,10 @@ namespace NEONengine
             auto const backdrop = draw_backdrop(_engine, scene);
             if (!backdrop) return backdrop;
 
-            _runtime = mtl::make_unique<scene_runtime>(
-                data, _engine.assets(), _engine.pointer(), scene);
-            if (!_runtime) return mtl::unexpected("Cannot allocate scene runtime");
+            _bobs.load(scene);
+            _sound_effects.load(scene);
+            _hotspots.load(scene);
+            _timeline.load(scene);
 
             if (!silence && scene.music_hash != MUSIC_KEEP)
             {
@@ -201,7 +206,7 @@ namespace NEONengine
         if (!result) return result;
 
         _engine.set_current_scene(_scene_id);
-        _engine.bind_scene_runtime(*_runtime);
+        _engine.bind_scene(*this);
         start_entry_script();
         return {};
     }
@@ -267,11 +272,11 @@ namespace NEONengine
 
         show_wait_pointer(_engine);
         mtl::system_use_guard guard;
-        _runtime->bobs().reload_captions();
         auto const& scene = _engine.data().scenes()[_scene_id];
+        _bobs.reload_captions(scene);
         if (scene.text_region_range.count != 0)
         {
-            _runtime->timeline().restore_palette();
+            _timeline.restore_palette();
             auto const result = draw_backdrop(_engine, scene);
             if (!result)
             {
@@ -294,7 +299,7 @@ namespace NEONengine
         if (!rebuild_for_language()) return;
         if (_engine.overlays().present(control, _engine.vm(), _engine))
         {
-            _runtime->bobs().draw();
+            _bobs.draw();
             return;
         }
 
@@ -304,12 +309,12 @@ namespace NEONengine
         bool const language_ready = _rendered_language == _engine.current_language();
         if (!_engine.vm().blocked() && language_ready)
         {
-            _runtime->timeline().update();
+            _timeline.update();
             if (apply_system_request(control)) return;
         }
         if (!_engine.vm().blocked() && language_ready)
         {
-            _runtime->hotspots().update();
+            _hotspots.update();
             if (apply_system_request(control)) return;
         }
 
@@ -320,8 +325,8 @@ namespace NEONengine
         if (!rebuild_for_language(true)) return;
 
         _engine.pointer().update();
-        _runtime->bobs().update();
-        _runtime->bobs().draw();
+        _bobs.update();
+        _bobs.draw();
         if (_engine.overlays().present(control, _engine.vm(), _engine)) return;
         if (debug_requested)
         {
@@ -331,17 +336,12 @@ namespace NEONengine
 
     scene_state::~scene_state()
     {
-        if (_runtime)
+        if (_engine.unbind_scene(*this))
         {
-            if (_engine.unbind_scene_runtime(*_runtime))
-            {
-                _engine.take_pending_modal();
-                _engine.take_pending_system();
-                _engine.overlays().clear();
-                _engine.vm().reset_execution();
-            }
-            mtl::system_use_guard guard;
-            _runtime.reset(nullptr);
+            _engine.take_pending_modal();
+            _engine.take_pending_system();
+            _engine.overlays().clear();
+            _engine.vm().reset_execution();
         }
         if (_log_open) logBlockEnd("State: Scene");
     }
@@ -349,11 +349,11 @@ namespace NEONengine
     void scene_state::suspended()
     {
         // Overlays restore from the other buffer, so draw the same pose there.
-        _runtime->bobs().draw();
+        _bobs.draw();
     }
 
     void scene_state::resumed()
     {
-        _runtime->hotspots().resync_button();
+        _hotspots.resync_button();
     }
 }  // namespace NEONengine

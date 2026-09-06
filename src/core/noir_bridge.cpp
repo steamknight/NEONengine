@@ -8,7 +8,7 @@
 
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
-#include "core/scene_runtime.h"
+#include "states/scene.h"
 #include "core/screen.h"
 #include "core/string_table.h"
 #include "types.h"

@@ -17,40 +17,6 @@ namespace NEONengine
 {
     namespace
     {
-        class registered_runtime_fixture
-        {
-            public:
-            registered_runtime_fixture() : _engine(*g_pEngine)
-            {
-                data::scene scene{};
-                scene.timeline_id = data::NO_ID;
-                mtl::system_use_guard guard;
-                _runtime = mtl::make_unique<scene_runtime>(
-                    _engine.data(), _engine.assets(), _engine.pointer(), scene);
-                if (_runtime) _engine.bind_scene_runtime(*_runtime);
-            }
-
-            ~registered_runtime_fixture()
-            {
-                if (_runtime)
-                {
-                    _engine.unbind_scene_runtime(*_runtime);
-                    mtl::system_use_guard guard;
-                    _runtime.reset(nullptr);
-                }
-                _engine.vm().reset_execution();
-                _engine.take_pending_system();
-                _engine.take_pending_modal();
-                _engine.overlays().clear();
-            }
-
-            scene_runtime* runtime() const { return _runtime.get(); }
-
-            private:
-            engine& _engine;
-            scene_runtime_ptr _runtime{ nullptr };
-        };
-
         struct failed_scene_callbacks
         {
             u16 _destroyed{ 0 };
@@ -91,10 +57,11 @@ namespace NEONengine
 
         struct scene_observation
         {
-            scene_runtime* _runtime{ nullptr };
+            scene_state* _scene{ nullptr };
             u16 _suspended{ 0 };
             u16 _resumed{ 0 };
             u16 _destroyed{ 0 };
+            ULONG _chip_on_destroy{ 0 };
             u32 _pixels{ 0 };
             ULONG _colors[256]{};
             bool _buffers_ready{ false };
@@ -105,7 +72,7 @@ namespace NEONengine
             bool restored() const
             {
                 auto& screen = g_pEngine->main_screen();
-                return &g_pEngine->scene() == _runtime
+                return &g_pEngine->scene() == _scene
                     && screen.front_buffer() != screen.back_buffer()
                     && scene_test_pixels(screen.front_buffer()) == _pixels
                     && memcmp(_colors, screen.palette(), sizeof(_colors)) == 0;
@@ -121,7 +88,7 @@ namespace NEONengine
             mtl::expected<void, char const*> pushed() override
             {
                 auto result = scene_state::pushed();
-                if (result) _observation._runtime = &g_pEngine->scene();
+                if (result) _observation._scene = &g_pEngine->scene();
                 return result;
             }
 
@@ -145,7 +112,8 @@ namespace NEONengine
             ~observed_scene() override
             {
                 ++_observation._destroyed;
-                if (_observation._runtime && _observation._suspended)
+                _observation._chip_on_destroy = memGetFreeChipSize();
+                if (_observation._scene && _observation._suspended)
                     _observation._restored_on_destroy = _observation.restored();
                 _observation._terminal_on_destroy = g_pEngine->vm().terminated();
             }
@@ -253,12 +221,20 @@ namespace NEONengine
                 return result;
             }
 
-            char const* open(state_manager& manager, scene_observation& observation, u16 scene)
+            char const* load(state_manager& manager, scene_observation& observation, u16 scene)
             {
                 TEST_ASSERT(_report, "the test report snapshot must allocate");
                 TEST_ASSERT(scene != data::NO_ID, "the pak must contain the requested scriptless scene fixture");
                 manager.start<observed_scene>(*g_pEngine, scene, observation);
                 TEST_ASSERT(tick(manager) == state_update_result::ok, "the production scene must load");
+                TEST_ASSERT(&g_pEngine->scene() == observation._scene, "entry must bind the scene state");
+                TEST_SUCCESS;
+            }
+
+            char const* open(state_manager& manager, scene_observation& observation, u16 scene)
+            {
+                auto const fault = load(manager, observation, scene);
+                TEST_ASSERT(!fault, fault);
                 TEST_ASSERT(g_pEngine->vm().execute(0), "SHOW_DIALOG should start on the scene VM");
                 TEST_ASSERT(tick(manager) == state_update_result::ok, "the scene should queue its dialogue");
                 TEST_ASSERT(g_pEngine->vm().blocked(), "SHOW_DIALOG must latch before the overlay enters");
@@ -267,7 +243,7 @@ namespace NEONengine
                     "scene suspension must paint the displayed bob pose into the restoration buffer");
                 TEST_ASSERT(g_pEngine->main_screen().front_buffer() == g_pEngine->main_screen().back_buffer(),
                     "the production dialogue must freeze the display");
-                TEST_ASSERT(&g_pEngine->scene() == observation._runtime, "the suspended runtime must remain registered");
+                TEST_ASSERT(&g_pEngine->scene() == observation._scene, "the suspended scene must remain registered");
                 TEST_SUCCESS;
             }
         };
@@ -294,21 +270,28 @@ namespace NEONengine
         }
     }
 
-    TEST_IMPL(test_pending_scene_and_debug_leave_registered_runtime)
+    TEST_IMPL(test_pending_scene_and_debug_leave_active_scene)
     {
-        registered_runtime_fixture fixture;
-        TEST_ASSERT(fixture.runtime(), "the empty runtime should allocate");
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        scene_observation observation;
+        state_manager active;
+        auto const fault = fixture.load(active, observation, loaded_scene_fixture::scene_id());
+        TEST_ASSERT(!fault, fault);
         auto& engine = *g_pEngine;
         u16 const scene_id = engine.current_scene();
         auto* front = engine.main_screen().front_buffer();
         auto* back = engine.main_screen().back_buffer();
+        ULONG const chip_free = memGetFreeChipSize();
+        u32 const pixels = scene_test_pixels(front);
+        ULONG colors[256];
+        memcpy(colors, engine.main_screen().palette(), sizeof(colors));
         TEST_ASSERT(engine.vm().execute(0), "an authored function should queue without executing");
         engine.request_system(system_kind::load_scene, 17);
         engine.request_modal(modal_kind::fade_out, 37);
         engine.overlays().post_message(message_request{ .text = "leave pending" });
         {
             state_manager pending;
-            pending.start<scene_state>(engine, data::NO_ID);
+            pending.start<scene_state>(engine, scene_id);
             pending.clear();
         }
         {
@@ -316,7 +299,11 @@ namespace NEONengine
             pending.start<debug_view_state>(engine);
             pending.clear();
         }
-        TEST_ASSERT(&engine.scene() == fixture.runtime(), "unentered states must leave the registered runtime bound");
+        TEST_ASSERT(&engine.scene() == observation._scene, "unentered states must leave the active scene bound");
+        TEST_ASSERT(memGetFreeChipSize() == chip_free, "pending cancellation must not release active bob buffers");
+        TEST_ASSERT(scene_test_pixels(front) == pixels
+            && memcmp(colors, engine.main_screen().palette(), sizeof(colors)) == 0,
+            "unloaded helpers must not change the active pixels or palette");
         TEST_ASSERT(engine.current_scene() == scene_id, "an unentered scene must not change the scene id");
         TEST_ASSERT(engine.vm().session_count() == 1, "unentered states must not reset the active VM");
         TEST_ASSERT(engine.has_pending_system() && engine.has_pending_modal(), "unentered states must leave requests intact");
@@ -325,14 +312,23 @@ namespace NEONengine
         TEST_ASSERT(engine.overlays().kind() == overlay_kind::message, "unentered states must not clear the overlay");
         TEST_ASSERT(engine.main_screen().front_buffer() == front && engine.main_screen().back_buffer() == back,
             "unentered debug state must not freeze or resume the display");
+        engine.scene().bobs().draw();
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_invalid_scene_entry_leaves_unowned_runtime)
+    TEST_IMPL(test_invalid_scene_entry_leaves_active_scene)
     {
-        registered_runtime_fixture fixture;
-        TEST_ASSERT(fixture.runtime(), "the empty runtime should allocate");
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        scene_observation observation;
+        state_manager active;
+        auto const fault = fixture.load(active, observation, loaded_scene_fixture::scene_id());
+        TEST_ASSERT(!fault, fault);
         auto& engine = *g_pEngine;
+        ULONG const chip_free = memGetFreeChipSize();
+        u16 const scene_id = engine.current_scene();
+        u32 const pixels = scene_test_pixels(engine.main_screen().front_buffer());
+        ULONG colors[256];
+        memcpy(colors, engine.main_screen().palette(), sizeof(colors));
         TEST_ASSERT(engine.vm().execute(0), "an authored function should queue");
         engine.request_modal(modal_kind::fade_out, 11);
         engine.request_system(system_kind::load_scene, 23);
@@ -341,19 +337,23 @@ namespace NEONengine
         manager.start<scene_state>(engine, data::NO_ID);
         TEST_ASSERT(manager.update() == state_update_result::error, "invalid scene entry must be fatal");
         TEST_ASSERT(strcmp(manager.error(), "Invalid scene id") == 0, "the manager should retain the scene's error");
-        TEST_ASSERT(&engine.scene() == fixture.runtime(), "failed entry must not unbind a runtime it does not own");
+        TEST_ASSERT(&engine.scene() == observation._scene, "failed entry must not unbind a scene it does not own");
+        TEST_ASSERT(engine.current_scene() == scene_id && memGetFreeChipSize() == chip_free,
+            "failed entry must leave the active scene id and bob buffers intact");
+        TEST_ASSERT(scene_test_pixels(engine.main_screen().front_buffer()) == pixels
+            && memcmp(colors, engine.main_screen().palette(), sizeof(colors)) == 0,
+            "failed entry must not change the active pixels or palette");
         TEST_ASSERT(engine.vm().session_count() == 1, "failed unowned entry must not reset another VM session");
         TEST_ASSERT(engine.has_pending_modal() && engine.has_pending_system(), "failed unowned entry must not consume requests");
         TEST_ASSERT(engine.overlays().kind() == overlay_kind::dialogue, "failed unowned entry must not consume the overlay");
         manager.clear();
         TEST_ASSERT(manager.update() == state_update_result::error, "clear must preserve the fatal result");
+        engine.scene().bobs().draw();
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_failed_scene_push_never_resumes_parent)
     {
-        registered_runtime_fixture fixture;
-        TEST_ASSERT(fixture.runtime(), "the empty runtime should allocate");
         failed_scene_callbacks callbacks;
         state_manager manager;
         manager.start<failed_scene_parent>(*g_pEngine, callbacks, false);
@@ -362,7 +362,6 @@ namespace NEONengine
         TEST_ASSERT(manager.update() == state_update_result::error, "the real scene should reject its invalid id");
         TEST_ASSERT(strcmp(manager.error(), "Invalid scene id") == 0, "the real scene error should survive destruction");
         TEST_ASSERT(callbacks._suspended == 1 && callbacks._resumed == 0, "failed scene entry must not resume its parent");
-        TEST_ASSERT(&g_pEngine->scene() == fixture.runtime(), "failed scene cleanup must not touch an unowned runtime");
         manager.clear();
         TEST_ASSERT(callbacks._destroyed == 1 && callbacks._resumed == 0, "fatal cleanup should destroy without resuming");
         TEST_SUCCESS;
@@ -370,8 +369,6 @@ namespace NEONengine
 
     TEST_IMPL(test_failed_scene_replacement_preserves_fatal_result)
     {
-        registered_runtime_fixture fixture;
-        TEST_ASSERT(fixture.runtime(), "the empty runtime should allocate");
         failed_scene_callbacks callbacks;
         state_manager manager;
         manager.start<failed_scene_parent>(*g_pEngine, callbacks, true);
@@ -386,16 +383,17 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_bridge_uses_borrowed_runtime_under_overlay)
+    TEST_IMPL(test_bridge_uses_suspended_scene)
     {
-        registered_runtime_fixture fixture;
-        TEST_ASSERT(fixture.runtime(), "the empty runtime should allocate");
+        dialogue_progress_fixture progress;
+        u16 const dialogue_id = progress.dialogue_id();
+        TEST_ASSERT(dialogue_id != data::NO_ID, "the pak must contain a readable dialogue");
+        loaded_scene_fixture fixture(dialogue_id, data::NO_ID);
+        scene_observation observation;
         auto& engine = *g_pEngine;
-        engine.overlays().post_dialogue(data::NO_ID);
         state_manager manager;
-        manager.start<dialogue_state>(engine, engine.vm(), engine.overlays(), data::NO_ID);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "an unavailable dialogue should enter");
-        TEST_ASSERT(&engine.scene() == fixture.runtime(), "an overlay must leave the scene registration live");
+        auto const fault = fixture.open(manager, observation, loaded_scene_fixture::scene_id());
+        TEST_ASSERT(!fault, fault);
 
         bytecode_builder code;
         u16 const script = code.begin_func();
@@ -408,8 +406,29 @@ namespace NEONengine
         auto const result = vm.execute_now(script);
         TEST_ASSERT(result && to<u16>(result.value()) == engine.current_scene(),
             "real bridge calls must reach the borrowed scene while an overlay is entered");
-        TEST_ASSERT(manager.update() == state_update_result::finished, "the unavailable dialogue should pop");
-        TEST_ASSERT(&engine.scene() == fixture.runtime(), "overlay destruction must leave the registration live");
+        TEST_ASSERT(&engine.scene() == observation._scene && observation._suspended == 1,
+            "bridge calls must keep the suspended scene bound");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_clearing_pending_scene_replacement_keeps_outgoing_resources)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        scene_observation observation;
+        state_manager manager;
+        u16 const scene_id = loaded_scene_fixture::scene_id();
+        auto const fault = fixture.load(manager, observation, scene_id);
+        TEST_ASSERT(!fault, fault);
+        ULONG const chip_free = memGetFreeChipSize();
+        g_pEngine->request_system(system_kind::load_scene, scene_id);
+        TEST_ASSERT(manager.update() == state_update_result::ok, "the scene should queue its replacement");
+        TEST_ASSERT(&g_pEngine->scene() == observation._scene && observation._destroyed == 0,
+            "a pending replacement must leave the outgoing scene bound and alive");
+        TEST_ASSERT(memGetFreeChipSize() == chip_free, "construction must not acquire scene resources");
+        manager.clear();
+        TEST_ASSERT(observation._destroyed == 1 && observation._chip_on_destroy == chip_free,
+            "clear must cancel the pending scene without freeing the outgoing bob buffers first");
+        TEST_ASSERT(!g_pEngine->vm().session_count(), "outgoing scene cleanup must reset its VM");
         TEST_SUCCESS;
     }
 
@@ -436,7 +455,7 @@ namespace NEONengine
             && g_pEngine->pending_system_kind() == system_kind::load_scene,
             "the engine VM and real engine bridge must retain the terminal scene request");
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "the visible dialogue should request pop");
-        TEST_ASSERT(observation._resumed == 0 && &g_pEngine->scene() == observation._runtime,
+        TEST_ASSERT(observation._resumed == 0 && &g_pEngine->scene() == observation._scene,
             "the scene must remain suspended and alive until dialogue cleanup");
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "pop should restore and resume the real scene");
         TEST_ASSERT(observation._resumed == 1 && observation._restored_on_resume,
@@ -449,7 +468,7 @@ namespace NEONengine
         TEST_ASSERT(observation._destroyed == 1 && observation._terminal_on_destroy,
             "the old scene must own the terminated VM until destruction");
         TEST_ASSERT(g_pEngine->current_scene() == destination && !g_pEngine->vm().terminated(),
-            "the replacement must bind its runtime and reset old execution");
+            "the replacement must bind its scene and reset old execution");
         TEST_ASSERT(g_pEngine->overlays().kind() == overlay_kind::none,
             "old scene cleanup must discard its diagnostic rather than display it in the new scene");
         manager.clear();
@@ -501,7 +520,7 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
-    TEST_IMPL(test_clearing_scene_with_dialogue_restores_before_runtime_destroy)
+    TEST_IMPL(test_clearing_scene_with_dialogue_restores_before_scene_destroy)
     {
         dialogue_progress_fixture progress;
         u16 const dialogue_id = progress.dialogue_id();
@@ -515,12 +534,15 @@ namespace NEONengine
         TEST_ASSERT(observation._destroyed == 1 && observation._resumed == 0,
             "clear must destroy the scene without resuming gameplay");
         TEST_ASSERT(observation._restored_on_destroy,
-            "dialogue cleanup must restore pixels and palette while the runtime remains registered");
+            "dialogue cleanup must restore pixels and palette while the scene remains registered");
         TEST_ASSERT(!g_pEngine->vm().blocked() && !g_pEngine->vm().session_count(),
             "scene destruction must reset execution after the overlay releases its wait");
-        registered_runtime_fixture next;
-        TEST_ASSERT(next.runtime() && &g_pEngine->scene() == next.runtime(),
-            "scene destruction must leave no stale registration");
+        scene_observation next_observation;
+        state_manager next;
+        auto const next_fault = fixture.load(next, next_observation, loaded_scene_fixture::scene_id());
+        TEST_ASSERT(!next_fault, next_fault);
+        TEST_ASSERT(&g_pEngine->scene() == next_observation._scene,
+            "scene destruction must allow a new scene and bob registration");
         TEST_SUCCESS;
     }
 
@@ -561,14 +583,15 @@ namespace NEONengine
     }
 
     TEST_SUITE_BEGIN(scene_state)
-        TEST(test_pending_scene_and_debug_leave_registered_runtime)
-        TEST(test_invalid_scene_entry_leaves_unowned_runtime)
+        TEST(test_pending_scene_and_debug_leave_active_scene)
+        TEST(test_invalid_scene_entry_leaves_active_scene)
         TEST(test_failed_scene_push_never_resumes_parent)
         TEST(test_failed_scene_replacement_preserves_fatal_result)
-        TEST(test_bridge_uses_borrowed_runtime_under_overlay)
+        TEST(test_bridge_uses_suspended_scene)
+        TEST(test_clearing_pending_scene_replacement_keeps_outgoing_resources)
         TEST(test_scene_applies_dialogue_terminal_before_diagnostic)
         TEST(test_scene_dialogue_diagnostic_restores_between_overlays)
-        TEST(test_clearing_scene_with_dialogue_restores_before_runtime_destroy)
+        TEST(test_clearing_scene_with_dialogue_restores_before_scene_destroy)
         TEST(test_scene_reconciles_language_after_dialogue_pop)
     TEST_SUITE_END
 }

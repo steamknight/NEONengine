@@ -166,7 +166,7 @@ namespace NEONengine
     };
 
     class engine;
-    class scene_runtime;
+    class scene_state;
     using engine_ptr = mtl::unique_ptr<engine>;
     using screen_ptr = mtl::unique_ptr<screen>;
 
@@ -231,23 +231,23 @@ namespace NEONengine
         mouse_pointer& pointer() noexcept { return *_pointer; }
         noir_vm& vm() noexcept { return *_vm; }
 
-        void bind_scene_runtime(scene_runtime& runtime) noexcept
+        void bind_scene(scene_state& scene) noexcept
         {
-            assert(!_scene_runtime, "a scene runtime is already bound");
-            _scene_runtime = &runtime;
+            assert(!_scene, "a scene is already bound");
+            _scene = &scene;
         }
 
-        bool unbind_scene_runtime(scene_runtime& runtime) noexcept
+        bool unbind_scene(scene_state& scene) noexcept
         {
-            if (_scene_runtime != &runtime) return false;
-            _scene_runtime = nullptr;
+            if (_scene != &scene) return false;
+            _scene = nullptr;
             return true;
         }
 
-        scene_runtime& scene() noexcept
+        scene_state& scene() noexcept
         {
-            assert(_scene_runtime, "no scene runtime is bound");
-            return *_scene_runtime;
+            assert(_scene, "no scene is bound");
+            return *_scene;
         }
 
         /**
@@ -380,7 +380,7 @@ namespace NEONengine
         ace::bitmap_ptr                  _caption_ink{ nullptr };
         string_table_ptr                 _strings{ nullptr };
         noir_vm_ptr                      _vm{ nullptr };
-        scene_runtime*                    _scene_runtime{ nullptr };
+        scene_state*                      _scene{ nullptr };
 
         // Current game session, overwriten on new/save/load game.
         game_session                     _session{};

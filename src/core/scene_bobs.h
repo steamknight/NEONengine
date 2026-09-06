@@ -63,16 +63,14 @@ namespace NEONengine
     {
         public:  //////////////////////////////////////////////////////////////////////////////////
         /**
-         * @brief Forgets the previous scene's bob set, ready for a new one.
-         *
-         * The bob manager belongs to the screen and outlives every scene.
+         * @brief Stores dependencies without acquiring the screen's bob manager.
          */
         scene_bobs(game_data& data, asset_cache& cache);
         scene_bobs(scene_bobs const&)            = delete;
         scene_bobs& operator=(scene_bobs const&) = delete;
 
         /**
-         * @brief Destroys the bob manager and frees all per-scene bob assets.
+         * @brief Releases this scene's bob registration and assets.
          */
         ~scene_bobs();
 
@@ -166,7 +164,7 @@ namespace NEONengine
          * language change must rebuild them. Reads nothing from disk but allocates
          * through ACE's font helpers, so call under a system-use guard.
          */
-        void reload_captions();
+        void reload_captions(data::scene const& scene);
 
         private:  /////////////////////////////////////////////////////////////////////////////////
         // One placed graphic: its ACE bob plus the frame strip and optional
@@ -264,6 +262,7 @@ namespace NEONengine
 
         game_data& _data;
         asset_cache& _cache;
+        bool _registered{ false };
 
         mtl::vector<graphic_asset> _assets;  ///< The live bobs and their backing data.
 

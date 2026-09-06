@@ -67,19 +67,8 @@ namespace NEONengine
 
     scene_bobs::~scene_bobs()
     {
-        // Before the storage it points into goes: the manager belongs to the
-        // screen and outlives this, so leaving it holding this scene's set would
-        // leave it holding freed bitmaps. It is also what lets the next scene
-        // call bobInit(), which ACE forbids once bobReallocateBuffers() has run.
-        bobManagerReset();
-
-        _assets.clear();
-        _instance_bob.clear();
-        _hotspot_assets.clear();
-        _hotspot_bob.clear();
-        _captions.clear();
-        _caption_ready   = false;
-        _caption_visible = false;
+        // Drop manager pointers before member storage; an unentered scene owns none.
+        if (_registered) bobManagerReset();
     }
 
     scene_bobs::frame_ptrs scene_bobs::frame_at(graphic_asset& asset, u8 index)
@@ -341,6 +330,7 @@ namespace NEONengine
         // well.
         if (!_assets.empty() || !_hotspot_assets.empty() || _caption_ready)
         {
+            _registered = true;
             bobReallocateBuffers();
         }
 
@@ -481,7 +471,7 @@ namespace NEONengine
         _caption_visible = false;
     }
 
-    void scene_bobs::reload_captions()
+    void scene_bobs::reload_captions(data::scene const& scene)
     {
         if (!_caption_ready) return;
 
@@ -489,10 +479,6 @@ namespace NEONengine
         // ones are in place and a hover re-supplies the pointer.
         _caption_visible = false;
 
-        auto const scene_id = g_pEngine->current_scene();
-        auto const scenes   = _data.scenes();
-        if (scene_id >= scenes.size()) return;
-
-        render_captions(scenes[scene_id], to<u16>(g_pEngine->caption_ink()->Rows));
+        render_captions(scene, to<u16>(g_pEngine->caption_ink()->Rows));
     }
 }  // namespace NEONengine
