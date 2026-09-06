@@ -180,6 +180,8 @@ namespace NEONengine
                 screen.bind_mouse();
                 engine.pointer().set_visible(true);
                 engine.pointer().switch_to(pointer_role::DEFAULT);
+                screen.fade_from_black(1, 0, nullptr);
+                screen.process();
                 keySetState(KEY_F1, _f1);
                 mtl::system_use_guard guard;
                 engine.vm() = mtl::move(_saved_vm);
@@ -582,6 +584,101 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    TEST_IMPL(test_scene_defers_language_during_fade_out_then_rebuilds_black)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        dialogue_strings_fixture strings;
+        scene_observation observation;
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, loaded_scene_fixture::scene_id(true));
+        TEST_ASSERT(!fault, fault);
+        auto& engine = *g_pEngine;
+        auto& screen = engine.main_screen();
+        u32 const original = scene_test_pixels(screen.front_buffer());
+        language const next = engine.current_language() == language::IT ? language::EN : language::IT;
+        TEST_ASSERT(strings.replace(next), "the alternate shipped language must load");
+
+        screen.fade_to_black(2, 0, nullptr);
+        TEST_ASSERT(manager.update() == state_update_result::ok, "the fading scene should keep updating");
+        TEST_ASSERT(scene_test_pixels(screen.front_buffer()) == original
+            && scene_test_pixels(screen.back_buffer()) == original,
+            "neither scheduling point should repaint while fading out");
+        screen.process();
+        screen.process();
+        TEST_ASSERT(screen.palette_ratio() == 0 && !screen.fade_owns_palette(),
+            "the fade must finish at black before the next scene update");
+
+        TEST_ASSERT(manager.update() == state_update_result::ok, "the scene should rebuild after scripts at black");
+        u32 const translated = scene_test_pixels(screen.front_buffer());
+        TEST_ASSERT(translated != original && scene_test_pixels(screen.back_buffer()) == translated,
+            "a scene that stays must repaint both buffers without waiting for fade-in");
+        TEST_ASSERT(screen.palette_ratio() == 0, "rebuilding must not start a fade");
+        TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "the translated scene should keep updating");
+        TEST_ASSERT(scene_test_pixels(screen.front_buffer()) == translated,
+            "the next buffer flip must retain the translated backdrop");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_scene_black_terminal_skips_language_rebuild)
+    {
+        u16 const destination = loaded_scene_fixture::empty_scene_id();
+        TEST_ASSERT(destination != data::NO_ID, "the pak must contain an empty replacement scene");
+        loaded_scene_fixture fixture(data::NO_ID, destination);
+        dialogue_strings_fixture strings;
+        scene_observation observation;
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, loaded_scene_fixture::scene_id(true));
+        TEST_ASSERT(!fault, fault);
+        auto& engine = *g_pEngine;
+        auto& screen = engine.main_screen();
+        screen.fade_to_black(1, 0, nullptr);
+        screen.process();
+        TEST_ASSERT(screen.palette_ratio() == 0 && !screen.fade_owns_palette(), "the scene should be black");
+        u32 const original = scene_test_pixels(screen.front_buffer());
+        language const next = engine.current_language() == language::IT ? language::EN : language::IT;
+        TEST_ASSERT(strings.replace(next), "the alternate shipped language must load");
+        TEST_ASSERT(engine.vm().execute(1), "the scene-changing script should queue");
+
+        TEST_ASSERT(manager.update() == state_update_result::ok, "the VM should request scene replacement");
+        TEST_ASSERT(engine.vm().terminated() && !engine.has_pending_system(),
+            "the scene must apply the VM's terminal request in this update");
+        TEST_ASSERT(&engine.scene() == observation._scene && observation._destroyed == 0,
+            "the outgoing scene must stay alive until the replacement enters");
+        TEST_ASSERT(scene_test_pixels(screen.front_buffer()) == original
+            && scene_test_pixels(screen.back_buffer()) == original,
+            "neither scheduling point should rebuild the outgoing scene");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_scene_rebuilds_language_before_overlay_at_fade_in_start)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        dialogue_strings_fixture strings;
+        scene_observation observation;
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, loaded_scene_fixture::scene_id(true));
+        TEST_ASSERT(!fault, fault);
+        auto& engine = *g_pEngine;
+        auto& screen = engine.main_screen();
+        screen.fade_to_black(1, 0, nullptr);
+        screen.process();
+        u32 const original = scene_test_pixels(screen.front_buffer());
+        language const next = engine.current_language() == language::IT ? language::EN : language::IT;
+        TEST_ASSERT(strings.replace(next), "the alternate shipped language must load");
+        screen.fade_from_black(2, 0, nullptr);
+        TEST_ASSERT(screen.palette_ratio() == 0 && screen.fade_owns_palette(),
+            "fade-in should own the palette while still black");
+        engine.overlays().post_message(message_request{ .text = "after language rebuild" });
+
+        TEST_ASSERT(manager.update() == state_update_result::ok, "the scene should rebuild before presenting its overlay");
+        u32 const translated = scene_test_pixels(screen.front_buffer());
+        TEST_ASSERT(translated != original && scene_test_pixels(screen.back_buffer()) == translated,
+            "the pre-script check must allow rebuilding at the start of fade-in");
+        TEST_ASSERT(observation._suspended == 0 && engine.overlays().kind() == overlay_kind::message,
+            "the overlay should still await entry, after the scene update returned early");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(scene_state)
         TEST(test_pending_scene_and_debug_leave_active_scene)
         TEST(test_invalid_scene_entry_leaves_active_scene)
@@ -593,6 +690,9 @@ namespace NEONengine
         TEST(test_scene_dialogue_diagnostic_restores_between_overlays)
         TEST(test_clearing_scene_with_dialogue_restores_before_scene_destroy)
         TEST(test_scene_reconciles_language_after_dialogue_pop)
+        TEST(test_scene_defers_language_during_fade_out_then_rebuilds_black)
+        TEST(test_scene_black_terminal_skips_language_rebuild)
+        TEST(test_scene_rebuilds_language_before_overlay_at_fade_in_start)
     TEST_SUITE_END
 }
 

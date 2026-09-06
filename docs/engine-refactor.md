@@ -165,9 +165,9 @@ wrapper are gone.
 **A correction to the list.** Nine modules were named here. Only four belong in
 the scene state, because the other five have different lifetimes:
 
-- **`scene_text` has no state at all** — zero `s_*` variables, one function over
-  its argument. A class around it would be an abstraction earning nothing. Left
-  as it is.
+- **Static scene text has no state.** It now lives inside `scene_backdrop`,
+  together with background drawing and palette reading. One free function takes
+  concrete dependencies; it needs no class or resource owner.
 - **`dialogue_portraits` lives for one conversation**, not one scene, and only
   `dialogue.cpp` touches it. It belongs to item 3's `state_host<dialogue_state>`.
   Moving it here would only mean moving it again. It landed there, as a member of
@@ -352,15 +352,27 @@ before using the buffer. Message, dialogue and debug states all restore from it.
 resynchronizes hotspot button edges so a dismissal press cannot become a
 scene click.
 
-The scene records the language used to render it, rather than relying on the
-engine's one-frame language-change flag. A change during suspension therefore
-triggers caption and scene-text rebuilding when the scene returns. Caption
-reload receives the owning scene, not the engine's current scene id. Backdrop
-drawing keeps static text out of the bob set; it needs no presentation class.
-Rebuilding
-waits during fade-out. Once black, the VM gets a chance to request a scene change
-before rebuilding; if it stays, the scene rebuilds that frame rather than
-leaving hotspots and tracks paused indefinitely.
+`scene_backdrop_draw()` takes the scene, game data, asset cache, screen, strings
+and nullable text renderer. Palette reading and static text layout stay private
+to that module. It keeps the drawing order: background palette and bitmap, UI
+colors, cursor palette exemption, text, then back-to-front copy. No background
+bitmap means no clear or scene-palette load; existing pixels remain. Text stays
+below bobs, with stable region order and clipping, and adds no retained resources.
+The state sets pointer visibility after a successful draw, before any pointer
+update; drawing itself cannot change it.
+
+The scene records its rendered language. A change during suspension therefore
+triggers rebuilding when the scene returns. `update()` owns both scheduling
+checks: rebuild only on a language mismatch, never during fade-out. Before
+scripts, also skip a black screen when no fade owns its palette. After scripts
+and their requests, rebuild even while black if the scene remains. This lets a
+terminal request stop the update before the old scene reloads. Timeline and
+hotspots wait until the rendered language matches.
+
+`rebuild_for_language()` does the work, with no scheduling parameter: reload
+captions; for static text, restore timeline colors, draw the backdrop and discard
+saved bob backgrounds; then record the rendered language. Caption reload receives
+the owning scene. A required backdrop failure still logs and calls `gameExit()`.
 
 ### Message and dialogue overlays
 
@@ -450,6 +462,9 @@ destruction and borrowed-state access. Loaded-scene cases use read-only,
 scriptless authored scenes and observe the real scene callbacks. They cover
 dialogue-to-message-to-scene restoration, bob buffer preparation, clearing an
 active overlay, terminal request priority and successful scene replacement.
+Language cases cover fade-out deferral, rebuilding while black when the scene
+stays, skipping an outgoing scene's rebuild after a script requests replacement,
+and rebuilding before an overlay when fade-in owns a still-black palette.
 Pending cancellation and invalid entry leave an active scene's registration,
 requests, VM, pixels, palette and Chip RAM intact. Clearing a queued replacement
 checks that pending destruction leaves the outgoing bob buffers alive until

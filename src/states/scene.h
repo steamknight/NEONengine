@@ -33,7 +33,7 @@ namespace NEONengine
         void start_entry_script();
         void start_pending_modal();
         bool apply_system_request(state_control& control);
-        bool rebuild_for_language(bool after_scripts = false);
+        bool rebuild_for_language();
 
         engine& _engine;
         u16 _scene_id;
