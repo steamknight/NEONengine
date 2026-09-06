@@ -1,5 +1,6 @@
 #include "scene_backdrop.h"
 
+#include "neonengine.h"
 #include "types.h"
 
 #include <ace/managers/blit.h>
@@ -237,10 +238,12 @@ namespace NEONengine
         }
     }  // namespace
 
-    mtl::expected<void, char const*> scene_backdrop_draw(data::scene const& scene,
-        game_data const& data, asset_cache& assets, screen& screen,
-        string_table const& strings, text_renderer* renderer)
+    mtl::expected<void, char const*> scene_backdrop_draw(engine& engine, data::scene const& scene)
     {
+        auto const& data = engine.data();
+        auto& assets = engine.assets();
+        auto& screen = engine.main_screen();
+
         if (scene.background_bitmap_id != data::NO_ID)
         {
             auto const bitmaps = data.bitmaps();
@@ -278,7 +281,7 @@ namespace NEONengine
         }
 
         screen.set_cursor_band_exempt(shows_ui);
-        draw_text(scene, data, screen, strings, renderer);
+        draw_text(scene, data, screen, engine.strings(), engine.default_text_renderer());
         // Bobs must find the new backdrop in either buffer before registration.
         screen.duplicate_back_to_front();
         return {};

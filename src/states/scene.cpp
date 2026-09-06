@@ -79,8 +79,7 @@ namespace NEONengine
         bool music_started = false;
         {
             mtl::system_use_guard guard;
-            auto const backdrop = scene_backdrop_draw(scene, data, _engine.assets(),
-                _engine.main_screen(), _engine.strings(), _engine.default_text_renderer());
+            auto const backdrop = scene_backdrop_draw(_engine, scene);
             if (!backdrop) return backdrop;
             _engine.pointer().set_visible((scene.flags & data::SCENE_FLAG_SHOW_UI) != 0);
 
@@ -194,8 +193,7 @@ namespace NEONengine
         if (scene.text_region_range.count != 0)
         {
             _timeline.restore_palette();
-            auto const result = scene_backdrop_draw(scene, _engine.data(), _engine.assets(),
-                _engine.main_screen(), _engine.strings(), _engine.default_text_renderer());
+            auto const result = scene_backdrop_draw(_engine, scene);
             if (!result)
             {
                 NE_LOG_ALWAYS("scene %hu language reload failed: %s", _scene_id, result.error());

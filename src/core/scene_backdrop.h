@@ -7,11 +7,7 @@
 
 namespace NEONengine
 {
-    class asset_cache;
-    class game_data;
-    class screen;
-    class string_table;
-    class text_renderer;
+    class engine;
 
     /**
      * Draws the background and localized text, restores UI colors and cursor
@@ -20,9 +16,7 @@ namespace NEONengine
      * Call under a system-use guard, before registering or drawing bobs.
      * Retains no resources and does not change pointer visibility.
      */
-    mtl::expected<void, char const*> scene_backdrop_draw(data::scene const& scene,
-        game_data const& data, asset_cache& assets, screen& screen,
-        string_table const& strings, text_renderer* renderer);
+    mtl::expected<void, char const*> scene_backdrop_draw(engine& engine, data::scene const& scene);
 }  // namespace NEONengine
 
 #endif  // __SCENE_BACKDROP_H__INCLUDED__

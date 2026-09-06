@@ -167,7 +167,7 @@ the scene state, because the other five have different lifetimes:
 
 - **Static scene text has no state.** It now lives inside `scene_backdrop`,
   together with background drawing and palette reading. One free function takes
-  concrete dependencies; it needs no class or resource owner.
+  the engine and scene; it needs no class or resource owner.
 - **`dialogue_portraits` lives for one conversation**, not one scene, and only
   `dialogue.cpp` touches it. It belongs to item 3's `state_host<dialogue_state>`.
   Moving it here would only mean moving it again. It landed there, as a member of
@@ -352,8 +352,8 @@ before using the buffer. Message, dialogue and debug states all restore from it.
 resynchronizes hotspot button edges so a dismissal press cannot become a
 scene click.
 
-`scene_backdrop_draw()` takes the scene, game data, asset cache, screen, strings
-and nullable text renderer. Palette reading and static text layout stay private
+`scene_backdrop_draw()` takes the engine and scene, obtaining drawing dependencies
+from the supplied engine. Palette reading and static text layout stay private
 to that module. It keeps the drawing order: background palette and bitmap, UI
 colors, cursor palette exemption, text, then back-to-front copy. No background
 bitmap means no clear or scene-palette load; existing pixels remain. Text stays
