@@ -136,6 +136,90 @@ namespace NEONengine
         static_assert(!state_type<void>);
     }
 
+    TEST_IMPL(test_state_apply_and_update_are_separate)
+    {
+        state_events events;
+        state_manager manager;
+        manager.start<observed_state>(events, 'A');
+        TEST_ASSERT(manager.apply_transition() == state_update_result::ok, "entry should succeed without update");
+        TEST_ASSERT(strcmp(events.text, "AcAp") == 0, "applying must not run gameplay");
+        TEST_ASSERT(manager.update_current() == state_update_result::ok, "current state should update separately");
+        events.on_update = [](state_control& control, state_events& log) {
+            control.push<observed_state>(log, 'B');
+        };
+        TEST_ASSERT(manager.update_current() == state_update_result::ok, "push should queue");
+        TEST_ASSERT(manager.apply_transition() == state_update_result::ok, "push should enter without update");
+        events.on_update = [](state_control& control, state_events&) { control.pop(); };
+        TEST_ASSERT(manager.update_current() == state_update_result::ok, "child should request pop");
+        TEST_ASSERT(manager.apply_transition() == state_update_result::ok, "pop should restore the parent");
+        TEST_ASSERT(strcmp(events.text, "AcApAuAeAuBcAeAsBpBuBeBdAr") == 0,
+            "the host must regain control after resume and before parent gameplay");
+        state_ptr next(new (mtl::MemF::Fast) observed_state(events, 'C'));
+        TEST_ASSERT(manager.replace(next), "the host should select a replacement after restoration");
+        TEST_ASSERT(!next, "selection must transfer ownership");
+        TEST_ASSERT(manager.apply_transition() == state_update_result::ok, "replacement should enter");
+        TEST_ASSERT(strcmp(events.text, "AcApAuAeAuBcAeAsBpBuBeBdArCcAdCp") == 0,
+            "replacement must destroy the resumed parent without another gameplay update");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_state_host_selection_preserves_callback_transition)
+    {
+        state_events events;
+        state_manager manager;
+        manager.start<observed_state>(events, 'A');
+        events.on_update = [](state_control& control, state_events& log) {
+            control.push<observed_state>(log, 'B');
+        };
+        TEST_ASSERT(manager.update() == state_update_result::ok, "callback should select B");
+        state_ptr next(new (mtl::MemF::Fast) observed_state(events, 'C'));
+        TEST_ASSERT(!manager.replace(next) && next, "host selection must leave both requests intact on conflict");
+        TEST_ASSERT(manager.update() == state_update_result::ok, "the original callback transition should apply");
+        TEST_ASSERT(strcmp(events.text, "AcApAuBcAeCcAsBpBuBe") == 0, "B must enter, not C");
+        TEST_ASSERT(manager.replace(next), "the host may select C at the next idle point");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_state_update_current_rejects_unapplied_transition)
+    {
+        state_events events;
+        state_manager manager;
+        manager.start<observed_state>(events, 'A');
+        TEST_ASSERT(manager.update_current() == state_update_result::error, "update cannot bypass pending entry");
+        TEST_ASSERT(strcmp(events.text, "Ac") == 0, "misordered phases must run no callbacks");
+        TEST_ASSERT(manager.apply_transition() == state_update_result::error, "the phase error must stay fatal");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_state_host_selection_is_rejected_during_entry)
+    {
+        state_events events;
+        state_manager manager;
+        events.manager = &manager;
+        manager.start<observed_state>(events, 'A');
+        events.on_pushed = [](state_events& log) {
+            state_ptr next(new (mtl::MemF::Fast) observed_state(log, 'B'));
+            log.manager->push(next);
+        };
+        TEST_ASSERT(manager.apply_transition() == state_update_result::error, "entry cannot change the stack");
+        TEST_ASSERT(strcmp(events.text, "AcApBcBd") == 0, "rejected state must remain caller-owned");
+        TEST_ASSERT(manager.update_current() == state_update_result::error, "fatal entry must prevent gameplay");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_state_host_replacement_requires_current_state)
+    {
+        state_events events;
+        state_manager manager;
+        state_ptr next(new (mtl::MemF::Fast) observed_state(events, 'A'));
+        TEST_ASSERT(!manager.replace(next) && next, "empty replacement must fail without consuming its state");
+        TEST_ASSERT(manager.apply_transition() == state_update_result::error, "invalid replacement must stay fatal");
+        TEST_ASSERT(strcmp(events.text, "Ac") == 0, "empty replacement must not enter or update a state");
+        manager.start<observed_state>(events, 'B');
+        TEST_ASSERT(strcmp(events.text, "Ac") == 0, "start must not bypass a fatal host error");
+        TEST_SUCCESS;
+    }
+
     TEST_IMPL(test_state_start_defers_entry)
     {
         state_events events;
@@ -634,6 +718,11 @@ namespace NEONengine
     }
 
     TEST_SUITE_BEGIN(state_manager)
+        TEST(test_state_host_replacement_requires_current_state)
+        TEST(test_state_apply_and_update_are_separate)
+        TEST(test_state_host_selection_preserves_callback_transition)
+        TEST(test_state_update_current_rejects_unapplied_transition)
+        TEST(test_state_host_selection_is_rejected_during_entry)
         TEST(test_state_start_defers_entry)
         TEST(test_state_push_and_pop_are_deferred)
         TEST(test_state_replace_does_not_resume_parent)

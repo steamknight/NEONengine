@@ -25,11 +25,6 @@ namespace NEONengine
         constexpr u32 MUSIC_KEEP    = 0xFFFFFFFF;
         constexpr u32 MUSIC_SILENCE = 0xFFFFFFFE;
 
-        void scene_fade_done()
-        {
-            g_pEngine->vm().resume_execution();
-        }
-
         void show_wait_pointer(engine& engine)
         {
             engine.pointer().switch_to(pointer_role::WAIT);
@@ -134,57 +129,7 @@ namespace NEONengine
         return {};
     }
 
-    void scene_state::start_pending_modal()
-    {
-        auto const request = _engine.take_pending_modal();
-        u16 const frames = request.arg1 ? request.arg1 : _engine.data().config().default_fade_frames;
-        auto const duration = to<UBYTE>(frames > 255 ? 255 : frames);
-        switch (request.kind)
-        {
-            case modal_kind::fade_out:
-                _engine.main_screen().fade_to_black(duration, 0, scene_fade_done);
-                _engine.pointer().switch_to(pointer_role::WAIT);
-                return;
-            case modal_kind::fade_in:
-                _engine.main_screen().fade_from_black(duration, 0, scene_fade_done);
-                return;
-            case modal_kind::show_dialog:
-                _engine.overlays().post_dialogue(request.arg1);
-                return;
-            case modal_kind::none: return;
-        }
-    }
-
-    bool scene_state::apply_system_request(state_control& control)
-    {
-        if (!_engine.has_pending_system()) return false;
-        auto const request = _engine.take_pending_system();
-        switch (request.kind)
-        {
-            case system_kind::load_scene:
-                show_wait_pointer(_engine);
-                control.replace<scene_state>(_engine, request.arg1);
-                return true;
-            case system_kind::save_game:
-                NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.arg1);
-                _engine.vm().resume_execution();
-                break;
-            case system_kind::load_game:
-                NE_LOG("LOAD_GAME slot %hu: no save format yet", request.arg1);
-                break;
-            case system_kind::new_game:
-                NE_LOG("NEW_GAME: nothing to start yet");
-                break;
-            case system_kind::quit_game:
-                NE_LOG("QUIT_GAME: no way out yet");
-                break;
-            case system_kind::none: break;
-        }
-        if (_engine.vm().terminated()) _engine.vm().reset_execution();
-        return false;
-    }
-
-    bool scene_state::rebuild_for_language()
+    mtl::expected<void, char const*> scene_state::rebuild_for_language()
     {
         show_wait_pointer(_engine);
         mtl::system_use_guard guard;
@@ -198,35 +143,28 @@ namespace NEONengine
             {
                 NE_LOG_ALWAYS("scene %hu language reload failed: %s", _scene_id, result.error());
                 gameExit();
-                return false;
+                return mtl::unexpected(result.error());
             }
             _engine.pointer().set_visible((scene.flags & data::SCENE_FLAG_SHOW_UI) != 0);
             // Saved bob backgrounds still contain the old text.
             bobDiscardUndraw();
         }
         _rendered_language = _engine.current_language();
-        return true;
+        return {};
     }
 
-    void scene_state::update(state_control& control)
+    void scene_state::update(state_control&)
     {
         bool const debug_requested = keyUse(KEY_F1);
-        if (apply_system_request(control)) return;
-        if (_engine.has_pending_modal()) start_pending_modal();
+        if (_engine.scene_interrupted()) return;
         auto& screen = _engine.main_screen();
         // Let a faded-out script request its next scene before decoding this one again.
         if (_rendered_language != _engine.current_language()
-            && !screen.is_fading_out()
+            && !_engine.scene_fading_out()
             && (screen.palette_ratio() != 0 || screen.fade_owns_palette()))
         {
             if (!rebuild_for_language()) return;
         }
-        if (_engine.overlays().present(control, _engine.vm(), _engine))
-        {
-            _bobs.draw();
-            return;
-        }
-
         if (_engine.main_screen().is_fading_out())
             _engine.pointer().switch_to(pointer_role::WAIT);
 
@@ -234,19 +172,18 @@ namespace NEONengine
         if (!_engine.vm().blocked() && language_ready)
         {
             _timeline.update();
-            if (apply_system_request(control)) return;
+            if (_engine.scene_interrupted()) return;
         }
         if (!_engine.vm().blocked() && language_ready)
         {
             _hotspots.update();
-            if (apply_system_request(control)) return;
+            if (_engine.scene_interrupted()) return;
         }
 
         // One VM update per frame, including entry. Start its fade before the first display.
         if (!_engine.vm().blocked()) _engine.vm().update();
-        if (apply_system_request(control)) return;
-        if (_engine.has_pending_modal()) start_pending_modal();
-        if (_rendered_language != _engine.current_language() && !screen.is_fading_out())
+        if (_engine.scene_interrupted()) return;
+        if (_rendered_language != _engine.current_language() && !_engine.scene_fading_out())
         {
             if (!rebuild_for_language()) return;
         }
@@ -254,10 +191,9 @@ namespace NEONengine
         _engine.pointer().update();
         _bobs.update();
         _bobs.draw();
-        if (_engine.overlays().present(control, _engine.vm(), _engine)) return;
         if (debug_requested)
         {
-            control.push<debug_view_state>(_engine);
+            _engine.request_state<debug_view_state>(nullptr);
         }
     }
 
@@ -265,12 +201,26 @@ namespace NEONengine
     {
         if (_engine.unbind_scene(*this))
         {
-            _engine.take_pending_modal();
-            _engine.take_pending_system();
-            _engine.overlays().clear();
             _engine.vm().reset_execution();
         }
         if (_log_open) logBlockEnd("State: Scene");
+    }
+
+    mtl::expected<void, char const*> scene_state::prepare_suspend()
+    {
+        if (_rendered_language != _engine.current_language() && !_engine.scene_fading_out())
+        {
+            auto const result = rebuild_for_language();
+            if (!result) return result;
+            if (_engine.data().scenes()[_scene_id].text_region_range.count != 0)
+            {
+                // The redraw replaced both buffers and discarded both undraw
+                // records. Restore the visible pose through ACE, not a copy.
+                // suspended() draws the same pose into the other buffer.
+                _bobs.draw(_engine.main_screen().front_buffer());
+            }
+        }
+        return {};
     }
 
     void scene_state::suspended()

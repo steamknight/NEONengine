@@ -90,7 +90,35 @@ namespace NEONengine
         _error[length] = '\0';
     }
 
-    state_update_result state_manager::update()
+    bool state_manager::push(state_ptr& pending)
+    {
+        if (_phase != phase::idle)
+        {
+            fail("Cannot select states during a callback");
+            return false;
+        }
+        if (_result != state_update_result::ok || has_transition()) return false;
+        if (!pending) { fail("Cannot allocate state"); return false; }
+        _started = true;
+        _pending = mtl::move(pending);
+        _transition = transition::push;
+        return true;
+    }
+
+    bool state_manager::replace(state_ptr& pending)
+    {
+        if (_phase == phase::idle && _result == state_update_result::ok
+            && !has_transition() && !_top)
+        {
+            fail("Cannot replace an empty state stack");
+            return false;
+        }
+        if (!push(pending)) return false;
+        _transition = transition::replace;
+        return true;
+    }
+
+    state_update_result state_manager::apply_transition()
     {
         if (_phase != phase::idle)
         {
@@ -113,9 +141,36 @@ namespace NEONengine
             return _result;
         }
 
+        return _result;
+    }
+
+    state_update_result state_manager::update_current()
+    {
+        if (_phase != phase::idle)
+        {
+            fail("State manager update is reentrant");
+            return _result;
+        }
+        if (_result != state_update_result::ok) return _result;
+        if (has_transition())
+        {
+            fail("Apply the selected transition before updating");
+            return _result;
+        }
+        if (!_top)
+        {
+            _started = true;
+            return _result = state_update_result::finished;
+        }
         _phase = phase::updating;
         _top->update(_control);
         _phase = phase::idle;
         return _result;
+    }
+
+    state_update_result state_manager::update()
+    {
+        auto const result = apply_transition();
+        return result == state_update_result::ok ? update_current() : result;
     }
 }

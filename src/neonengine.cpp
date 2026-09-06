@@ -18,6 +18,7 @@
 #include "core/scene_bobs.h"
 
 #include "states/scene.h"
+#include "states/message.h"
 
 NE_LOG_DOMAIN(Core);
 
@@ -79,6 +80,7 @@ namespace NEONengine
 
     engine::~engine() noexcept
     {
+        clear_state_request();
         _states.clear();
         uninitialize_ace();
     }
@@ -335,17 +337,181 @@ namespace NEONengine
         update_audio();
         apply_pending_language();
 
-        auto const result = _states.update();
+        auto const result = update_states(_states);
         if (result != state_update_result::ok)
         {
             if (result == state_update_result::error)
                 NE_LOG_ALWAYS("Fatal state error: %s", _states.error());
             _states.clear();
+            clear_state_request();
 
             gameExit();
             return;
         }
 
         _main_screen->process();
+    }
+
+    void engine::skip_modal_wait(noir_vm& vm) noexcept
+    {
+        NE_LOG("modal request skipped: empty text or a state is already pending");
+        if (_state_wait.owns(vm)) return;
+        _skipped_wait = modal_wait(&vm);
+        _skipped_owner = _scene;
+    }
+
+    void engine::request_message(noir_vm& vm, message_request const& request)
+    {
+        if (request.text.is_empty())
+        {
+            if (request.modal_wait) skip_modal_wait(vm);
+            return;
+        }
+        if (!_pending_state && request.text.length() >= MESSAGE_TEXT_CAPACITY)
+            NE_LOG("message of %lu bytes cut to %lu",
+                to<ULONG>(request.text.length()), to<ULONG>(MESSAGE_TEXT_CAPACITY - 1));
+        request_state<message_state>(request.modal_wait ? &vm : nullptr, vm, request);
+    }
+
+    void engine::clear_state_request() noexcept
+    {
+        _pending_state.reset(nullptr);
+        _state_owner = nullptr;
+        _state_wait = {};
+        _skipped_wait = {};
+        _skipped_owner = nullptr;
+    }
+
+    void engine::discard_scene_requests(scene_state& scene) noexcept
+    {
+        if (_state_owner == &scene) clear_state_request();
+        if (_system_owner == &scene)
+        {
+            _pending_system.clear();
+            _system_owner = nullptr;
+        }
+        if (_fade_owner == &scene)
+        {
+            _fade_wait = {};
+            _fade_owner = nullptr;
+        }
+        if (_pending_fade_owner == &scene)
+        {
+            _pending_modal.clear();
+            _pending_fade_wait = {};
+            _pending_fade_owner = nullptr;
+        }
+        if (_skipped_owner == &scene)
+        {
+            _skipped_wait = {};
+            _skipped_owner = nullptr;
+        }
+    }
+
+    void engine::start_pending_fade() noexcept
+    {
+        if (!_pending_modal.has()) return;
+        auto const request = _pending_modal.take();
+        _fade_wait = _pending_fade_wait;
+        _fade_owner = _pending_fade_owner;
+        _pending_fade_wait = {};
+        _pending_fade_owner = nullptr;
+        u16 const frames = request.arg1 ? request.arg1 : data().config().default_fade_frames;
+        auto const duration = to<UBYTE>(frames > 255 ? 255 : frames);
+        auto const done = []() { g_pEngine->finish_fade(); };
+        if (request.kind == modal_kind::fade_out)
+        {
+            main_screen().fade_to_black(duration, 0, done);
+            pointer().switch_to(pointer_role::WAIT);
+            pointer().update();
+        }
+        else if (request.kind == modal_kind::fade_in)
+            main_screen().fade_from_black(duration, 0, done);
+    }
+
+    void engine::apply_system_request(state_manager& states, bool applied)
+    {
+        if (!_pending_system.has() || (_scene && states.current() != _scene)) return;
+        if (_pending_system.peek().kind == system_kind::load_scene)
+        {
+            if (applied || states.has_transition()) return;
+            auto const request = _pending_system.take();
+            clear_state_request();
+            state_ptr replacement(new (mtl::MemF::Fast) scene_state(*this, request.arg1));
+            states.replace(replacement);
+            return;
+        }
+
+        auto const request = _pending_system.take();
+        switch (request.kind)
+        {
+            case system_kind::save_game:
+                NE_LOG("SAVE_GAME slot %hu: no save UI yet", request.arg1);
+                vm().resume_execution();
+                break;
+            case system_kind::load_game:
+                NE_LOG("LOAD_GAME slot %hu: no save format yet", request.arg1);
+                break;
+            case system_kind::new_game: NE_LOG("NEW_GAME: nothing to start yet"); break;
+            case system_kind::quit_game: NE_LOG("QUIT_GAME: no way out yet"); break;
+            default: break;
+        }
+        if (vm().terminated()) vm().reset_execution();
+    }
+
+    state_update_result engine::update_states(state_manager& states)
+    {
+        if (_request_failed) states.fail("Cannot allocate requested state");
+        bool const applied = states.has_transition();
+        auto result = states.apply_transition();
+        if (result != state_update_result::ok) return result;
+        if (_request_failed)
+        {
+            states.fail("Cannot allocate requested state");
+            return state_update_result::error;
+        }
+
+        _skipped_wait.complete();
+        apply_system_request(states, applied);
+        if (_pending_system.has() && (!_scene || states.current() == _scene))
+            return state_update_result::ok;
+        if (states.has_transition())
+        {
+            result = states.apply_transition();
+            if (result != state_update_result::ok) return result;
+        }
+        else if (_pending_state && !main_screen().display_frozen()
+            && (!_scene || states.current() == _scene))
+        {
+            if (applied) return state_update_result::ok;
+            if (_scene)
+            {
+                auto const prepared = _scene->prepare_suspend();
+                if (!prepared)
+                {
+                    states.fail(prepared.error());
+                    return state_update_result::error;
+                }
+            }
+            _state_wait = {};
+            _state_owner = nullptr;
+            states.push(_pending_state);
+            result = states.apply_transition();
+            if (result != state_update_result::ok) return result;
+        }
+
+        if (_request_failed)
+        {
+            states.fail("Cannot allocate requested state");
+            return state_update_result::error;
+        }
+        if (!_pending_system.has()) start_pending_fade();
+        result = states.update_current();
+        // The VM blocked before the bridge call; answer skipped waits only
+        // after the state and bridge callbacks have returned.
+        _skipped_wait.complete();
+        if (!_pending_system.has()) start_pending_fade();
+        if (_request_failed) states.fail("Cannot allocate requested state");
+        return _request_failed ? state_update_result::error : result;
     }
 }  // namespace NEONengine

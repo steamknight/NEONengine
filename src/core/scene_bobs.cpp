@@ -404,17 +404,18 @@ namespace NEONengine
 
     void scene_bobs::draw()
     {
+        draw(g_pEngine->main_screen().back_buffer());
+    }
+
+    void scene_bobs::draw(tBitMap* target)
+    {
         if (_assets.empty() && _hotspot_assets.empty() && !_caption_ready) return;
 
-        // The main loop flips the double buffer every frame, but the bob manager
-        // only advances while this state runs. An overlay state (e.g. the F1 debug
-        // view) suspends us for a stretch, so on resume the back buffer can be out
-        // of phase with the manager. Re-sync before drawing; it's a no-op when
-        // already aligned. ACE only auto-corrects this under ACE_DEBUG, so without
-        // it a release build would keep drawing bobs into the wrong buffer.
-        auto* pBack = g_pEngine->main_screen().back_buffer();
-        bobSetCurrentBuffer(pBack);
-        bobBegin(pBack);
+        // ACE tracks undraw records per physical buffer. Select the target even
+        // when draws don't alternate, as during suspension or language rebuilds.
+        // bobBegin only corrects a mismatched queue under ACE_DEBUG.
+        bobSetCurrentBuffer(target);
+        bobBegin(target);
         for (auto& asset : _assets)
         {
             if (asset.visible) bobPush(&asset.bob);

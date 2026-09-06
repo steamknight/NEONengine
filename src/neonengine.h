@@ -15,7 +15,8 @@
 #include "core/mouse_pointer.h"
 #include "core/nine_patch.h"
 #include "core/noir_vm.h"
-#include "core/overlay_system.h"
+#include "core/message_request.h"
+#include "core/modal_wait.h"
 #include "core/screen.h"
 #include "core/state_manager.h"
 #include "core/string_table.h"
@@ -65,7 +66,7 @@ namespace NEONengine
     constexpr u8 DIALOGUE_CHOICE_HOLD_FRAMES = 12;
 
     /**
-     * @brief What a deferred modal bridge call asked the scene to put up.
+     * @brief A deferred screen fade, started by the engine after the VM returns.
      *
      * The kinds match the bridge functions that record one. @c none means the
      * request slot is empty.
@@ -73,7 +74,6 @@ namespace NEONengine
     enum class modal_kind : u8
     {
         none,
-        show_dialog,  ///< a = dialogue id
         fade_out,     ///< a = frames
         fade_in,      ///< a = frames
     };
@@ -132,9 +132,7 @@ namespace NEONengine
         /**
          * @brief The waiting request, without consuming it.
          *
-         * For a reader that must decide something from the request but is not
-         * the one that will answer it - the scene reading a system kind to know
-         * it is mid-transition, say.
+         * Lets the owner select a request without consuming it first.
          *
          * @return A default-constructed @c T when the slot is empty.
          */
@@ -240,6 +238,7 @@ namespace NEONengine
         bool unbind_scene(scene_state& scene) noexcept
         {
             if (_scene != &scene) return false;
+            discard_scene_requests(scene);
             _scene = nullptr;
             return true;
         }
@@ -267,12 +266,13 @@ namespace NEONengine
          * @brief Post a system request - a scene change, a save, a new game.
          *
          * One slot is enough. Every call that records one either stops the VM
-         * outright or drains the frame pool, so nothing runs to record a second
-         * before the scene has answered this one.
+         * outright or drains the frame pool. The engine answers at an idle
+         * lifecycle point, after any suspended display owner leaves.
          */
         void request_system(system_kind kind, u16 arg1 = 0) noexcept
         {
             _pending_system.post(system_request{ kind, arg1 });
+            _system_owner = _scene;
         }
 
         /** @brief True when something has asked for a system change. */
@@ -306,15 +306,16 @@ namespace NEONengine
         bool language_changed() const noexcept { return _language_changed; }
 
         /**
-         * @brief Post a modal requested by a script (SAY, FADE_OUT, and so on).
+         * @brief Post a fade requested by a script.
          *
          * The opcode spends the rest of the frame budget as it records this, so
-         * no session runs again until the scene has put the modal up and taken
-         * it down. One slot is enough: nothing else runs to record a second.
+         * no session runs again until the screen finishes it.
          */
         void request_modal(modal_kind kind, u16 arg1, u16 arg2 = 0) noexcept
         {
             _pending_modal.post(modal_request{ kind, arg1, arg2 });
+            _pending_fade_owner = _scene;
+            _pending_fade_wait = modal_wait(_vm.get());
         }
 
         /** @brief True when a script has requested a modal. */
@@ -323,18 +324,42 @@ namespace NEONengine
         /** @brief Consume the pending modal request, clearing it. */
         modal_request take_pending_modal() noexcept
         {
+            _pending_fade_wait = {};
+            _pending_fade_owner = nullptr;
             return _pending_modal.take();
         }
 
-        /**
-         * @brief The overlay waiting to go up, and the rule for when it may.
-         *
-         * Exposed rather than wrapped: an overlay's whole life - posted by a
-         * bridge call, put on screen by the frame, taken by the state that
-         * draws it - is the system's business, and forwarding each step through
-         * the engine would only hide where it happens.
-         */
-        overlay_system& overlays() noexcept { return _overlays; }
+        // A single first-wins slot. Constructors must not acquire the display.
+        template<state_type T, typename... Args>
+        bool request_state(noir_vm* waiting_vm, Args&&... args)
+        {
+            static_assert(alignof(T) <= alignof(max_align_t), "State exceeds allocator alignment");
+            if (_request_failed) return false;
+            if (_pending_state)
+            {
+                if (waiting_vm) skip_modal_wait(*waiting_vm);
+                return false;
+            }
+            _pending_state.reset(new (mtl::MemF::Fast) T(*this, mtl::forward<Args>(args)...));
+            _request_failed = !_pending_state;
+            _state_owner = _scene;
+            _state_wait = modal_wait(waiting_vm);
+            return !_request_failed;
+        }
+
+        void request_message(noir_vm& vm, message_request const& request);
+        bool has_pending_state() const noexcept { return !!_pending_state; }
+        bool scene_interrupted() const noexcept { return _pending_system.has(); }
+        bool scene_fading_out() const noexcept
+        {
+            return _main_screen->is_fading_out()
+                || (_pending_modal.has() && _pending_modal.peek().kind == modal_kind::fade_out);
+        }
+        void clear_state_request() noexcept;
+
+        // The production frame and display-backed tests use the same scheduling seam.
+        [[nodiscard]] state_update_result update_states(state_manager& states);
+        void finish_fade() noexcept { _fade_wait.complete(); }
 
         /** @brief The scene the runtime is currently presenting (for GET_SCENE). */
         u16 current_scene() const noexcept { return _current_scene; }
@@ -364,6 +389,10 @@ namespace NEONengine
          * that will not load leaves the current one live and the game readable.
          */
         void apply_pending_language() noexcept;
+        void skip_modal_wait(noir_vm& vm) noexcept;
+        void discard_scene_requests(scene_state& scene) noexcept;
+        void start_pending_fade() noexcept;
+        void apply_system_request(state_manager& states, bool applied);
 
         private:  //////////////////////////////////////////////////////////////////////////////////
 
@@ -390,7 +419,17 @@ namespace NEONengine
         pending_request<language>        _pending_language{};
         pending_request<modal_request>   _pending_modal{};
         pending_request<system_request>  _pending_system{};
-        overlay_system                   _overlays{};
+        state_ptr                        _pending_state{ nullptr };
+        scene_state*                     _state_owner{ nullptr };
+        scene_state*                     _system_owner{ nullptr };
+        scene_state*                     _fade_owner{ nullptr };
+        scene_state*                     _pending_fade_owner{ nullptr };
+        modal_wait                       _state_wait{};
+        modal_wait                       _skipped_wait{};
+        modal_wait                       _fade_wait{};
+        modal_wait                       _pending_fade_wait{};
+        scene_state*                     _skipped_owner{ nullptr };
+        bool                             _request_failed{ false };
 
         u16                              _current_scene{ 0 };  ///< Scene the runtime is presenting.
         bool                             _language_changed{ false };

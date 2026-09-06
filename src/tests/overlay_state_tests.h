@@ -9,7 +9,7 @@
 #include <ace++/memory_file.h>
 #include <ace++/palette.h>
 
-#include "core/overlay_system.h"
+#include "core/message_request.h"
 #include "core/state_manager.h"
 #include "neonengine.h"
 #include "states/dialogue.h"
@@ -24,7 +24,7 @@ namespace NEONengine
         struct overlay_fixture
         {
             bytecode_builder _code;
-            overlay_system _overlays;
+            noir_vm* _vm{ nullptr };
             bstr_view _say_text{ "owned message" };
             noir_bridge _bridge{};
             tBitMap* _front{ g_pEngine->main_screen().front_buffer() };
@@ -35,6 +35,7 @@ namespace NEONengine
             u16 _mouse_x{ mouseGetX(MOUSE_PORT_1) };
             u16 _mouse_y{ mouseGetY(MOUSE_PORT_1) };
             bool _terminal_requested{ false };
+            bool _blocked_after_request{ false };
             u16 _terminal_scene{ data::NO_ID };
 
             overlay_fixture()
@@ -52,14 +53,17 @@ namespace NEONengine
                 g_pEngine->main_screen().duplicate_back_to_front();
                 _bridge.say = { [](void* host, u16, u16) {
                     auto& fixture = *static_cast<overlay_fixture*>(host);
-                    fixture._overlays.post_message(message_request{
+                    g_pEngine->request_message(*fixture._vm, message_request{
                         .text = fixture._say_text, .modal_wait = true });
+                    fixture._blocked_after_request = fixture._vm->blocked();
                 } };
                 _bridge.show_dialog = { [](void* host, u16 id) {
-                    static_cast<overlay_fixture*>(host)->_overlays.post_dialogue(id);
+                    auto& vm = *static_cast<overlay_fixture*>(host)->_vm;
+                    g_pEngine->request_state<dialogue_state>(&vm, vm, id);
                 } };
                 _bridge.report_error = [](void* host, char const* text) {
-                    static_cast<overlay_fixture*>(host)->_overlays.post_message(
+                    auto& vm = *static_cast<overlay_fixture*>(host)->_vm;
+                    g_pEngine->request_message(vm,
                         message_request{ .text = text });
                 };
                 _bridge.fade_out = { [](void*, u16) {} };
@@ -72,6 +76,7 @@ namespace NEONengine
 
             ~overlay_fixture()
             {
+                g_pEngine->clear_state_request();
                 keySetState(KEY_SPACE, _space);
                 for (u8 i = 0; i < DIALOGUE_MAX_CHOICES_SHOWN; ++i)
                     keySetState(to<u8>(KEY_1 + i), _numbers[i]);
@@ -339,17 +344,27 @@ namespace NEONengine
             return "the fixture needs a choice page before the dialogue ends";
         }
 
-        class overlay_presenter : public state
+        class request_idle_state : public state
         {
             public:
-            overlay_presenter(overlay_system& overlays, noir_vm& vm)
-                : _overlays(overlays), _vm(vm) {}
+            void update(state_control&) override {}
+        };
 
-            void update(state_control& control) override { _overlays.present(control, _vm, *g_pEngine); }
+        class competing_request_state : public state
+        {
+            public:
+            void update(state_control& control) override
+            {
+                if (_requested) return;
+                _requested = true;
+                g_pEngine->request_message(g_pEngine->vm(),
+                    message_request{ .text = "engine-selected message" });
+                control.push<message_state>(*g_pEngine, g_pEngine->vm(),
+                    message_request{ .text = "state-selected message" });
+            }
 
             private:
-            overlay_system& _overlays;
-            noir_vm& _vm;
+            bool _requested{ false };
         };
 
         struct overlay_text_fixture
@@ -406,39 +421,40 @@ namespace NEONengine
             return has_ink;
         }
 
-        char const* overlay_round_trip(u8 opcode, overlay_kind kind)
+        char const* overlay_round_trip(u8 opcode)
         {
             overlay_fixture fixture;
             u16 const script = fixture.script(opcode);
             auto vm = fixture.make_vm();
+            fixture._vm = &vm;
             TEST_ASSERT(vm.execute(script), "the modal script should start");
             vm.update();
-            TEST_ASSERT(vm.blocked(), "the VM should latch after its bridge callback");
+            TEST_ASSERT(vm.blocked(), "the VM must remain blocked after its bridge callback");
 
             // A second request cannot own or release the first request's wait.
-            if (kind == overlay_kind::message) fixture._overlays.post_dialogue(99);
-            else fixture._overlays.post_message(
+            if (opcode == noir_op::SAY) g_pEngine->request_state<dialogue_state>(&vm, vm, u16(99));
+            else g_pEngine->request_message(vm,
                 message_request{ .text = "dropped", .modal_wait = true });
-            TEST_ASSERT(fixture._overlays.kind() == kind, "the first overlay should keep its slot");
+            TEST_ASSERT(g_pEngine->has_pending_state(), "the first state should keep its slot");
 
             state_manager manager;
-            manager.start<overlay_presenter>(fixture._overlays, vm);
-            TEST_ASSERT(manager.update() == state_update_result::ok, "presentation should queue one push");
-            TEST_ASSERT(fixture._overlays.kind() == kind, "construction should not consume the slot");
+            manager.start<request_idle_state>();
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "startup must defer the request");
+            TEST_ASSERT(g_pEngine->has_pending_state(), "construction should not consume the slot");
             TEST_ASSERT(vm.blocked(), "request time must not release the accepted modal");
-            TEST_ASSERT(manager.update() == state_update_result::ok, "the overlay should enter");
-            TEST_ASSERT(fixture._overlays.kind() == overlay_kind::none, "entry should consume the slot");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the state should enter");
+            TEST_ASSERT(!g_pEngine->has_pending_state(), "entry should consume the slot");
             TEST_ASSERT(vm.blocked() && vm.session_count() == 1, "entry must not resume or reset the VM");
-            if (kind == overlay_kind::message)
+            if (opcode == noir_op::SAY)
             {
                 TEST_ASSERT(fixture.frozen() && fixture.drawn(), "message entry must paint the frozen display");
-                TEST_ASSERT(manager.update() == state_update_result::ok, "the message should wait for input");
+                TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should wait for input");
                 TEST_ASSERT(vm.blocked() && fixture.frozen(), "idle updates must keep the message and wait");
                 keySetState(KEY_SPACE, KEY_ACTIVE);
-                TEST_ASSERT(manager.update() == state_update_result::ok, "space should request a pop");
+                TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "space should request a pop");
                 TEST_ASSERT(vm.blocked() && fixture.frozen(), "the pop request must not restore or resume yet");
             }
-            TEST_ASSERT(manager.update() == state_update_result::ok, "actual pop should return to the presenter");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "actual pop should return to the idle state");
             TEST_ASSERT(fixture.restored(), "actual pop must restore both scene buffers");
             TEST_ASSERT(!vm.blocked(), "only destruction of the entered state should release the wait");
             TEST_ASSERT(vm.update() == noir_result::completed, "the parked script should finish");
@@ -452,21 +468,22 @@ namespace NEONengine
             u16 const modal = fixture.script(opcode);
             u16 const terminal = fixture.script(noir_op::GOTO_SCENE);
             auto vm = fixture.make_vm();
+            fixture._vm = &vm;
             TEST_ASSERT(vm.execute(modal), "the modal script should start");
             vm.update();
             state_manager manager;
-            manager.start<overlay_presenter>(fixture._overlays, vm);
-            TEST_ASSERT(manager.update() == state_update_result::ok, "the overlay should queue");
-            TEST_ASSERT(manager.update() == state_update_result::ok, "the overlay should enter");
+            manager.start<request_idle_state>();
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the state should queue");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the state should enter");
             vm.execute_now(terminal);
             TEST_ASSERT(vm.terminated(), "an immediate terminal call should latch the VM");
             if (opcode == noir_op::SAY)
             {
                 mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_ACTIVE);
-                TEST_ASSERT(manager.update() == state_update_result::ok, "click should request a pop");
+                TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "click should request a pop");
                 TEST_ASSERT(fixture.frozen(), "the pop request must leave the display frozen");
             }
-            TEST_ASSERT(manager.update() == state_update_result::ok, "the entered overlay should pop");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the entered state should pop");
             TEST_ASSERT(fixture.restored(), "terminal pop must still restore the scene");
             TEST_ASSERT(vm.terminated(), "overlay destruction must not lift the terminal latch");
             TEST_ASSERT(vm.session_count() == 1, "overlay destruction must not reset sessions");
@@ -480,21 +497,26 @@ namespace NEONengine
             u16 const diagnostic = fixture.script(noir_op::HALT);
             u16 const modal = fixture.script(opcode);
             auto vm = fixture.make_vm();
+            fixture._vm = &vm;
             TEST_ASSERT(vm.execute(diagnostic) && vm.execute(modal), "both sessions should start");
             vm.update();
-            TEST_ASSERT(vm.blocked(), "the rejected modal still latches after the callback");
-            TEST_ASSERT(fixture._overlays.kind() == overlay_kind::message, "the diagnostic should win");
+            TEST_ASSERT(vm.blocked(), "the rejected modal must remain blocked after the callback");
+            if (opcode == noir_op::SAY)
+            {
+                TEST_ASSERT(fixture._blocked_after_request, "rejection must not answer inside the VM callback");
+            }
+            TEST_ASSERT(g_pEngine->has_pending_state(), "the diagnostic should win");
             TEST_ASSERT(vm.session_count() == 1, "only the modal session should survive HALT");
 
             state_manager manager;
-            manager.start<overlay_presenter>(fixture._overlays, vm);
-            TEST_ASSERT(manager.update() == state_update_result::ok, "only the diagnostic should queue");
-            TEST_ASSERT(!vm.blocked(), "presentation should answer the dropped modal after it latched");
-            TEST_ASSERT(manager.update() == state_update_result::ok, "the diagnostic should enter");
+            manager.start<request_idle_state>();
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "only the diagnostic should queue");
+            TEST_ASSERT(!vm.blocked(), "engine selection must answer the dropped modal after callbacks return");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the diagnostic should enter");
             TEST_ASSERT(fixture.frozen() && fixture.drawn(), "the diagnostic must render");
             keySetState(KEY_SPACE, KEY_ACTIVE);
-            TEST_ASSERT(manager.update() == state_update_result::ok, "space should request diagnostic dismissal");
-            TEST_ASSERT(manager.update() == state_update_result::ok, "the diagnostic should pop");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "space should request diagnostic dismissal");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the diagnostic should pop");
             TEST_ASSERT(fixture.restored(), "the diagnostic should leave no pixels behind");
             TEST_ASSERT(vm.update() == noir_result::completed, "the dropped modal must not strand its caller");
             TEST_ASSERT(vm.reg_d(3) == 1234, "the caller should continue after the dropped call");
@@ -507,13 +529,14 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the script should start");
         vm.update();
         state_manager manager;
-        manager.start<message_state>(*g_pEngine, vm, fixture._overlays,
+        manager.start<message_state>(*g_pEngine, vm,
             message_request{ .text = "never entered", .modal_wait = true });
         manager.clear();
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::message, "pending destruction must not consume the slot");
+        TEST_ASSERT(g_pEngine->has_pending_state(), "pending destruction must not consume the slot");
         TEST_ASSERT(vm.blocked() && vm.session_count() == 1, "pending destruction must not resume or reset the VM");
         TEST_ASSERT(fixture.restored(), "pending destruction must not freeze or paint the display");
         TEST_SUCCESS;
@@ -524,24 +547,25 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SHOW_DIALOG);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the script should start");
         vm.update();
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, u16(0xFFFF));
+        manager.start<dialogue_state>(*g_pEngine, vm, u16(0xFFFF));
         manager.clear();
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::dialogue, "pending destruction must not consume the slot");
+        TEST_ASSERT(g_pEngine->has_pending_state(), "pending destruction must not consume the slot");
         TEST_ASSERT(vm.blocked() && vm.session_count() == 1, "pending destruction must not resume or reset the VM");
         TEST_SUCCESS;
     }
 
     TEST_IMPL(test_message_first_wins_and_releases_on_pop)
     {
-        return overlay_round_trip(noir_op::SAY, overlay_kind::message);
+        return overlay_round_trip(noir_op::SAY);
     }
 
     TEST_IMPL(test_dialogue_first_wins_and_releases_on_pop)
     {
-        return overlay_round_trip(noir_op::SHOW_DIALOG, overlay_kind::dialogue);
+        return overlay_round_trip(noir_op::SHOW_DIALOG);
     }
 
     TEST_IMPL(test_message_pop_preserves_terminal_latch)
@@ -559,18 +583,19 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const fade = fixture.script(noir_op::FADE_OUT);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(fade), "the fade script should start");
         vm.update();
-        fixture._overlays.post_message(message_request{ .text = "diagnostic during fade" });
+        g_pEngine->request_message(vm, message_request{ .text = "diagnostic during fade" });
         state_manager manager;
-        manager.start<overlay_presenter>(fixture._overlays, vm);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the diagnostic should queue");
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the diagnostic should enter");
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the diagnostic should queue");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the diagnostic should enter");
         TEST_ASSERT(fixture.frozen() && fixture.drawn(), "a diagnostic during a fade must render");
         mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_ACTIVE);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "click should request dismissal");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "click should request dismissal");
         TEST_ASSERT(vm.blocked() && fixture.frozen(), "the pop request must not release the fade or display");
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the diagnostic should pop");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the diagnostic should pop");
         TEST_ASSERT(fixture.restored(), "the diagnostic should restore the display");
         TEST_ASSERT(vm.blocked(), "a diagnostic must not release the fade's wait");
         TEST_ASSERT(vm.update() == noir_result::blocked, "the fade's caller must stay parked");
@@ -583,15 +608,17 @@ namespace NEONengine
         fixture._say_text = {};
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the script should start");
         vm.update();
-        TEST_ASSERT(vm.blocked(), "even empty SAY latches after its callback returns");
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::none, "empty text should not own a slot");
+        TEST_ASSERT(vm.blocked(), "even empty SAY must remain blocked after its callback returns");
+        TEST_ASSERT(fixture._blocked_after_request, "empty SAY must not answer inside the VM callback");
+        TEST_ASSERT(!g_pEngine->has_pending_state(), "empty text should not own a slot");
         state_manager manager;
-        manager.start<overlay_presenter>(fixture._overlays, vm);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "presentation should answer without a push");
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "selection should answer without a push");
         TEST_ASSERT(!vm.blocked(), "the dropped empty SAY should release its wait");
-        TEST_ASSERT(manager.update() == state_update_result::ok, "a second presentation should have no transition");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "a second selection should have no transition");
         TEST_ASSERT(vm.update() == noir_result::completed, "the caller should continue");
         TEST_SUCCESS;
     }
@@ -611,10 +638,11 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         u32 expected_pixels;
         {
             state_manager reference;
-            reference.start<message_state>(*g_pEngine, vm, fixture._overlays,
+            reference.start<message_state>(*g_pEngine, vm,
                 message_request{ .text = "copied state payload", .caption = "copied caption" });
             TEST_ASSERT(reference.update() == state_update_result::ok, "the reference message should render");
             TEST_ASSERT(fixture.frozen() && fixture.drawn(), "the reference must paint real pixels");
@@ -628,7 +656,7 @@ namespace NEONengine
             char text[] = "copied state payload";
             char caption[] = "copied caption";
             message_request request{ .text = text, .caption = caption, .modal_wait = true };
-            manager.start<message_state>(*g_pEngine, vm, fixture._overlays, request);
+            manager.start<message_state>(*g_pEngine, vm, request);
             memset(text, 0, sizeof(text));
             memset(caption, 0, sizeof(caption));
             request.modal_wait = false;
@@ -653,10 +681,11 @@ namespace NEONengine
         fixture._say_text = text;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         u32 expected_pixels;
         {
             state_manager reference;
-            reference.start<message_state>(*g_pEngine, vm, fixture._overlays,
+            reference.start<message_state>(*g_pEngine, vm,
                 message_request{ .text = "copied slot payload" });
             TEST_ASSERT(reference.update() == state_update_result::ok, "the reference should render");
             TEST_ASSERT(fixture.frozen() && fixture.drawn(), "the reference must paint real pixels");
@@ -666,17 +695,16 @@ namespace NEONengine
         vm.update();
         memset(text, 0, sizeof(text));
         state_manager manager;
-        manager.start<overlay_presenter>(fixture._overlays, vm);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the message should be constructed");
-        fixture._overlays.clear();
-        fixture._overlays.post_message(message_request{ .text = "replacement diagnostic" });
-        TEST_ASSERT(manager.update() == state_update_result::ok, "entry should use its own copy, not the reused slot");
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "startup should defer the message");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "entry should use its owned text");
+        g_pEngine->request_message(vm, message_request{ .text = "replacement diagnostic" });
         TEST_ASSERT(fixture.frozen() && fixture.pixels() == expected_pixels,
-            "slot and state copies must preserve the original message pixels");
+            "the state must preserve the original message pixels after the slot is reused");
         TEST_ASSERT(vm.blocked(), "slot reuse must not change the pending state's modal ownership");
         keySetState(KEY_SPACE, KEY_ACTIVE);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "dismissal should queue a pop");
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the message should pop");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "dismissal should queue a pop");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should pop");
         TEST_ASSERT(fixture.restored(), "the original message should restore its backdrop");
         TEST_ASSERT(!vm.blocked(), "the original modal should release its caller");
         TEST_SUCCESS;
@@ -687,14 +715,15 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the script should start");
         vm.update();
         state_manager manager;
-        manager.start<overlay_presenter>(fixture._overlays, vm);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the message should queue");
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should queue");
         keySetState(KEY_SPACE, KEY_ACTIVE);
         mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_ACTIVE);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the message should enter");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should enter");
         TEST_ASSERT(fixture.frozen() && fixture.drawn(), "entry must render despite both opening presses");
         TEST_ASSERT(!keyUse(KEY_SPACE) && !mouseUse(MOUSE_PORT_1, MOUSE_LMB),
             "entry must consume both opening presses");
@@ -702,16 +731,16 @@ namespace NEONengine
         ULONG const total_free = memGetFreeSize();
         for (u8 i = 0; i < 3; ++i)
         {
-            TEST_ASSERT(manager.update() == state_update_result::ok, "held input should not dismiss the message");
+            TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "held input should not dismiss the message");
             TEST_ASSERT(vm.blocked() && fixture.frozen(), "the message should keep its wait and display");
         }
         TEST_ASSERT(memGetFreeChipSize() == chip_free && memGetFreeSize() == total_free,
             "idle message updates must not allocate text");
         mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_NACTIVE);
         mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_ACTIVE);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "a fresh click should request a pop");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "a fresh click should request a pop");
         TEST_ASSERT(vm.blocked() && fixture.frozen(), "a pop request must keep the wait and pixels");
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the next update should finish the pop");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the next update should finish the pop");
         TEST_ASSERT(!vm.blocked() && fixture.restored(), "exit should release the modal and restore the display");
         TEST_SUCCESS;
     }
@@ -721,13 +750,14 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the script should start");
         vm.update();
         state_manager manager;
-        manager.start<message_state>(*g_pEngine, vm, fixture._overlays,
+        manager.start<message_state>(*g_pEngine, vm,
             message_request{ .modal_wait = true });
         TEST_ASSERT(manager.update() == state_update_result::ok, "empty entry should succeed and request a pop");
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::none, "empty entry should consume the slot");
+        TEST_ASSERT(g_pEngine->has_pending_state(), "direct state entry must not consume an engine request");
         TEST_ASSERT(fixture.restored(), "an empty message must not freeze or draw");
         TEST_ASSERT(vm.blocked(), "empty entry must not resume before actual exit");
         TEST_ASSERT(manager.update() == state_update_result::finished, "empty messages should close without input");
@@ -740,12 +770,13 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the script should start");
         vm.update();
         state_manager manager;
-        manager.start<overlay_presenter>(fixture._overlays, vm);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the message should queue");
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the message should enter");
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should queue");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should enter");
         TEST_ASSERT(fixture.frozen() && fixture.drawn(), "the message must paint before clearing");
         manager.clear();
         TEST_ASSERT(fixture.restored(), "clear should erase and unfreeze a visible message");
@@ -757,6 +788,7 @@ namespace NEONengine
     {
         overlay_fixture fixture;
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         message_align const aligns[] = {
             message_align::top, message_align::middle, message_align::bottom };
         text_justify const justifications[] = {
@@ -785,7 +817,7 @@ namespace NEONengine
                          : SCREEN_HEIGHT - box_height - MESSAGE_MARGIN) + MESSAGE_MARGIN);
 
             state_manager manager;
-            manager.start<message_state>(*g_pEngine, vm, fixture._overlays, request);
+            manager.start<message_state>(*g_pEngine, vm, request);
             TEST_ASSERT(manager.update() == state_update_result::ok, "the layout sample should enter");
             TEST_ASSERT(fixture.frozen() && fixture.drawn(), "the layout sample must paint pixels");
             TEST_ASSERT(message_glyphs_match(*expected._text, x, to<u16>(y + caption_height), request.color),
@@ -803,8 +835,9 @@ namespace NEONengine
     {
         overlay_fixture fixture;
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         state_manager manager;
-        manager.start<message_state>(*g_pEngine, vm, fixture._overlays,
+        manager.start<message_state>(*g_pEngine, vm,
             message_request{
                 .text = "a\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na",
                 .caption = "b\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb" });
@@ -832,10 +865,11 @@ namespace NEONengine
         TEST_ASSERT(id != data::NO_ID, "the pak should contain a dialogue with a readable entry page");
         u16 const modal = fixture.script(noir_op::SHOW_DIALOG);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(modal), "the modal caller should start");
         vm.update();
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         keySetState(KEY_SPACE, KEY_ACTIVE);
         keySetState(KEY_1, KEY_ACTIVE);
         mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_ACTIVE);
@@ -863,13 +897,15 @@ namespace NEONengine
         TEST_ASSERT(id != data::NO_ID, "the pak should contain a readable dialogue");
         u16 const modal = fixture.script(noir_op::SHOW_DIALOG);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(modal), "the modal caller should start");
         vm.update();
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "the dialogue should enter");
         TEST_ASSERT(fixture.frozen() && fixture.drawn(), "terminal coverage must start with a visible dialogue");
-        fixture._overlays.post_message(message_request{ .text = "keep until dialogue closes" });
+        g_pEngine->clear_state_request();
+        g_pEngine->request_message(vm, message_request{ .text = "keep until dialogue closes" });
         // Replace only the fixture's bytecode after all entry scripts have returned.
         fixture._code.code[fixture._code.toc[modal]] = noir_op::GOTO_SCENE;
         TEST_ASSERT(vm.execute_now(modal), "the bound VM should accept a terminal call");
@@ -879,7 +915,7 @@ namespace NEONengine
         TEST_ASSERT(manager.update() == state_update_result::finished, "the next update should pop the dialogue");
         TEST_ASSERT(fixture.restored() && progress.colors_restored(), "terminal exit must restore pixels and palette");
         TEST_ASSERT(vm.terminated() && fixture._terminal_requested, "exit must preserve the terminal latch and request");
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::message, "exit must not clear queued diagnostics");
+        TEST_ASSERT(g_pEngine->has_pending_state(), "exit must not clear queued diagnostics");
         TEST_SUCCESS;
     }
 
@@ -891,9 +927,10 @@ namespace NEONengine
         TEST_ASSERT(id != data::NO_ID, "the pak should contain a readable dialogue");
         u16 const terminal = fixture.script(noir_op::GOTO_SCENE);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute_now(terminal), "the terminal script should run");
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "terminal entry should close normally");
         TEST_ASSERT(fixture.restored() && progress.colors_restored(), "terminal entry must not acquire the display");
         u16 const page = g_pEngine->data().dialogues()[id].first_page_id;
@@ -909,6 +946,7 @@ namespace NEONengine
         bound_dialogue_fixture dialogue;
         u16 const terminal = fixture.script(noir_op::GOTO_SCENE);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         dialogue_context context{ dialogue._progress, vm };
         dialogue.bind(context);
         dialogue._pages[0].display_function_id = terminal;
@@ -926,6 +964,7 @@ namespace NEONengine
         bound_dialogue_fixture dialogue;
         u16 const terminal = fixture.script(noir_op::GOTO_SCENE);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         dialogue_context context{ dialogue._progress, vm };
         dialogue.bind(context);
         dialogue._pages[0].choice_range = { 0, 1 };
@@ -945,18 +984,19 @@ namespace NEONengine
         bound_dialogue_fixture dialogue;
         u16 const modal = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         dialogue_context context{ dialogue._progress, vm };
         dialogue.bind(context);
         dialogue._pages[0].display_function_id = modal;
         dialogue._pages[0].next_page_id = 1;
         TEST_ASSERT(dialogue._session.begin(0), "an immediate modal error must not end the dialogue");
         TEST_ASSERT(!vm.terminated() && !vm.blocked(), "a rejected immediate modal must not park the VM");
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::message, "the script error should queue a diagnostic");
+        TEST_ASSERT(g_pEngine->has_pending_state(), "the script error should queue a diagnostic");
         dialogue._session.advance();
         TEST_ASSERT(dialogue._session.current_page_index() == 1, "navigation must continue after a script error");
         dialogue._session.advance();
         TEST_ASSERT(dialogue._session.has_ended(), "the next page should end normally");
-        TEST_ASSERT(fixture._overlays.kind() == overlay_kind::message, "navigation and end must preserve the diagnostic");
+        TEST_ASSERT(g_pEngine->has_pending_state(), "navigation and end must preserve the diagnostic");
         TEST_SUCCESS;
     }
 
@@ -964,11 +1004,12 @@ namespace NEONengine
     {
         overlay_fixture fixture;
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         u16 const widths[] = { 0, 1, MESSAGE_MARGIN * 2, MESSAGE_MARGIN * 2 + 1, 31, 305, 319, 320, 321, 65535 };
         for (auto width : widths)
         {
             state_manager manager;
-            manager.start<message_state>(*g_pEngine, vm, fixture._overlays, message_request{
+            manager.start<message_state>(*g_pEngine, vm, message_request{
                 .text = "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
                 .max_width = width });
             TEST_ASSERT(manager.update() == state_update_result::ok, "boundary widths should enter safely");
@@ -986,10 +1027,11 @@ namespace NEONengine
         overlay_fixture fixture;
         u16 const script = fixture.script(noir_op::SAY);
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         TEST_ASSERT(vm.execute(script), "the modal caller should start");
         vm.update();
         state_manager manager;
-        manager.start<message_state>(*g_pEngine, vm, fixture._overlays,
+        manager.start<message_state>(*g_pEngine, vm,
             message_request{ .text = "\n\n", .modal_wait = true });
         TEST_ASSERT(manager.update() == state_update_result::ok, "line breaks without glyphs should close normally");
         TEST_ASSERT(fixture.restored() && vm.blocked(), "no-ink entry must leave pixels alone and retain its wait until pop");
@@ -1005,8 +1047,9 @@ namespace NEONengine
         u16 const id = progress.dialogue_id();
         TEST_ASSERT(id != data::NO_ID, "the pak should contain a readable dialogue");
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "the dialogue should enter");
         u16 page;
         auto const fault = dialogue_to_choices(manager, id, page);
@@ -1043,8 +1086,9 @@ namespace NEONengine
         u16 const id = progress.dialogue_id();
         TEST_ASSERT(id != data::NO_ID, "the pak should contain a readable dialogue");
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "the dialogue should enter");
         u16 page;
         auto const fault = dialogue_to_choices(manager, id, page);
@@ -1078,8 +1122,9 @@ namespace NEONengine
         u16 const id = progress.dialogue_id();
         TEST_ASSERT(id != data::NO_ID, "the pak should contain a readable dialogue");
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "the dialogue should enter");
         u16 page;
         auto const fault = dialogue_to_choices(manager, id, page);
@@ -1123,8 +1168,9 @@ namespace NEONengine
         u16 const id = progress.dialogue_id();
         TEST_ASSERT(id != data::NO_ID, "the pak must contain a readable dialogue");
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "the dialogue should enter");
         u16 page_id;
         auto const fault = dialogue_to_choices(manager, id, page_id);
@@ -1176,8 +1222,9 @@ namespace NEONengine
         u16 const id = progress.dialogue_id();
         TEST_ASSERT(id != data::NO_ID, "the pak must contain a readable dialogue");
         auto vm = fixture.make_vm();
+        fixture._vm = &vm;
         state_manager manager;
-        manager.start<dialogue_state>(*g_pEngine, vm, fixture._overlays, id);
+        manager.start<dialogue_state>(*g_pEngine, vm, id);
         TEST_ASSERT(manager.update() == state_update_result::ok, "the dialogue should enter");
         u16 page_id = g_pEngine->data().dialogues()[id].first_page_id;
         u16 previous_speaker = data::NO_ID;
@@ -1218,7 +1265,110 @@ namespace NEONengine
         TEST_SUCCESS;
     }
 
+    TEST_IMPL(test_engine_request_waits_for_callback_push_and_pop)
+    {
+        overlay_fixture fixture;
+        state_manager manager;
+        manager.start<competing_request_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "both producers should return safely");
+        TEST_ASSERT(g_pEngine->has_pending_state() && manager.has_transition() && fixture.restored(),
+            "the callback and engine requests must remain separate and unentered");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the callback push should enter first");
+        TEST_ASSERT(g_pEngine->has_pending_state() && fixture.frozen(),
+            "the engine must retain its request while the callback's state owns the display");
+        u32 const first_pixels = fixture.pixels();
+        keySetState(KEY_SPACE, KEY_ACTIVE);
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the first message should request pop");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the first message should restore");
+        TEST_ASSERT(g_pEngine->has_pending_state() && fixture.restored(),
+            "the pop must finish without applying a second transition");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the engine request should now enter");
+        TEST_ASSERT(!g_pEngine->has_pending_state() && fixture.frozen() && fixture.pixels() != first_pixels,
+            "the engine's original payload must survive the competing transition");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_cancelled_request_cannot_release_later_fade)
+    {
+        overlay_fixture fixture;
+        u16 const say = fixture.script(noir_op::SAY);
+        u16 const fade = fixture.script(noir_op::FADE_OUT);
+        auto vm = fixture.make_vm();
+        fixture._vm = &vm;
+        TEST_ASSERT(vm.execute(say), "SAY should start");
+        vm.update();
+        TEST_ASSERT(g_pEngine->has_pending_state() && vm.blocked(), "SAY should own a pending state");
+        vm.reset_execution();
+        TEST_ASSERT(vm.execute(fade), "the next execution should start its fade");
+        vm.update();
+        g_pEngine->clear_state_request();
+        TEST_ASSERT(vm.blocked() && fixture.restored(), "pending cancellation must not release the new wait or display");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_entered_message_cannot_release_replaced_wait)
+    {
+        overlay_fixture fixture;
+        u16 const say = fixture.script(noir_op::SAY);
+        u16 const fade = fixture.script(noir_op::FADE_OUT);
+        auto vm = fixture.make_vm();
+        fixture._vm = &vm;
+        TEST_ASSERT(vm.execute(say), "SAY should start");
+        vm.update();
+        state_manager manager;
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the parent should enter");
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the message should enter");
+        TEST_ASSERT(fixture.frozen(), "the message must acquire the display");
+        vm.reset_execution();
+        TEST_ASSERT(vm.execute(fade), "new execution should start");
+        vm.update();
+        manager.clear();
+        TEST_ASSERT(fixture.restored() && vm.blocked(), "entered cleanup must restore pixels without answering a later fade");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_skipped_modal_cannot_release_later_wait)
+    {
+        overlay_fixture fixture;
+        fixture._say_text = {};
+        u16 const say = fixture.script(noir_op::SAY);
+        u16 const fade = fixture.script(noir_op::FADE_OUT);
+        auto vm = fixture.make_vm();
+        fixture._vm = &vm;
+        TEST_ASSERT(vm.execute(say), "empty SAY should start");
+        vm.update();
+        vm.reset_execution();
+        TEST_ASSERT(vm.execute(fade), "new execution should start its fade");
+        vm.update();
+        state_manager manager;
+        manager.start<request_idle_state>();
+        TEST_ASSERT(g_pEngine->update_states(manager) == state_update_result::ok, "the engine should drain the skipped call");
+        TEST_ASSERT(vm.blocked() && fixture.restored(), "a skipped older call must not answer the new wait");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_display_guard_defers_acquisition_and_rejects_nesting)
+    {
+        overlay_fixture fixture;
+        freeze_display first(g_pEngine->main_screen());
+        freeze_display second(g_pEngine->main_screen());
+        TEST_ASSERT(fixture.restored(), "guard construction must not change the screen");
+        TEST_ASSERT(first.acquire() && fixture.frozen(), "the first guard should acquire at entry");
+        TEST_ASSERT(!second.acquire(), "the single saved buffer cannot support nested owners");
+        second.release();
+        TEST_ASSERT(fixture.frozen(), "an unacquired guard must not release the first owner's display");
+        first.release();
+        TEST_ASSERT(fixture.restored(), "the owner should restore the buffer pointers");
+        TEST_SUCCESS;
+    }
+
     TEST_SUITE_BEGIN(overlay_state)
+        TEST(test_engine_request_waits_for_callback_push_and_pop)
+        TEST(test_cancelled_request_cannot_release_later_fade)
+        TEST(test_entered_message_cannot_release_replaced_wait)
+        TEST(test_skipped_modal_cannot_release_later_wait)
+        TEST(test_display_guard_defers_acquisition_and_rejects_nesting)
         TEST(test_pending_message_leaves_slot_and_vm)
         TEST(test_pending_dialogue_leaves_slot_and_vm)
         TEST(test_message_first_wins_and_releases_on_pop)

@@ -60,6 +60,7 @@ namespace NEONengine
          * @brief Resume the live display after a frozen overlay is done.
          */
         void resume_display();
+        bool display_frozen() const noexcept { return pHeldBack != nullptr; }
 
         /**
          * @brief Restore a scene rectangle from the held back buffer.
@@ -183,22 +184,34 @@ namespace NEONengine
     };
 
     /**
-     * @brief Holds the display still for as long as the object lives.
+     * @brief Acquires at entry; release follows pixel and palette restoration.
      */
     class freeze_display
     {
         public: ////////////////////////////////////////////////////////////////////////////////
-        freeze_display(screen& scr) noexcept : _screen(scr)
+        explicit freeze_display(screen& scr) noexcept : _screen(scr) {}
+        ~freeze_display() noexcept { release(); }
+        NO_COPY(freeze_display)
+        NO_MOVE(freeze_display)
+
+        bool acquire() noexcept
         {
+            if (_acquired || _screen.display_frozen()) return false;
             _screen.freeze_display();
+            _acquired = true;
+            return true;
         }
-        ~freeze_display() noexcept
+        void release() noexcept
         {
+            if (!_acquired) return;
             _screen.resume_display();
+            _acquired = false;
         }
+        explicit operator bool() const noexcept { return _acquired; }
 
         private: ///////////////////////////////////////////////////////////////////////////////
         screen& _screen;
+        bool _acquired{ false };
     };
 
 }  // namespace NEONengine

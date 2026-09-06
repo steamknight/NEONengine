@@ -435,6 +435,11 @@ namespace NEONengine
          * that came up for its own reasons can call it without checking.
          */
         void resume_execution() noexcept;
+        u32 modal_wait_id() const noexcept { return _modal_wait_id; }
+        void complete_modal_wait(u32 id) noexcept
+        {
+            if (id == _modal_wait_id) resume_execution();
+        }
 
         /**
          * @brief Abandon every session and empty the run list.
@@ -574,6 +579,7 @@ namespace NEONengine
 
             // Set before the call, not after: a bridge function that answers
             // the request on the spot has to be able to lift it again.
+            ++_modal_wait_id;
             _vm_state = noir_vm_state::blocked;
             b.fn(_host, args...);
             return noir_result::deferred;
@@ -801,6 +807,7 @@ namespace NEONengine
 
         run_mode _run_mode{ run_mode::idle };          ///< What the VM is running
         noir_vm_state _vm_state{ noir_vm_state::ok };  ///< How this update ended, or the latch
+        u32 _modal_wait_id{ 0 };
 
         // ── Result ───────────────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@
 #include <ace++/font.h>
 
 #include "core/state.h"
+#include "core/screen.h"
 
 namespace NEONengine
 {
@@ -24,12 +25,12 @@ namespace NEONengine
         WORD elapsed_y() const;
 
         engine& _engine;
+        freeze_display _display;
         tFont* _font{ nullptr };
         ace::text_bitmap_ptr _memory{ nullptr };
         ace::text_bitmap_ptr _elapsed{ nullptr };
         ULONG _last_reading{ 0 };
         ULONG _fps{ 0 };
-        bool _frozen{ false };
         bool _drawn{ false };
         char _memory_text[64]{};
         char _elapsed_text[32]{};

@@ -323,6 +323,7 @@ namespace NEONengine
 
     void noir_vm::reset_execution() noexcept
     {
+        ++_modal_wait_id;
         _sessions.clear();
 
         reset_session();
@@ -343,7 +344,11 @@ namespace NEONengine
         // Only the modal latch. A teardown owed is not something an overlay
         // coming down may cancel, and clearing `failed` here would hide it from
         // whoever is about to read it.
-        if (_vm_state == noir_vm_state::blocked) _vm_state = noir_vm_state::ok;
+        if (_vm_state == noir_vm_state::blocked)
+        {
+            ++_modal_wait_id;
+            _vm_state = noir_vm_state::ok;
+        }
     }
 
     // ─── update() ───────────────────────────────────────────────────────────────

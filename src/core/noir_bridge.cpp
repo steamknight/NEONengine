@@ -9,6 +9,7 @@
 #include "core/logger.h"
 #include "core/mouse_pointer.h"
 #include "states/scene.h"
+#include "states/dialogue.h"
 #include "core/screen.h"
 #include "core/string_table.h"
 #include "types.h"
@@ -24,7 +25,7 @@ namespace NEONengine
         inline constexpr auto on_engine = host_call<engine, Fn>;
 
         // ── Screen ───────────────────────────────────────────────────────────
-        // The scene starts deferred fades after the VM update and holds it until they finish.
+        // The engine starts fades after the VM returns.
         void nb_fade_out(engine& e, u16 frames)
         {
             e.request_modal(modal_kind::fade_out, frames);
@@ -63,15 +64,15 @@ namespace NEONengine
          * @brief Puts what killed a script in front of the player.
          *
          * The VM builds the line in a buffer of its own that it reuses, so this
-         * text is only good for the length of the call. The message slot copies
-         * what it is given, which is what lets it outlive that.
+         * text is only good for the length of the call. The requested state
+         * copies it once, before this callback returns.
          */
         void nb_report_error(engine& e, char const* message)
         {
             if (!message) return;
 
             NE_LOG("Script Error: %s", message);
-            e.overlays().post_message(message_request{
+            e.request_message(e.vm(), message_request{
                 .text          = bstr_view(message),
                 .caption       = "Script Error",
                 .color         = MESSAGE_ERROR_COLOR,
@@ -94,14 +95,14 @@ namespace NEONengine
         // ── Dialogue / Audio ─────────────────────────────────────────────────
         void nb_say(engine& e, u16 string_id, u16)
         {
-            e.overlays().post_message(message_request{
+            e.request_message(e.vm(), message_request{
                 .text = e.strings().get_string(string_id),
                 .modal_wait = true,
             });
         }
         void nb_show_dialog(engine& e, u16 dialogue_id)
         {
-            e.request_modal(modal_kind::show_dialog, dialogue_id);
+            e.request_state<dialogue_state>(&e.vm(), e.vm(), dialogue_id);
         }
         void nb_show_text(engine&, u16, u16, u16) {}
         void nb_clear_text(engine&) {}

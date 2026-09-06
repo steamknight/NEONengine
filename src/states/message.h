@@ -3,7 +3,9 @@
 
 #include <ace++/bitmap.h>
 
-#include "core/overlay_system.h"
+#include "core/message_request.h"
+#include "core/modal_wait.h"
+#include "core/screen.h"
 #include "core/state.h"
 
 namespace NEONengine
@@ -13,7 +15,7 @@ namespace NEONengine
     class message_state : public state
     {
         public:
-        message_state(engine& engine, noir_vm& vm, overlay_system& overlays,
+        message_state(engine& engine, noir_vm& vm,
             message_request const& request) noexcept;
         ~message_state() override;
 
@@ -22,8 +24,8 @@ namespace NEONengine
 
         private:
         engine& _engine;
-        noir_vm& _vm;
-        overlay_system& _overlays;
+        modal_wait _wait;
+        freeze_display _display;
         message_request _request;
         ace::text_bitmap_ptr _text_bitmap{ nullptr };
         ace::text_bitmap_ptr _caption_bitmap{ nullptr };
@@ -33,7 +35,6 @@ namespace NEONengine
         u16 _box_width{ 0 };
         u16 _box_height{ 0 };
         bool _entered{ false };
-        bool _frozen{ false };
         char _text[MESSAGE_TEXT_CAPACITY]{};
         char _caption[MESSAGE_CAPTION_CAPACITY]{};
     };

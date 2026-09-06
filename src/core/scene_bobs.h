@@ -141,6 +141,16 @@ namespace NEONengine
         void draw();
 
         /**
+         * @brief Draws the current pose into either physical screen buffer.
+         *
+         * Restores and saves that buffer's ACE undraw records without advancing
+         * animation. After a backdrop redraw discards both buffers' records,
+         * draw each buffer that must contain bobs; copying bob pixels would
+         * leave the destination without the records needed to erase them.
+         */
+        void draw(tBitMap* target);
+
+        /**
          * @brief Shows the hotspot @p index's hover caption anchored near the pointer.
          *
          * @p anchorX and @p anchorY are the pointer position in display space; the

@@ -323,10 +323,11 @@ kinds of deferred call differ in nothing but how the latch is lifted:
 callback, an entered modal overlay on its way down, or the handler of a skipped
 request. **A modal
 request that nothing answers stops every script for the rest of the scene, and
-says nothing about it.** The handler must wait until the VM has latched after
-the bridge callback returns. Resuming inside that callback would be too early.
-The overlay system answers empty SAY and modals dropped behind a diagnostic in
-`present()`. A diagnostic itself owns no modal wait and cannot release a fade.
+says nothing about it.** The VM sets its blocked state and wait identity before
+calling the bridge. The engine records skipped waits inside the callback and
+completes them in `update_states()` after callbacks return, not inside the request.
+This answers empty SAY and modals dropped behind a diagnostic. A diagnostic
+itself owns no modal wait and cannot release a fade.
 
 The VM keeps the latch rather than trusting the scene to remember one. There is
 one state, in one place, and `noir_vm::blocked()` tells the scene whether it may

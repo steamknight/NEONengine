@@ -63,7 +63,7 @@ namespace NEONengine
         template<state_type T, typename... Args>
         void start(Args&&... args)
         {
-            if (_started || _phase != phase::idle)
+            if (_started || _phase != phase::idle || _result != state_update_result::ok)
             {
                 fail("State manager already started");
                 return;
@@ -80,6 +80,15 @@ namespace NEONengine
          * The engine handles reporting and cleanup.
          */
         [[nodiscard]] state_update_result update();
+        [[nodiscard]] state_update_result apply_transition();
+        [[nodiscard]] state_update_result update_current();
+
+        // Idle selection never replaces a transition already chosen by a state.
+        bool push(state_ptr& pending);
+        bool replace(state_ptr& pending);
+        bool has_transition() const noexcept { return _transition != transition::none; }
+        state* current() const noexcept { return _top.get(); }
+        void fail(char const* message);
 
         /// @brief Destroys states without resuming them; preserves any fatal error.
         void clear();
@@ -107,7 +116,6 @@ namespace NEONengine
         bool request(transition operation);
         void apply_pending();
         void remove_top();
-        void fail(char const* message);
 
         private:
         state_ptr _top{nullptr};

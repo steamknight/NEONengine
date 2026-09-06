@@ -283,22 +283,31 @@ The earlier static-storage and private-host-access rationale no longer applies.
 ### Lifetime and transitions
 
 `start`, `push` and `replace` construct the pending object at request time.
-They do not call `pushed()` then. The next manager update applies the transition,
-calls `pushed()`, then updates the new top in that same update.
+They do not call `pushed()` then. `apply_transition()` applies a selected
+transition without running gameplay; `update_current()` runs only the top
+state. `update()` remains the combined operation for standalone manager users.
 
 - Push suspends the current top before entering the new state.
 - Replace destroys the outgoing top **before** entering its replacement.
-- Pop destroys the top, then resumes and updates the state below it.
+- Pop destroys the top, then resumes the state below it without updating it.
 - A state may request only one transition in an update. Control is valid only
   during that callback.
+- The host can select `push(state_ptr&)` or `replace(state_ptr&)` only while the
+  manager is idle. A transition already selected by a callback wins: selection
+  returns false and leaves the host's pointer intact. It never overwrites the
+  callback's transition. Calling `update_current()` with a pending transition
+  is fatal, as is using host selection from a state callback.
 - Constructors store inputs and copy owned payloads; resource loading belongs
   in `pushed()`. A pending state can die without ever entering.
 - Allocation or entry failure is fatal. The manager retains the error text and
   does not resume a suspended parent. Later updates run no callbacks.
 - `clear()` destroys pending and stacked states without resuming any of them.
 
-`engine::process()` runs input, audio, pending language, the state manager, then
-the screen. A finished or failed manager makes the engine clear states and exit
+`engine::process()` runs input, audio, pending language, `update_states()`, then
+the screen. `update_states(state_manager&)` owns request selection; production
+passes the engine's manager, and display-backed tests pass their isolated stack.
+It retains neither the manager nor a borrowed `state_control`.
+A finished or failed manager makes the engine clear states and exit
 before rendering; failure also logs the error. Engine shutdown clears states
 before ACE shutdown. Startup establishes the OS-use baseline and cursor palette
 exemption once, before the first state enters. The test-runner state stays up
@@ -313,8 +322,8 @@ The engine holds a borrowed pointer for `engine::scene()` and the VM bridge.
 Binding asserts that no scene is already registered; unbinding checks identity.
 The registered state stays alive while an overlay suspends the scene.
 
-Only destruction of the state that owns that registration clears scene requests,
-overlays and VM execution. An unentered or failed state must not reset a different
+Only destruction of the state that owns that registration clears its engine
+requests and VM execution. An unentered or failed state must not reset a different
 scene's VM or unbind its state. Bobs record registration during load and reset
 the shared manager only when they registered a set. Empty hotspots only hide
 their own bobs' caption; empty timelines have no palette cycles to restore.
@@ -337,20 +346,51 @@ not an entry failure; it starts the configured default fade.
 
 ### Scene update order
 
-The scene handles system requests before modals or overlays. It checks again
-after timeline, hotspot and VM work, so a scene change cannot lose to an overlay
-queued in that work. A replacement request stops the current scene update.
-The VM runs at most once per scene update. A fade requested by that VM update
-starts before the screen displays the frame, not one frame later.
+The engine applies at most one stack transition per `update_states()`:
 
-Only the scene presents overlays, both before gameplay work and after drawing.
-Each successful presentation ends its update, so it cannot queue another state
-transition. F1 comes last. Before any overlay enters, `suspended()` draws the
-displayed bob pose into the alternate buffer. Later blits wait for that draw
-before using the buffer. Message, dialogue and debug states all restore from it.
-`resumed()`
-resynchronizes hotspot button edges so a dismissal press cannot become a
-scene click.
+1. Apply a transition already selected by the previous state callback, including
+   startup or a modal's pop. This completes destruction, display restoration and
+   the parent's `resumed()` callback before request selection.
+2. Answer skipped modal calls, then examine system work. A scene replacement
+   takes priority over a pending display state. While the scene is suspended,
+   wait for the state above it to close; do not replace that state with a scene.
+3. If a stack transition already ran, keep the engine request in its slot for
+   the next call and skip resumed scene gameplay. Otherwise select and apply
+   the request now. Pending display states also wait while the saved background
+   is occupied. No intermediate state kind or dispatcher selects their type.
+4. Start pending fades, then update only the current state. Calls made during
+   that update remain deferred. After the callback returns, answer skipped
+   waits and start its fade before `screen::process()`. A terminal request
+   suppresses that fade and stays pending until the next safe selection.
+
+`request_state<T>(waiting_vm, args...)` constructs an ordinary state immediately,
+passing the engine followed by its arguments. A null waiting VM means the
+request owns no script wait. The one display-request slot is first-wins until
+entry. `request_message()` handles empty text and uses that same typed request
+path; `SHOW_DIALOG` requests `dialogue_state` directly. F1 requests
+`debug_view_state`; it still comes after scene work. System placeholders retain
+their previous behavior, but the engine now handles them.
+
+The scene checks only whether engine work interrupts it, before producers and
+after timeline, hotspot and VM work. It never interprets a request kind or
+selects a stack transition. A timeline terminal would skip hotspots; a hotspot
+terminal skips the VM; a VM terminal skips the remaining outgoing drawing and
+language work. Current timeline script events enqueue VM sessions rather than
+executing them synchronously. The VM runs at most once per scene update.
+
+Before selecting a display state, the engine calls the scene's
+`prepare_suspend()` to reconcile a changed language unless a fade-out owns or
+is about to own the palette. Preparation failure is fatal and prevents entry.
+If static text redraws the backdrop, preparation also draws the current bob pose
+into the front buffer. `scene_bobs::draw(target)` selects that physical buffer's
+ACE queue and saves fresh undraw records without advancing animation. A pixel
+copy cannot replace this draw: the backdrop redraw discarded both buffers'
+undraw records, so copied bobs would leave trails when they move.
+The manager then calls `suspended()` to draw the displayed bob pose into the
+alternate buffer. Later blits wait for that draw before using
+the buffer. Message, dialogue and debug states restore from it. `resumed()`
+resynchronizes hotspot button edges so a dismissal press cannot become a scene
+click. Engine arbitration may follow resume without running scene gameplay.
 
 `scene_backdrop_draw()` takes the engine and scene, obtaining drawing dependencies
 from the supplied engine. Palette reading and static text layout stay private
@@ -362,7 +402,7 @@ The state sets pointer visibility after a successful draw, before any pointer
 update; drawing itself cannot change it.
 
 The scene records its rendered language. A change during suspension therefore
-triggers rebuilding when the scene returns. `update()` owns both scheduling
+triggers rebuilding when the scene returns. `update()` owns both gameplay
 checks: rebuild only on a language mismatch, never during fade-out. Before
 scripts, also skip a black screen when no fade owns its palette. After scripts
 and their requests, rebuild even while black if the scene remains. This lets a
@@ -376,10 +416,10 @@ the owning scene. A required backdrop failure still logs and calls `gameExit()`.
 
 ### Message and dialogue overlays
 
-Both states render their full UI. They borrow the engine for display resources,
-plus an explicit VM and overlay system. Constructors store dependencies and
-copy message payloads; `pushed()` consumes the slot and prepares resources
-before freezing the display.
+Both states render their full UI. They borrow the engine for display resources
+and an explicit VM for script work. They are ordinary states, with no overlay
+base class or dispatcher. Constructors store dependencies and copy message
+payloads once; `pushed()` prepares resources before acquiring `freeze_display`.
 
 A message builds wrapped body and caption glyphs and an optional nine-patch
 frame. Width stays within the screen, and tall text clips to the frame's lower
@@ -421,32 +461,47 @@ portrait takes its palette band only when shown, not while loading. Unentered
 states and empty entries own no display changes. Clearing the manager uses
 the same cleanup, before destroying the suspended scene.
 
-The first message, diagnostic or dialogue owns the slot until entry. The slot
-copies text and captions, and the pending message state copies them again so
-slot reuse cannot change its payload. `message_request::modal_wait` distinguishes
-SAY from diagnostics. Only an entered modal state's destructor resumes its
-caller; construction, cancellation before entry and pop requests do not.
-Diagnostic destruction cannot release a fade. Resuming never clears a terminal
-latch.
+The engine slot owns a `state_ptr`, not a second copy of its payload.
+`message_request::modal_wait` distinguishes SAY from diagnostics. The composed
+`modal_wait` records the supplied VM and its wait identity. A new modal,
+execution reset or successful resume invalidates the old identity. Only an
+entered modal state's cleanup completes its wait; construction, pending
+cancellation and pop requests do not. Clearing an entered state can complete
+its own wait, but cannot answer a later fade or execution. Diagnostics own no
+wait, and completion never clears a terminal latch.
 
-An empty SAY, or a modal dropped behind a diagnostic, still causes the VM to
-latch after its bridge callback. The overlay system answers that skipped wait
-in `present()`, after the VM has returned. A modal already accepted in the slot
-keeps ownership of its wait instead.
+The engine associates pending display states, system work, fades and skipped
+waits with the scene that posted them. Scene teardown discards that work.
+Terminal replacement cancels the outgoing display request before loading the
+new scene. A scene constructor or failed, unbound entry cannot cancel the
+active scene's work.
+
+Empty SAY and rejected modal calls still need an answer. The engine records
+their wait identity and completes it only after the VM callback returns.
+The VM sets its latch and wait identity *before* the bridge callback; this refactor
+keeps that behavior. No engine request clears it synchronously. A modal already
+accepted in the slot keeps its wait. The bounded slot does not become an event queue.
+
+`freeze_display` construction is inert. Acquisition rejects a second owner:
+the screen has only one saved background, not nested snapshots. The engine
+defers display requests while that background is held. Cleanup restores pixels
+and palette before release. Display ownership has no effect on script waits.
+The engine keeps pending and active fade waits distinct: an old screen
+completion cannot answer a new fade before the engine starts it.
 
 [ADR 0001](adr/0001-dialogue-scripts-cannot-make-modal-calls.md) governs page
 and choice scripts: `execute_now` permits terminal requests and forbids modal
 calls. Dialogue navigation checks termination after each script and abandons
-any page destination. The scene handles the terminal request after overlay
+any page destination. The engine handles the terminal request after dialogue
 cleanup, before any queued diagnostic. Script errors can queue a diagnostic,
-but only the scene presents it; a visible dialogue never hosts another modal.
+but only the engine selects it; a visible dialogue never hosts another modal.
 Unavailable pages still scan forward by index under
 [ADR 0002](adr/0002-unavailable-pages-are-skipped-by-index.md).
 
 ### Regression scope
 
-`overlay_state_tests.h` runs real VM bytecode, the overlay system and rendered
-states through the real manager, using the initialized engine's display assets.
+`overlay_state_tests.h` runs real VM bytecode, engine request selection and
+rendered states through the real manager, using the initialized engine's display assets.
 It checks pending destruction, first-wins behavior, entry/pop latch timing,
 diagnostic/fade separation, terminal latch preservation, and empty or dropped
 modal requests. Pixel checks cover owned body and caption bytes, slot reuse,
@@ -457,19 +512,32 @@ long-choice string tables exercise layout without changing authored assets.
 Language tests release the original table while choices remain drawn and check
 the next page against the new language's glyphs.
 
+New cases cover separate manager phases, host/callback selection conflicts,
+stale wait identities after execution reset, and inert/nested display guards.
+The request fixture uses the engine's scheduling seam, not a test dispatcher.
+
 `scene_state_tests.h` checks real scene entry errors, pending scene/debug
-destruction and borrowed-state access. Loaded-scene cases use read-only,
+destruction and borrowed-state access. Most loaded-scene cases use read-only,
 scriptless authored scenes and observe the real scene callbacks. They cover
 dialogue-to-message-to-scene restoration, bob buffer preparation, clearing an
 active overlay, terminal request priority and successful scene replacement.
 Language cases cover fade-out deferral, rebuilding while black when the scene
 stays, skipping an outgoing scene's rebuild after a script requests replacement,
 and rebuilding before an overlay when fade-in owns a still-black palette.
+The mixed text-and-bob case borrows the authored graphic ranges for the text
+scene under a restoring test guard. It checks both buffers at suspension, visible
+bobs above a message, restoration on close, and trail-free movement and hiding
+across both buffers. Reference images use the normal scene drawing path.
 Pending cancellation and invalid entry leave an active scene's registration,
 requests, VM, pixels, palette and Chip RAM intact. Clearing a queued replacement
 checks that pending destruction leaves the outgoing bob buffers alive until
 the outgoing state's destructor. A new scene then checks that cleanup allows
-fresh bob registration. The bridge test runs with a real suspended scene.
+fresh bob registration. A scene update counter checks that terminal selection
+after dialogue restoration runs no resumed gameplay. A real screen fade case
+checks dispatch before display and diagnostic cleanup without fade completion.
+A read-only hotspot fixture checks that its terminal request skips a queued VM
+session; it requires a scriptless scene with a scene-changing hotspot.
+The bridge test runs with a real suspended scene.
 A bound dialogue-session display script uses the engine bridge and VM to
 request that replacement while a real dialogue is visible. This tests the
 request and closure path, not an authored displayed page containing GOTO_SCENE.
@@ -572,6 +640,10 @@ implementations, thirty mocks, and the thirty-four dispatch sites in
 `noir_vm.cpp`. One commit, with the test runner as the proof.
 
 ## 4b. One overlay slot, and one drain order
+
+**Historical; superseded by section 3.** The engine now owns typed pending
+states and selection; `overlay_system` and `overlay_kind` no longer exist.
+The following records the earlier slot design.
 
 **Done, except for the drain order.** The overlay slot landed; stating the frame
 order in one place waits on item 1, which is where a `engine::frame()` exists to

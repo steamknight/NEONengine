@@ -31,9 +31,10 @@ namespace NEONengine
         }
     }
 
-    message_state::message_state(engine& engine, noir_vm& vm, overlay_system& overlays,
+    message_state::message_state(engine& engine, noir_vm& vm,
         message_request const& request) noexcept
-        : _engine(engine), _vm(vm), _overlays(overlays), _request(request)
+        : _engine(engine), _wait(request.modal_wait ? &vm : nullptr),
+          _display(engine.main_screen()), _request(request)
     {
         _request.text = copy_text(_text, sizeof(_text), request.text);
         _request.caption = copy_text(_caption, sizeof(_caption), request.caption);
@@ -41,7 +42,6 @@ namespace NEONengine
 
     mtl::expected<void, char const*> message_state::pushed()
     {
-        _overlays.clear();
         auto* renderer = _engine.default_text_renderer();
         if (!_request.text.is_empty() && !renderer)
             return mtl::unexpected("No text renderer for the message");
@@ -91,8 +91,7 @@ namespace NEONengine
         _box_x = to<u16>((SCREEN_WIDTH - _box_width) / 2);
         _box_y = top_edge_for(_request.align, _box_height);
         auto& screen = _engine.main_screen();
-        screen.freeze_display();
-        _frozen = true;
+        if (!_display.acquire()) return mtl::unexpected("Display already acquired");
         if (_frame_bitmap)
         {
             screen.blit_copy(_frame_bitmap.get(), 0, 0,
@@ -133,24 +132,24 @@ namespace NEONengine
         _engine.pointer().update();
         bool const clicked = mouseUse(MOUSE_PORT_1, MOUSE_LMB);
         bool const pressed = keyUse(KEY_SPACE);
-        if (!_frozen || clicked || pressed) control.pop();
+        if (!_display || clicked || pressed) control.pop();
     }
 
     message_state::~message_state()
     {
-        if (_frozen)
+        if (_display)
         {
             _engine.main_screen().restore_rect(
                 to<WORD>(_box_x), to<WORD>(_box_y),
                 to<WORD>(_box_width), to<WORD>(_box_height));
         }
-        if (_frozen) _engine.main_screen().resume_display();
+        _display.release();
         {
             mtl::system_use_guard guard;
             _frame_bitmap.reset(nullptr);
             _caption_bitmap.reset(nullptr);
             _text_bitmap.reset(nullptr);
         }
-        if (_entered && _request.modal_wait) _vm.resume_execution();
+        if (_entered) _wait.complete();
     }
 }  // namespace NEONengine

@@ -61,6 +61,7 @@ namespace NEONengine
             u16 _suspended{ 0 };
             u16 _resumed{ 0 };
             u16 _destroyed{ 0 };
+            u16 _updates{ 0 };
             ULONG _chip_on_destroy{ 0 };
             u32 _pixels{ 0 };
             ULONG _colors[256]{};
@@ -90,6 +91,12 @@ namespace NEONengine
                 auto result = scene_state::pushed();
                 if (result) _observation._scene = &g_pEngine->scene();
                 return result;
+            }
+
+            void update(state_control& control) override
+            {
+                ++_observation._updates;
+                scene_state::update(control);
             }
 
             void suspended() override
@@ -164,7 +171,7 @@ namespace NEONengine
                 engine.vm().reset_execution();
                 engine.take_pending_modal();
                 engine.take_pending_system();
-                engine.overlays().clear();
+                engine.clear_state_request();
                 engine.set_current_scene(_scene_id);
                 if (_report)
                 {
@@ -218,7 +225,7 @@ namespace NEONengine
 
             state_update_result tick(state_manager& manager)
             {
-                auto const result = manager.update();
+                auto const result = g_pEngine->update_states(manager);
                 if (result == state_update_result::ok) g_pEngine->main_screen().process();
                 return result;
             }
@@ -248,6 +255,25 @@ namespace NEONengine
                 TEST_ASSERT(&g_pEngine->scene() == observation._scene, "the suspended scene must remain registered");
                 TEST_SUCCESS;
             }
+        };
+
+        struct mixed_scene_fixture
+        {
+            // The loaded image is mutable storage exposed through read-only views.
+            // Borrow the authored flags for TextTest without changing the pak.
+            data::scene& _scene;
+            data::scene _saved;
+
+            mixed_scene_fixture(u16 text_scene, u16 graphic_scene)
+                : _scene(const_cast<data::scene&>(g_pEngine->data().scenes()[text_scene])),
+                  _saved(_scene)
+            {
+                auto const& graphics = g_pEngine->data().scenes()[graphic_scene];
+                _scene.graphic_range = graphics.graphic_range;
+                _scene.graphic_instance_range = graphics.graphic_instance_range;
+            }
+
+            ~mixed_scene_fixture() { _scene = _saved; }
         };
 
         char const* rotate_to_dialogue_end(state_manager& manager, u16 dialogue_id)
@@ -290,7 +316,7 @@ namespace NEONengine
         TEST_ASSERT(engine.vm().execute(0), "an authored function should queue without executing");
         engine.request_system(system_kind::load_scene, 17);
         engine.request_modal(modal_kind::fade_out, 37);
-        engine.overlays().post_message(message_request{ .text = "leave pending" });
+        engine.request_message(engine.vm(), message_request{ .text = "leave pending" });
         {
             state_manager pending;
             pending.start<scene_state>(engine, scene_id);
@@ -311,7 +337,7 @@ namespace NEONengine
         TEST_ASSERT(engine.has_pending_system() && engine.has_pending_modal(), "unentered states must leave requests intact");
         TEST_ASSERT(engine.take_pending_system().arg1 == 17, "the scene request payload must survive");
         TEST_ASSERT(engine.take_pending_modal().arg1 == 37, "the fade request payload must survive");
-        TEST_ASSERT(engine.overlays().kind() == overlay_kind::message, "unentered states must not clear the overlay");
+        TEST_ASSERT(engine.has_pending_state(), "unentered states must not clear the request");
         TEST_ASSERT(engine.main_screen().front_buffer() == front && engine.main_screen().back_buffer() == back,
             "unentered debug state must not freeze or resume the display");
         engine.scene().bobs().draw();
@@ -334,7 +360,7 @@ namespace NEONengine
         TEST_ASSERT(engine.vm().execute(0), "an authored function should queue");
         engine.request_modal(modal_kind::fade_out, 11);
         engine.request_system(system_kind::load_scene, 23);
-        engine.overlays().post_dialogue(9);
+        engine.request_state<dialogue_state>(&engine.vm(), engine.vm(), u16(9));
         state_manager manager;
         manager.start<scene_state>(engine, data::NO_ID);
         TEST_ASSERT(manager.update() == state_update_result::error, "invalid scene entry must be fatal");
@@ -347,7 +373,7 @@ namespace NEONengine
             "failed entry must not change the active pixels or palette");
         TEST_ASSERT(engine.vm().session_count() == 1, "failed unowned entry must not reset another VM session");
         TEST_ASSERT(engine.has_pending_modal() && engine.has_pending_system(), "failed unowned entry must not consume requests");
-        TEST_ASSERT(engine.overlays().kind() == overlay_kind::dialogue, "failed unowned entry must not consume the overlay");
+        TEST_ASSERT(engine.has_pending_state(), "failed unowned entry must not consume the request");
         manager.clear();
         TEST_ASSERT(manager.update() == state_update_result::error, "clear must preserve the fatal result");
         engine.scene().bobs().draw();
@@ -423,13 +449,13 @@ namespace NEONengine
         TEST_ASSERT(!fault, fault);
         ULONG const chip_free = memGetFreeChipSize();
         g_pEngine->request_system(system_kind::load_scene, scene_id);
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the scene should queue its replacement");
+        TEST_ASSERT(g_pEngine->has_pending_system(), "the engine should retain the replacement request");
         TEST_ASSERT(&g_pEngine->scene() == observation._scene && observation._destroyed == 0,
             "a pending replacement must leave the outgoing scene bound and alive");
-        TEST_ASSERT(memGetFreeChipSize() == chip_free, "construction must not acquire scene resources");
+        TEST_ASSERT(memGetFreeChipSize() == chip_free, "requesting replacement must not acquire scene resources");
         manager.clear();
         TEST_ASSERT(observation._destroyed == 1 && observation._chip_on_destroy == chip_free,
-            "clear must cancel the pending scene without freeing the outgoing bob buffers first");
+            "clear must discard the request without freeing outgoing bob buffers before scene destruction");
         TEST_ASSERT(!g_pEngine->vm().session_count(), "outgoing scene cleanup must reset its VM");
         TEST_SUCCESS;
     }
@@ -446,7 +472,7 @@ namespace NEONengine
         state_manager manager;
         auto const fault = fixture.open(manager, observation, loaded_scene_fixture::scene_id());
         TEST_ASSERT(!fault, fault);
-        g_pEngine->overlays().post_message(message_request{ .text = "queued during dialogue" });
+        g_pEngine->request_message(g_pEngine->vm(), message_request{ .text = "queued during dialogue" });
 
         bound_dialogue_fixture script;
         dialogue_context context{ g_pEngine->session(), g_pEngine->vm() };
@@ -456,22 +482,25 @@ namespace NEONengine
         TEST_ASSERT(g_pEngine->vm().terminated()
             && g_pEngine->pending_system_kind() == system_kind::load_scene,
             "the engine VM and real engine bridge must retain the terminal scene request");
+        u16 const updates = observation._updates;
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "the visible dialogue should request pop");
         TEST_ASSERT(observation._resumed == 0 && &g_pEngine->scene() == observation._scene,
             "the scene must remain suspended and alive until dialogue cleanup");
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "pop should restore and resume the real scene");
         TEST_ASSERT(observation._resumed == 1 && observation._restored_on_resume,
             "dialogue cleanup must restore pixels and palette before scene resume");
-        TEST_ASSERT(!g_pEngine->has_pending_system() && g_pEngine->vm().terminated(),
-            "the resumed scene must take the request without releasing termination");
-        TEST_ASSERT(g_pEngine->overlays().kind() == overlay_kind::message && observation._suspended == 1,
+        TEST_ASSERT(observation._updates == updates,
+            "engine arbitration must not run resumed scene gameplay before replacement");
+        TEST_ASSERT(g_pEngine->has_pending_system() && g_pEngine->vm().terminated(),
+            "the engine must retain the request after applying the dialogue pop");
+        TEST_ASSERT(g_pEngine->has_pending_state() && observation._suspended == 1,
             "the queued diagnostic must not win over scene replacement");
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "the real replacement should load");
         TEST_ASSERT(observation._destroyed == 1 && observation._terminal_on_destroy,
             "the old scene must own the terminated VM until destruction");
         TEST_ASSERT(g_pEngine->current_scene() == destination && !g_pEngine->vm().terminated(),
             "the replacement must bind its scene and reset old execution");
-        TEST_ASSERT(g_pEngine->overlays().kind() == overlay_kind::none,
+        TEST_ASSERT(!g_pEngine->has_pending_state(),
             "old scene cleanup must discard its diagnostic rather than display it in the new scene");
         manager.clear();
         TEST_SUCCESS;
@@ -489,9 +518,9 @@ namespace NEONengine
         state_manager manager;
         auto const fault = fixture.open(manager, observation, loaded_scene_fixture::scene_id());
         TEST_ASSERT(!fault, fault);
-        g_pEngine->overlays().post_message(message_request{ .text = "after the dialogue" });
+        g_pEngine->request_message(g_pEngine->vm(), message_request{ .text = "after the dialogue" });
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "idle dialogue should leave the diagnostic queued");
-        TEST_ASSERT(g_pEngine->overlays().kind() == overlay_kind::message && observation._suspended == 1,
+        TEST_ASSERT(g_pEngine->has_pending_state() && observation._suspended == 1,
             "a visible dialogue must not present a nested message");
         auto const navigation = rotate_to_dialogue_end(manager, dialogue_id);
         TEST_ASSERT(!navigation, navigation);
@@ -507,7 +536,7 @@ namespace NEONengine
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "the diagnostic should now enter");
         TEST_ASSERT(observation._suspended == 2 && observation._buffers_ready,
             "the second overlay must prepare the real scene buffers again");
-        TEST_ASSERT(g_pEngine->overlays().kind() == overlay_kind::none,
+        TEST_ASSERT(!g_pEngine->has_pending_state(),
             "only diagnostic entry should consume its slot");
         TEST_ASSERT(fixture.tick(manager) == state_update_result::ok,
             "the consumed dialogue key must not dismiss the new diagnostic");
@@ -639,9 +668,9 @@ namespace NEONengine
         TEST_ASSERT(strings.replace(next), "the alternate shipped language must load");
         TEST_ASSERT(engine.vm().execute(1), "the scene-changing script should queue");
 
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the VM should request scene replacement");
-        TEST_ASSERT(engine.vm().terminated() && !engine.has_pending_system(),
-            "the scene must apply the VM's terminal request in this update");
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the VM should request scene replacement");
+        TEST_ASSERT(engine.vm().terminated() && engine.has_pending_system(),
+            "the scene must leave the VM's terminal request for engine selection");
         TEST_ASSERT(&engine.scene() == observation._scene && observation._destroyed == 0,
             "the outgoing scene must stay alive until the replacement enters");
         TEST_ASSERT(scene_test_pixels(screen.front_buffer()) == original
@@ -668,18 +697,218 @@ namespace NEONengine
         screen.fade_from_black(2, 0, nullptr);
         TEST_ASSERT(screen.palette_ratio() == 0 && screen.fade_owns_palette(),
             "fade-in should own the palette while still black");
-        engine.overlays().post_message(message_request{ .text = "after language rebuild" });
+        engine.request_message(engine.vm(), message_request{ .text = "after language rebuild" });
 
-        TEST_ASSERT(manager.update() == state_update_result::ok, "the scene should rebuild before presenting its overlay");
-        u32 const translated = scene_test_pixels(screen.front_buffer());
-        TEST_ASSERT(translated != original && scene_test_pixels(screen.back_buffer()) == translated,
-            "the pre-script check must allow rebuilding at the start of fade-in");
-        TEST_ASSERT(observation._suspended == 0 && engine.overlays().kind() == overlay_kind::message,
-            "the overlay should still await entry, after the scene update returned early");
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the engine should enter the message");
+        TEST_ASSERT(observation._pixels != original && observation._buffers_ready,
+            "suspension must reconcile language before saving the message background");
+        TEST_ASSERT(observation._suspended == 1 && !engine.has_pending_state(),
+            "the engine should consume the request once after scene preparation");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_language_rebuild_before_message_preserves_bob_undraw)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        dialogue_strings_fixture strings;
+        u16 const text_scene = loaded_scene_fixture::scene_id(true);
+        u16 const graphic_scene = loaded_scene_fixture::scene_id();
+        TEST_ASSERT(text_scene != data::NO_ID && graphic_scene != data::NO_ID,
+            "the pak must contain the authored text and graphic scenes");
+        mixed_scene_fixture mixed(text_scene, graphic_scene);
+        scene_observation observation;
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, text_scene);
+        TEST_ASSERT(!fault, fault);
+        auto& engine = *g_pEngine;
+        auto& screen = engine.main_screen();
+        auto& bobs = engine.scene().bobs();
+        for (auto const& track : engine.data().tracks()) engine.scene().timeline().stop(track.name_id);
+        for (u16 id = mixed._scene.hotspot_range.start; id < mixed._scene.hotspot_range.end(); ++id)
+            engine.scene().hotspots().set_enabled(id, false);
+
+        auto const instances = mixed._scene.graphic_instance_range.of(engine.data().graphic_instances());
+        u16 visible = data::NO_ID;
+        for (u16 id = 0; id < instances.size(); ++id)
+        {
+            bobs.set_instance_visible(id, false);
+            auto const& instance = instances[id];
+            auto const& graphic = engine.data().graphics()[instance.graphic_id];
+            if ((instance.flags & 1) && (graphic.frame_count == 1 || graphic.frame_delay == 0)
+                && instance.pos.y + graphic.frame_height <= SCREEN_HEIGHT / 2
+                && instance.pos.x + graphic.frame_width < SCREEN_WIDTH)
+                visible = id;
+        }
+        TEST_ASSERT(visible != data::NO_ID, "the fixture needs a static visible bob above the message");
+        data::point<u16> position;
+        TEST_ASSERT(bobs.instance_pos(visible, position), "the authored bob must load");
+        language const original_language = engine.current_language();
+        language const next = original_language == language::IT ? language::EN : language::IT;
+        TEST_ASSERT(strings.replace(next), "the alternate shipped language must load");
+        for (u8 frame = 0; frame < 2; ++frame)
+            TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "draw the translated backdrop alone");
+        u32 const backdrop = scene_test_pixels(screen.front_buffer());
+        bobs.set_instance_visible(visible, true);
+        for (u8 frame = 0; frame < 2; ++frame)
+            TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "draw the translated bob pose normally");
+        u32 const translated_pose = scene_test_pixels(screen.front_buffer());
+        TEST_ASSERT(translated_pose != backdrop && scene_test_pixels(screen.back_buffer()) == translated_pose,
+            "the production bob draw must change pixels in both buffers");
+
+        TEST_ASSERT(strings.replace(original_language), "restore the original language before the request");
+        for (u8 frame = 0; frame < 2; ++frame)
+            TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "draw the original language in both buffers");
+        TEST_ASSERT(scene_test_pixels(screen.front_buffer()) != translated_pose,
+            "the fixture must contain text that changes with language");
+        screen.fade_to_black(1, 0, nullptr);
+        screen.process();
+        TEST_ASSERT(strings.replace(next), "queue translation immediately before the message");
+        screen.fade_from_black(2, 0, nullptr);
+        TEST_ASSERT(screen.palette_ratio() == 0 && screen.fade_owns_palette(),
+            "fade-in must own the still-black palette");
+        auto* front = screen.front_buffer();
+        auto* back = screen.back_buffer();
+        u16 const updates = observation._updates;
+        engine.request_message(engine.vm(), message_request{
+            .text = "translated scene", .align = message_align::bottom });
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the message must enter");
+        TEST_ASSERT(observation._suspended == 1 && observation._buffers_ready
+            && observation._pixels == translated_pose,
+            "suspension must retain translated text and the same bob pose in both buffers");
+        TEST_ASSERT(observation._updates == updates, "preparing suspension must not advance scene animation");
+        TEST_ASSERT(screen.front_buffer() == front && screen.back_buffer() == front,
+            "the message must display the prepared front buffer");
+        blitWait();
+        TEST_ASSERT(memcmp(front->Planes[0], back->Planes[0],
+            to<u32>(front->BytesPerRow) * (screen.offset() + SCREEN_HEIGHT / 2)) == 0,
+            "the visible bob above the message must match the saved scene");
+        TEST_ASSERT(scene_test_pixels(front) != translated_pose, "the message itself must draw");
+
+        keySetState(KEY_SPACE, KEY_ACTIVE);
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "space must request message close");
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "close must restore the scene");
+        TEST_ASSERT(observation._resumed == 1 && observation._restored_on_resume
+            && scene_test_pixels(front) == translated_pose && scene_test_pixels(back) == translated_pose,
+            "message close must restore the translated bob pose before gameplay");
+        auto const& graphic = engine.data().graphics()[instances[visible].graphic_id];
+        position.x = to<u16>(SCREEN_WIDTH - graphic.frame_width - 16);
+        bobs.set_instance_pos(visible, position);
+        for (u8 frame = 0; frame < 2; ++frame)
+            TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "move the bob through both buffers");
+        TEST_ASSERT(scene_test_pixels(front) == scene_test_pixels(back)
+            && scene_test_pixels(front) != translated_pose, "both buffers must show the moved bob");
+        bobs.set_instance_visible(visible, false);
+        for (u8 frame = 0; frame < 2; ++frame)
+            TEST_ASSERT(fixture.tick(manager) == state_update_result::ok, "undraw the moved bob in both buffers");
+        TEST_ASSERT(scene_test_pixels(front) == backdrop && scene_test_pixels(back) == backdrop,
+            "both undraw records must erase old and moved bob positions without trails");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_hotspot_terminal_skips_vm_update)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        scene_observation observation;
+        auto& engine = *g_pEngine;
+        u16 scene_id = data::NO_ID;
+        u16 hotspot_id = data::NO_ID;
+        auto const scenes = engine.data().scenes();
+        auto const hotspots = engine.data().hotspots();
+        for (u16 id = 0; id < scenes.size() && scene_id == data::NO_ID; ++id)
+        {
+            auto const& scene = scenes[id];
+            if (scene.on_enter_function_id != data::NO_ID
+                || !(scene.flags & data::SCENE_FLAG_SHOW_UI)
+                || (scene.music_hash != 0xFFFFFFFF && scene.music_hash != 0xFFFFFFFE)) continue;
+            for (u16 h = scene.hotspot_range.start; h < scene.hotspot_range.end(); ++h)
+            {
+                auto const& hotspot = hotspots[h];
+                if (hotspot.goto_scene_id == data::NO_ID || !hotspot.bounds.width
+                    || !hotspot.bounds.height || hotspot.bounds.pos.x >= SCREEN_WIDTH
+                    || hotspot.bounds.pos.y >= SCREEN_HEIGHT) continue;
+                scene_id = id;
+                hotspot_id = h;
+                break;
+            }
+        }
+        TEST_ASSERT(hotspot_id != data::NO_ID, "the pak needs a scriptless scene with a scene-changing hotspot");
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, scene_id);
+        TEST_ASSERT(!fault, fault);
+        for (auto const& track : engine.data().tracks()) engine.scene().timeline().stop(track.name_id);
+        auto const range = scenes[scene_id].hotspot_range;
+        for (u16 h = range.start; h < range.end(); ++h)
+            engine.scene().hotspots().set_enabled(h, h == hotspot_id);
+        auto const& hotspot = hotspots[hotspot_id];
+        mouseSetPosition(MOUSE_PORT_1, hotspot.bounds.pos.x,
+            to<u16>(hotspot.bounds.pos.y + engine.main_screen().offset()));
+        mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_ACTIVE);
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the hotspot should observe the press");
+        TEST_ASSERT(engine.vm().execute(2), "the probe session should queue before release");
+        mouseSetButton(MOUSE_PORT_1, MOUSE_LMB, MOUSE_NACTIVE);
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "release should post the scene request");
+        TEST_ASSERT(engine.pending_system_kind() == system_kind::load_scene,
+            "the hotspot should leave terminal selection to the engine");
+        TEST_ASSERT(engine.vm().session_count() != 0,
+            "a hotspot terminal must stop the scene before the queued VM session runs");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_engine_starts_vm_fade_before_display)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        scene_observation observation;
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, loaded_scene_fixture::scene_id());
+        TEST_ASSERT(!fault, fault);
+        auto& engine = *g_pEngine;
+        auto& code = fixture._input._code;
+        code.code[code.toc[2]] = noir_op::FADE_OUT;
+        TEST_ASSERT(engine.vm().execute(2), "the scene VM should queue FADE_OUT");
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the VM frame should return");
+        TEST_ASSERT(engine.vm().blocked() && engine.main_screen().is_fading_out(),
+            "the engine must start the fade before screen.process");
+        engine.request_message(engine.vm(), message_request{ .text = "diagnostic during real fade" });
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the diagnostic should enter");
+        TEST_ASSERT(engine.main_screen().display_frozen(), "the diagnostic should own the saved background");
+        keySetState(KEY_SPACE, KEY_ACTIVE);
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "space should request pop");
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the diagnostic should restore");
+        TEST_ASSERT(engine.vm().blocked() && engine.main_screen().is_fading_out(),
+            "diagnostic cleanup must not finish a fade that has not processed a frame");
+        TEST_SUCCESS;
+    }
+
+    TEST_IMPL(test_old_fade_cannot_answer_pending_fade)
+    {
+        loaded_scene_fixture fixture(data::NO_ID, data::NO_ID);
+        scene_observation observation;
+        state_manager manager;
+        auto const fault = fixture.load(manager, observation, loaded_scene_fixture::scene_id());
+        TEST_ASSERT(!fault, fault);
+        auto& engine = *g_pEngine;
+        auto& code = fixture._input._code;
+        code.code[code.toc[2]] = noir_op::FADE_OUT;
+        TEST_ASSERT(engine.vm().execute(2), "the first fade should queue");
+        engine.vm().update();
+        engine.request_modal(modal_kind::fade_out, 1);
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the first fade should start");
+        engine.vm().reset_execution();
+        TEST_ASSERT(engine.vm().execute(2), "new execution should request another fade");
+        engine.vm().update();
+        TEST_ASSERT(engine.has_pending_modal() && engine.vm().blocked(), "the new fade must still await dispatch");
+        engine.main_screen().process();
+        TEST_ASSERT(engine.vm().blocked() && engine.has_pending_modal(),
+            "the active fade's completion must not answer the pending fade's wait");
+        TEST_ASSERT(engine.update_states(manager) == state_update_result::ok, "the pending fade should start later");
+        TEST_ASSERT(engine.vm().blocked(), "starting the new fade must retain its wait");
         TEST_SUCCESS;
     }
 
     TEST_SUITE_BEGIN(scene_state)
+        TEST(test_old_fade_cannot_answer_pending_fade)
+        TEST(test_hotspot_terminal_skips_vm_update)
+        TEST(test_engine_starts_vm_fade_before_display)
         TEST(test_pending_scene_and_debug_leave_active_scene)
         TEST(test_invalid_scene_entry_leaves_active_scene)
         TEST(test_failed_scene_push_never_resumes_parent)
@@ -693,6 +922,7 @@ namespace NEONengine
         TEST(test_scene_defers_language_during_fade_out_then_rebuilds_black)
         TEST(test_scene_black_terminal_skips_language_rebuild)
         TEST(test_scene_rebuilds_language_before_overlay_at_fade_in_start)
+        TEST(test_language_rebuild_before_message_preserves_bob_undraw)
     TEST_SUITE_END
 }
 

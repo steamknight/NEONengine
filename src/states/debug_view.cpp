@@ -17,7 +17,8 @@ namespace NEONengine
         constexpr UBYTE STATS_COLOR = 24;
     }
 
-    debug_view_state::debug_view_state(engine& engine) noexcept : _engine(engine)
+    debug_view_state::debug_view_state(engine& engine) noexcept
+        : _engine(engine), _display(engine.main_screen())
     {
     }
 
@@ -36,8 +37,7 @@ namespace NEONengine
         _last_reading = timerGet();
         _fps = systemIsPal() ? 50 : 60;
         (void)keyUse(KEY_F1);
-        _engine.main_screen().freeze_display();
-        _frozen = true;
+        if (!_display.acquire()) return mtl::unexpected("Display already acquired");
         return {};
     }
 
@@ -88,10 +88,10 @@ namespace NEONengine
 
     debug_view_state::~debug_view_state()
     {
-        if (_frozen)
+        if (_display)
         {
             erase();
-            _engine.main_screen().resume_display();
+            _display.release();
         }
         mtl::system_use_guard guard;
         _memory.reset(nullptr);

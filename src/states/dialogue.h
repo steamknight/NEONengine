@@ -6,6 +6,8 @@
 #include "core/dialogue_portraits.h"
 #include "core/dialogue_session.h"
 #include "core/state.h"
+#include "core/modal_wait.h"
+#include "core/screen.h"
 #include "types.h"
 #include "utils/bstr_view.h"
 
@@ -13,12 +15,11 @@ namespace NEONengine
 {
     class engine;
     class noir_vm;
-    class overlay_system;
 
     class dialogue_state : public state
     {
         public:
-        dialogue_state(engine& engine, noir_vm& vm, overlay_system& overlays,
+        dialogue_state(engine& engine, noir_vm& vm,
             u16 dialogue_id) noexcept;
         ~dialogue_state() override;
 
@@ -62,7 +63,8 @@ namespace NEONengine
 
         engine& _engine;
         noir_vm& _vm;
-        overlay_system& _overlays;
+        modal_wait _wait;
+        freeze_display _display;
         u16 _dialogue_id;
         dialogue_context _context;
         dialogue_session _session;
@@ -85,7 +87,6 @@ namespace NEONengine
         u8 _pending{ NO_SLOT };
         u8 _hold_frames{ 0 };
         bool _entered{ false };
-        bool _frozen{ false };
     };
 }
 

@@ -15,9 +15,9 @@ namespace NEONengine
 {
     static_assert(DIALOGUE_MAX_CHOICES_SHOWN == dialogue_session::MAX_CHOICES_SHOWN);
 
-    dialogue_state::dialogue_state(engine& engine, noir_vm& vm, overlay_system& overlays,
+    dialogue_state::dialogue_state(engine& engine, noir_vm& vm,
         u16 dialogue_id) noexcept
-        : _engine(engine), _vm(vm), _overlays(overlays), _dialogue_id(dialogue_id),
+        : _engine(engine), _vm(vm), _wait(&vm), _display(engine.main_screen()), _dialogue_id(dialogue_id),
           _context{ engine.session(), vm }
     {
     }
@@ -45,7 +45,7 @@ namespace NEONengine
 
     void dialogue_state::erase_frame()
     {
-        if (_frozen)
+        if (_display)
             _engine.main_screen().restore_rect(to<WORD>(_frame_x), to<WORD>(_frame_y),
                 to<WORD>(_frame_width), to<WORD>(_frame_height));
         _frame_width = 0;
@@ -54,7 +54,7 @@ namespace NEONengine
 
     void dialogue_state::erase_portrait()
     {
-        if (_frozen && _portrait_width)
+        if (_display && _portrait_width)
             _engine.main_screen().restore_rect(DIALOGUE_MARGIN, DIALOGUE_MARGIN,
                 PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
         _portrait_width = 0;
@@ -274,7 +274,6 @@ namespace NEONengine
 
     mtl::expected<void, char const*> dialogue_state::pushed()
     {
-        _overlays.clear();
         _session.create(_engine.data().dialogues(), _engine.data().pages(),
             _engine.data().choices(), &engine_dialogue_bridge(), &_context);
         if (!_session.begin(_dialogue_id)
@@ -295,8 +294,7 @@ namespace NEONengine
         if (result.value())
         {
             _held_text_color = force_to<ULONG const*>(_engine.main_screen().palette())[DIALOGUE_TEXT_COLOR];
-            _engine.main_screen().freeze_display();
-            _frozen = true;
+            if (!_display.acquire()) return mtl::unexpected("Display already acquired");
             _speaker = _session.current_page()->speaker_id;
             draw_page(true);
             _engine.pointer().switch_to(pointer_role::DEFAULT);
@@ -369,7 +367,7 @@ namespace NEONengine
 
     void dialogue_state::update(state_control& control)
     {
-        if (!_frozen || _session.has_ended() || _vm.terminated())
+        if (!_display || _session.has_ended() || _vm.terminated())
         {
             control.pop();
             return;
@@ -423,21 +421,21 @@ namespace NEONengine
         erase_frame();
         erase_portrait();
         // Erasure is asynchronous; restoring colors first would recolor the old overlay.
-        if (_frozen) blitWait();
+        if (_display) blitWait();
         {
             mtl::system_use_guard guard;
             _portraits.reset(nullptr);
         }
-        if (_frozen)
+        if (_display)
         {
             auto* palette = force_to<ULONG*>(_engine.main_screen().palette());
             palette[DIALOGUE_TEXT_COLOR] = _held_text_color;
             _engine.main_screen().publish_palette(DIALOGUE_TEXT_COLOR, 1);
-            _engine.main_screen().resume_display();
+            _display.release();
             _engine.pointer().switch_to(pointer_role::DEFAULT);
             _engine.pointer().update();
         }
         release_page();
-        if (_entered) _vm.resume_execution();
+        if (_entered) _wait.complete();
     }
 }  // namespace NEONengine

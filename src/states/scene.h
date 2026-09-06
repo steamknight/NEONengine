@@ -23,6 +23,9 @@ namespace NEONengine
         void update(state_control& control) override;
         void suspended() override;
         void resumed() override;
+        /// Rebuild changed language before an overlay; redraw the front's bobs
+        /// if the backdrop invalidated them. suspended() prepares the back.
+        mtl::expected<void, char const*> prepare_suspend();
 
         scene_bobs& bobs() noexcept { return _bobs; }
         scene_hotspots& hotspots() noexcept { return _hotspots; }
@@ -31,9 +34,7 @@ namespace NEONengine
         private:
         mtl::expected<void, char const*> load_scene();
         void start_entry_script();
-        void start_pending_modal();
-        bool apply_system_request(state_control& control);
-        bool rebuild_for_language();
+        mtl::expected<void, char const*> rebuild_for_language();
 
         engine& _engine;
         u16 _scene_id;
