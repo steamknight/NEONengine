@@ -221,7 +221,6 @@ namespace NEONengine::tests
 
     void test_runner_state::update(state_control&)
     {
-        _engine.pointer().update();
     }
 }  // namespace NEONengine::tests
 

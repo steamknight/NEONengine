@@ -208,6 +208,11 @@ namespace NEONengine
         text_renderer* default_text_renderer() noexcept { return _text_renderer.get(); }
 
         /**
+         * @brief Caches the label for slot 0..8 for the UI font's lifetime; null on failure.
+         */
+        tTextBitMap* dialogue_number(u8 slot);
+
+        /**
          * @brief The frame every box of text is drawn in.
          *
          * Held for the process lifetime because a box goes up whenever a
@@ -347,6 +352,15 @@ namespace NEONengine
             return !_request_failed;
         }
 
+        /**
+         * @brief Supplies the VM and its current wait to an accepted modal state.
+         */
+        template<state_type T, typename... Args>
+        bool request_modal_state(noir_vm& vm, Args&&... args)
+        {
+            return request_state<T>(&vm, vm, mtl::forward<Args>(args)..., modal_wait(&vm));
+        }
+
         void request_message(noir_vm& vm, message_request const& request);
         bool has_pending_state() const noexcept { return !!_pending_state; }
         bool scene_interrupted() const noexcept { return _pending_system.has(); }
@@ -405,6 +419,9 @@ namespace NEONengine
         mouse_pointer_ptr                _pointer{ nullptr };
         ace::font_ptr                    _ui_font{ nullptr };
         text_renderer_ptr                _text_renderer{ nullptr };
+        ace::text_bitmap_ptr              _dialogue_numbers[DIALOGUE_MAX_CHOICES_SHOWN]{
+            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+        };
         mtl::unique_ptr<nine_patch>      _nine_patch{ nullptr };
         ace::bitmap_ptr                  _caption_ink{ nullptr };
         string_table_ptr                 _strings{ nullptr };

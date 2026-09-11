@@ -123,20 +123,11 @@ namespace NEONengine
 
     void dialogue_session::rebuild_set() noexcept
     {
-        // One "More..." line and the gap above it, taken off the top before
-        // anything is fitted, so no choice has to be dropped to make room for it.
+        // The localized control can wrap; reserve its measured height and gap.
         u16 const reserved = to<u16>(_more_height + _spacing);
         u16 const budget   = _space > reserved ? to<u16>(_space - reserved) : u16(0);
 
         _set_end = build_set(_set_start, budget, to<u8>(MAX_CHOICES_SHOWN - 1));
-
-        // The page keeps room for one choice and a "More..." back before its
-        // text is placed, so a set that had to be forced on screen means that
-        // reservation was not honoured.
-        if (_slot_count == 1 && _heights[_slots[0]] > budget)
-        {
-            NE_LOG("page %hu has no room for even one choice; showing it anyway", _current);
-        }
     }
 
     u8 dialogue_session::build_set(u8 start, u16 budget, u8 cap) noexcept

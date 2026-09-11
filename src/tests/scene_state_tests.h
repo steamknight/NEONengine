@@ -360,7 +360,7 @@ namespace NEONengine
         TEST_ASSERT(engine.vm().execute(0), "an authored function should queue");
         engine.request_modal(modal_kind::fade_out, 11);
         engine.request_system(system_kind::load_scene, 23);
-        engine.request_state<dialogue_state>(&engine.vm(), engine.vm(), u16(9));
+        engine.request_modal_state<dialogue_state>(engine.vm(), u16(9));
         state_manager manager;
         manager.start<scene_state>(engine, data::NO_ID);
         TEST_ASSERT(manager.update() == state_update_result::error, "invalid scene entry must be fatal");

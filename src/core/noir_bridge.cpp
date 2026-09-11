@@ -102,7 +102,7 @@ namespace NEONengine
         }
         void nb_show_dialog(engine& e, u16 dialogue_id)
         {
-            e.request_state<dialogue_state>(&e.vm(), e.vm(), dialogue_id);
+            e.request_modal_state<dialogue_state>(e.vm(), dialogue_id);
         }
         void nb_show_text(engine&, u16, u16, u16) {}
         void nb_clear_text(engine&) {}

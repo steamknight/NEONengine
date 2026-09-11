@@ -151,9 +151,8 @@ namespace NEONengine
          * "More..." anywhere. When it does not, every set is fitted against
          * @p space less a "More..." line and capped one lower, including the
          * last - which is what lets the last set come back round to the first.
-         * Two passes rather than fitting greedily and dropping the last choice
-         * to make room: a choice may be several lines tall while "More..." is
-         * always one.
+         * Both choices and the localized control may span several lines.
+         * The caller clips oversized choices and reports layout errors before drawing.
          *
          * Called again on the same page - after a rotation, or on a redraw -
          * this keeps the set the player is on. Arriving at a page starts over

@@ -31,10 +31,16 @@ namespace NEONengine
         }
     }
 
-    message_state::message_state(engine& engine, noir_vm& vm,
-        message_request const& request) noexcept
-        : _engine(engine), _wait(request.modal_wait ? &vm : nullptr),
-          _display(engine.main_screen()), _request(request)
+    message_state::message_state(
+        engine& engine,
+        noir_vm&,
+        message_request const& request,
+        modal_wait wait
+    ) noexcept
+        : _engine(engine)
+        , _wait(wait)
+        , _display(engine.main_screen())
+        , _request(request)
     {
         _request.text = copy_text(_text, sizeof(_text), request.text);
         _request.caption = copy_text(_caption, sizeof(_caption), request.caption);
@@ -53,7 +59,6 @@ namespace NEONengine
             ? renderer->measure_text(_request.text, allowance) : text_extent{};
         if (extent.width == 0 || extent.height == 0)
         {
-            _entered = true;
             return {};
         }
 
@@ -119,17 +124,14 @@ namespace NEONengine
             screen.text_copy(_text_bitmap.get(), content_x, text_y, _request.color, FONT_COOKIE);
         }
 
-        _engine.pointer().update();
         // The hotspot only checked the press that opened this message.
         (void)mouseUse(MOUSE_PORT_1, MOUSE_LMB);
         (void)keyUse(KEY_SPACE);
-        _entered = true;
         return {};
     }
 
     void message_state::update(state_control& control)
     {
-        _engine.pointer().update();
         bool const clicked = mouseUse(MOUSE_PORT_1, MOUSE_LMB);
         bool const pressed = keyUse(KEY_SPACE);
         if (!_display || clicked || pressed) control.pop();
@@ -150,6 +152,6 @@ namespace NEONengine
             _caption_bitmap.reset(nullptr);
             _text_bitmap.reset(nullptr);
         }
-        if (_entered) _wait.complete();
+        _wait.complete();
     }
 }  // namespace NEONengine

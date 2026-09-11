@@ -15,8 +15,15 @@ namespace NEONengine
     class message_state : public state
     {
         public:
+        /**
+         * @brief Copies the message payload and stores its explicitly assigned wait.
+         */
         message_state(engine& engine, noir_vm& vm,
-            message_request const& request) noexcept;
+            message_request const& request, modal_wait wait) noexcept;
+
+        /**
+         * @brief Restores the display and frees bitmaps, then completes the assigned wait.
+         */
         ~message_state() override;
 
         mtl::expected<void, char const*> pushed() override;
@@ -34,7 +41,6 @@ namespace NEONengine
         u16 _box_y{ 0 };
         u16 _box_width{ 0 };
         u16 _box_height{ 0 };
-        bool _entered{ false };
         char _text[MESSAGE_TEXT_CAPACITY]{};
         char _caption[MESSAGE_CAPTION_CAPACITY]{};
     };

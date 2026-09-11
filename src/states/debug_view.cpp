@@ -49,7 +49,6 @@ namespace NEONengine
             return;
         }
 
-        _engine.pointer().update();
         ULONG const now = timerGet();
         if (!_drawn || timerGetDelta(_last_reading, now) >= READING_INTERVAL) take_reading(now);
     }

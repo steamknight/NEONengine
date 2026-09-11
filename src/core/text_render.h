@@ -89,6 +89,11 @@ namespace NEONengine
          */
         text_extent measure_text(bstr_view const& text, u16 maxWidth);
 
+        /**
+         * @brief Returns the height of a line of text, in pixels.
+         */
+        u16 line_height() const { return _font ? _font->uwHeight : 0; }
+
         static result create(tFont* pFont);
 
         private:  //////////////////////////////////////////////////////////////////////////////////

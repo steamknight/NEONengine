@@ -13,3 +13,8 @@ far easier to erase and redraw correctly than two boxes where the lower one move
 upper one sits still.
 
 The spec's diagram is superseded by this decision.
+
+The frame width is now fixed for each page, using the name, body and all its
+drawable choices. Rotation reuses those glyphs and changes only the frame
+height. The name and body take their space first; choices fit below them.
+No room for a choice line and a required control is an authoring error.

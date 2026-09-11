@@ -168,10 +168,8 @@ the scene state, because the other five have different lifetimes:
 - **Static scene text has no state.** It now lives inside `scene_backdrop`,
   together with background drawing and palette reading. One free function takes
   the engine and scene; it needs no class or resource owner.
-- **`dialogue_portraits` lives for one conversation**, not one scene, and only
-  `dialogue.cpp` touches it. It belongs to item 3's `state_host<dialogue_state>`.
-  Moving it here would only mean moving it again. It landed there, as a member of
-  `dialogue_state`.
+- **`dialogue_portraits` lives for one conversation**, not one scene. It belongs
+  inside the `dialogue_presentation` the dialogue state owns.
 - **`asset_cache` lives for the whole run**, opened and cleared in `main.cpp`.
   **It belongs on the engine**, not on `game_data`, whose one job is to open the
   pak, read the .neon and hand back its tables. What is worth keeping after a
@@ -224,6 +222,11 @@ builds it and the engine's destructor frees it, so `sceneCreate` and
 `sceneDestroy` lose their create/destroy pair. `scene_hotspots` takes a
 `mouse_pointer&`; the states and the bridge reach it through the engine, as they
 already did for everything else.
+
+The engine owns normal pointer publication: `engine::process()` updates the
+pointer once after successful state handling and before screen processing.
+States select the role and visibility only. Scene loading may publish the wait
+pointer early before blocking disk access.
 
 That moves cursor creation ahead of `screenLoad()`, which holds: the view exists
 from `screenCreate()`, and the sprite manager only has to be attached to it
@@ -364,10 +367,15 @@ The engine applies at most one stack transition per `update_states()`:
    suppresses that fade and stays pending until the next safe selection.
 
 `request_state<T>(waiting_vm, args...)` constructs an ordinary state immediately,
-passing the engine followed by its arguments. A null waiting VM means the
-request owns no script wait. The one display-request slot is first-wins until
-entry. `request_message()` handles empty text and uses that same typed request
-path; `SHOW_DIALOG` requests `dialogue_state` directly. F1 requests
+passing the engine followed by its arguments. The waiting VM records identity
+metadata for rejection; it does not assign completion to the state.
+`request_modal_state<T>(vm, args...)` uses that path and supplies the VM followed
+by the arguments and an explicit `modal_wait(&vm)`. Both modal state constructors
+require that final token. Non-script callers use `request_state` with a null
+waiting VM and an explicit `modal_wait{}`. The one display-request slot is
+first-wins until entry. `request_message()` handles empty text, uses the modal
+helper for SAY and supplies an empty token for diagnostics. `SHOW_DIALOG` uses
+the modal helper for `dialogue_state`. F1 requests
 `debug_view_state`; it still comes after scene work. System placeholders retain
 their previous behavior, but the engine now handles them.
 
@@ -429,13 +437,59 @@ measured glyph width close normally without freezing. A failed allocation for
 nonempty content returns an entry error instead of silently dismissing the
 message.
 
-A dialogue owns a `dialogue_session`, drawn choice glyphs and portraits for its
-page range. `dialogue_context` holds the game session and the supplied VM.
+A dialogue owns a `dialogue_session` and a `dialogue_presentation`, both direct
+members of the state. The session holds the rules; the presentation holds the
+whole of the UI — the frame, heading and body glyphs, the drawn choice slots and
+their stable choice mapping, the hit regions, the visual highlight, the pointer
+role while the dialogue is up, raw input reading and consumption, the keyboard
+hold and its pending selection, the speaker's portraits and palette colors, and
+the `freeze_display` itself. The state keeps the VM, the `dialogue_context`, the
+modal wait, session navigation and choice actions, and the terminal checks. It
+reads no input and never touches a bitmap, a palette band or an erase order.
+
+The presentation takes the engine, not a list of engine-owned parts, and is
+built inert: `open()` loads portraits, lays the page out, freezes the display,
+draws, and only then consumes the opening click, space and number keys and puts
+the default pointer back; `refresh()` builds a new page; `redraw()` draws a rotated
+choice set from retained glyphs; `update()` reads one frame of input and answers what the
+player asked for; `close()` restores everything. It exposes no rectangle, glyph,
+slot or resource, and holds no callback.
+
+`update()` returns a small value, not a callback or a queued event: a kind of
+`none`, `advance`, `take_choice` or `rotate_choices`, and for `take_choice` the
+available-choice index — never the drawn slot, which is the presentation's own
+business. Keyboard input beats the mouse. A number key highlights its slot and
+returns `none` for `DIALOGUE_CHOICE_HOLD_FRAMES`, consuming every input during
+the hold including the frame that answers. A page with no drawn slot advances on
+a click or space even when the session still holds choices nothing could render.
+The state runs what it is handed against the session, then refreshes or redraws. The
+presentation runs no conversation action or script and owns no VM or modal wait.
+Layout fitting runs against the session as the page is laid out; the fitting
+algorithm itself stays in `dialogue_session`.
+
+Page entry renders the name, body, every drawable choice and the localized
+control. The engine caches number labels `1.` through `9.` for the UI font's
+lifetime. The portrait sets the width limit; all page glyphs determine the
+content width, which stays fixed across choice sets.
+
+The name and body take their space first, clipped to whole font lines at the
+screen limit. Choices never shorten them. The session fits choices into the
+remaining height. Oversized choices clip to whole lines, leaving room for the
+full control when needed, and are fitted again only if clipping changed their
+heights. A layout with no room for one choice line and its required control
+logs an authoring error with `NE_LOG` and returns an error without drawing it.
+Missing or undrawable choices consume no space.
+
+Rotation keeps every page glyph and rebuilds only the slot mappings and frame.
+The frame height follows the current set. Redraw still erases the whole frame;
+partial erasure below the body remains a later optimization.
+
+`dialogue_context` holds the game session and the supplied VM.
 `dialogue_session::create()` binds that context as the bridge's `void*` host;
 scripts must run on that VM, not a global one. No available entry page, empty
 page text or a terminal VM ends entry normally without acquiring the display.
-Other page-build errors return an explicit error. A refresh failure logs the
-error and requests engine exit, which clears states before another screen draw.
+Other page-build errors return an explicit error. A refresh failure logs a fatal
+error; reporting that failure to the state manager remains a TODO.
 
 The dialogue draws one frame beside the optional portrait, as
 [ADR 0003](adr/0003-dialogue-draws-one-frame.md) requires. It includes the
@@ -446,41 +500,57 @@ once. Number keys hold the selection highlighted for the configured frame
 count, consuming other input during that hold. Rotation does not take a choice
 or rerun the page's display script.
 
-Already drawn glyphs survive a string-table swap. The current page and choice
-set keep their glyph bitmaps until navigation; the next page or set uses the
-current strings. No displayed choice retains a borrowed string-table view.
+Page glyphs survive a string-table swap, including choices in other sets.
+Rotation keeps that page's strings and width; page navigation uses the current
+strings. No displayed choice retains a borrowed string-table view.
 Scene language reconciliation runs after the overlay returns.
 
-Destruction erases the overlay's pixels. The dialogue state waits before
-publishing page colors and, when frozen, before restoring palette colors on
-exit. Bitmap deleters already wait before freeing their memory; buffer-pointer
-changes need no separate wait. Dialogue cleanup frees portraits and restores
-their palette band, restores the
-previous text color, unfreezes the display and frees remaining glyphs. A
-portrait takes its palette band only when shown, not while loading. Unentered
-states and empty entries own no display changes. Clearing the manager uses
-the same cleanup, before destroying the suspended scene.
+`dialogue_presentation::close()` erases the overlay's pixels before the state
+completes its script wait. The call is idempotent and the presentation's own
+destructor repeats it, so a failed entry is safe too. Presentation waits for
+erasure before publishing page colors and, when frozen, before restoring palette
+colors on exit. Bitmap deleters already wait before freeing their memory;
+buffer-pointer changes need no separate wait. Cleanup frees portraits and
+restores their palette band, restores the previous text color, unfreezes the
+display, puts the default pointer role back — and only when the display was
+held — and frees remaining glyphs; the state then completes its wait. A portrait
+takes its palette band only when shown, not while loading. Unentered states,
+empty entries and entries that failed before acquisition own no display changes,
+release nobody else's and touch no other state's pointer role.
+Clearing the manager uses the same cleanup, before destroying the suspended
+scene.
 
 The engine slot owns a `state_ptr`, not a second copy of its payload.
 `message_request::modal_wait` distinguishes SAY from diagnostics. The composed
-`modal_wait` records the supplied VM and its wait identity. A new modal,
-execution reset or successful resume invalidates the old identity. Only an
-entered modal state's cleanup completes its wait; construction, pending
-cancellation and pop requests do not. Clearing an entered state can complete
-its own wait, but cannot answer a later fade or execution. Diagnostics own no
-wait, and completion never clears a terminal latch.
+`modal_wait` records the supplied VM and its wait identity. The engine explicitly
+assigns completion to the accepted state; constructors do not infer ownership
+from the VM or message request. Token copies express that assignment, and token
+destruction alone does nothing. The engine's `_state_wait` is identity metadata
+for rejection, not a completing owner.
+
+A new modal, execution reset or successful resume invalidates the old identity.
+State destruction completes the assigned wait after display and resource
+cleanup, including accepted pending cancellation, empty entry and failed entry.
+Construction and pop requests do not complete it. Stale cleanup cannot answer a
+later fade or execution. Empty tokens, including diagnostics, complete nothing,
+and completion never clears a terminal latch.
 
 The engine associates pending display states, system work, fades and skipped
 waits with the scene that posted them. Scene teardown discards that work.
 Terminal replacement cancels the outgoing display request before loading the
-new scene. A scene constructor or failed, unbound entry cannot cancel the
+new scene. Cancellation may clear its current modal block before scene teardown
+resets execution, but no VM update runs between those steps. Clearing the request
+also discards skipped-wait metadata so it cannot answer later work.
+A scene constructor or failed, unbound entry cannot cancel the
 active scene's work.
 
 Empty SAY and rejected modal calls still need an answer. The engine records
 their wait identity and completes it only after the VM callback returns.
 The VM sets its latch and wait identity *before* the bridge callback; this refactor
-keeps that behavior. No engine request clears it synchronously. A modal already
-accepted in the slot keeps its wait. The bounded slot does not become an event queue.
+keeps that behavior. No posting call clears it synchronously. Rejection constructs
+no state and its temporary token completes nothing. A duplicate request for the
+same wait cannot release the accepted owner. The bounded slot does not become
+an event queue.
 
 `freeze_display` construction is inert. Acquisition rejects a second owner:
 the screen has only one saved background, not nested snapshots. The engine
@@ -504,10 +574,19 @@ Unavailable pages still scan forward by index under
 rendered states through the real manager, using the initialized engine's display assets.
 It checks pending destruction, first-wins behavior, entry/pop latch timing,
 diagnostic/fade separation, terminal latch preservation, and empty or dropped
-modal requests. Pixel checks cover owned body and caption bytes, slot reuse,
+modal requests. Both states have checks for accepted pending cancellation,
+failed-entry completion, explicit empty tokens and stale cancellation during a
+new fade. Cancellation also checks terminal preservation and skipped-wait
+discard. Direct-state tests assign one owner instead of creating a second owner
+for an engine request. The fixture keeps its VM alive until pending-state
+cleanup finishes, including early test returns.
+Pixel checks cover owned body and caption bytes, slot reuse,
 alignment, wrapping, colors, width boundaries, tall messages and restoration.
 Dialogue checks cover opening input, page reads, mouse hover and selection,
-keyboard hold, choice rotation, speaker palette changes and cleanup. Independent
+keyboard hold, choice rotation, speaker palette changes and cleanup. An inert
+`dialogue_presentation` case checks that constructing, closing twice and
+destroying one that never opened releases no other owner's display, asks the
+conversation for nothing and paints nothing. Independent
 long-choice string tables exercise layout without changing authored assets.
 Language tests release the original table while choices remain drawn and check
 the next page against the new language's glyphs.

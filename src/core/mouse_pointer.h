@@ -85,7 +85,9 @@ namespace NEONengine
          */
         void set_visible(bool visible);
 
-        /** @brief Moves the pointer to the mouse. Call once per frame. */
+        /**
+         * @brief Publishes the pointer position for the current frame.
+         */
         void update();
 
         private:  /////////////////////////////////////////////////////////////////////////////////

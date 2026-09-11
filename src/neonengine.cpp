@@ -91,6 +91,21 @@ namespace NEONengine
 
     }
 
+    tTextBitMap* engine::dialogue_number(u8 slot)
+    {
+        assert(slot < DIALOGUE_MAX_CHOICES_SHOWN, "invalid dialogue number");
+
+        auto& number = _dialogue_numbers[slot];
+        if (!number)
+        {
+            mtl::system_use_guard guard;
+            char const label[] = { to<char>('1' + slot), '.', '\0' };
+            number = _text_renderer->create_text(label, SCREEN_WIDTH, text_justify::LEFT);
+        }
+
+        return number.get();
+    }
+
     engine::result engine::initialize()
     {
         mtl::system_use_guard guard;
@@ -349,6 +364,7 @@ namespace NEONengine
             return;
         }
 
+        pointer().update();
         _main_screen->process();
     }
 
@@ -370,7 +386,8 @@ namespace NEONengine
         if (!_pending_state && request.text.length() >= MESSAGE_TEXT_CAPACITY)
             NE_LOG("message of %lu bytes cut to %lu",
                 to<ULONG>(request.text.length()), to<ULONG>(MESSAGE_TEXT_CAPACITY - 1));
-        request_state<message_state>(request.modal_wait ? &vm : nullptr, vm, request);
+        if (request.modal_wait) request_modal_state<message_state>(vm, request);
+        else request_state<message_state>(nullptr, vm, request, modal_wait{});
     }
 
     void engine::clear_state_request() noexcept
@@ -423,7 +440,6 @@ namespace NEONengine
         {
             main_screen().fade_to_black(duration, 0, done);
             pointer().switch_to(pointer_role::WAIT);
-            pointer().update();
         }
         else if (request.kind == modal_kind::fade_in)
             main_screen().fade_from_black(duration, 0, done);

@@ -142,6 +142,12 @@ namespace mtl
         a     = mtl::move(b);
         b     = mtl::move(tmp);
     }
+
+    /**
+     * @brief Syntactic sugar for discarding a function's return value.
+     */
+#define DISCARD_RESULT(fn) static_cast<void>(fn)
+
 }  // namespace mtl
 
 #endif  //__MTL__UTILITY__INCLUDED__

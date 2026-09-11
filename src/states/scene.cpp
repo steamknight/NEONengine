@@ -188,7 +188,6 @@ namespace NEONengine
             if (!rebuild_for_language()) return;
         }
 
-        _engine.pointer().update();
         _bobs.update();
         _bobs.draw();
         if (debug_requested)
